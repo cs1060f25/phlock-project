@@ -24,7 +24,7 @@ Modern, visual-first Pinterest-style interface for saving music links.
 ```bash
 npm install
 npm run dev
-```
+``` 
 
 ## To Deploy to Vercel
 ```bash
