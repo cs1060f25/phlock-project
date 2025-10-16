@@ -1,7 +1,7 @@
 # Prototype 4: Full-Stack Dashboard
 
 ## Design Approach
-Enterprise-grade Spotify-inspired dashboard with user authentication, server-side API, and persistent database storage.
+Enterprise-grade Spotify-inspired dashboard with user authentication, server-side API, and persistent database storage. 
 
 ## Tech Stack
 - **Frontend**: Next.js (React) with Pages Router
