@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crate - Minimal List</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #fff;
+            color: #000;
+            padding: 20px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            margin-bottom: 30px;
+            color: #666;
+        }
+
+        .input-section {
+            border: 2px solid #000;
+            padding: 15px;
+            margin-bottom: 30px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #000;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #000;
+            color: #fff;
+            border: none;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+
+        button:hover {
+            background: #333;
+        }
+
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .stat {
+            border: 1px solid #000;
+            padding: 10px 15px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 2px solid #000;
+        }
+
+        th, td {
+            border: 1px solid #000;
+            padding: 10px;
+            text-align: left;
+            font-size: 14px;
+        }
+
+        th {
+            background: #000;
+            color: #fff;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        td a {
+            color: #00f;
+            text-decoration: underline;
+            word-break: break-all;
+        }
+
+        td a:visited {
+            color: #551a8b;
+        }
+
+        .btn-remove {
+            padding: 5px 10px;
+            background: #fff;
+            color: #000;
+            border: 1px solid #000;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .btn-remove:hover {
+            background: #000;
+            color: #fff;
+        }
+
+        .empty-state {
+            border: 2px solid #000;
+            padding: 40px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .platform-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border: 1px solid #000;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <h1>Your Crate</h1>
+    <p class="subtitle">Simple music link organizer</p>
+
+    <div class="input-section">
+        <input
+            type="text"
+            id="urlInput"
+            placeholder="Paste music link (Spotify, Apple Music, YouTube, etc.)"
+        >
+        <button onclick="addToCrate()">Add to Crate</button>
+    </div>
+
+    <div class="stats">
+        <div class="stat">
+            <strong>Total:</strong> <span id="totalCount">0</span>
+        </div>
+        <div class="stat">
+            <strong>Platforms:</strong> <span id="platformCount">0</span>
+        </div>
+    </div>
+
+    <div id="crateContainer"></div>
+
+    <script>
+        let crate = [];
+
+        // Load from localStorage on page load
+        function loadCrate() {
+            const saved = localStorage.getItem('minimalCrate');
+            if (saved) {
+                crate = JSON.parse(saved);
+                renderCrate();
+            }
+        }
+
+        // Save to localStorage
+        function saveCrate() {
+            localStorage.setItem('minimalCrate', JSON.stringify(crate));
+        }
+
+        // Parse URL to detect platform
+        function parseUrl(url) {
+            const platforms = {
+                'spotify.com': 'Spotify',
+                'music.apple.com': 'Apple Music',
+                'youtube.com': 'YouTube',
+                'youtu.be': 'YouTube',
+                'soundcloud.com': 'SoundCloud',
+                'tidal.com': 'Tidal',
+                'music.amazon.com': 'Amazon Music'
+            };
+
+            for (const [domain, platform] of Object.entries(platforms)) {
+                if (url.includes(domain)) {
+                    return {
+                        id: Date.now() + Math.random(),
+                        platform: platform,
+                        url: url,
+                        addedAt: new Date().toLocaleDateString()
+                    };
+                }
+            }
+            return null;
+        }
+
+        // Add track to crate
+        function addToCrate() {
+            const input = document.getElementById('urlInput');
+            const url = input.value.trim();
+
+            if (!url) return;
+
+            const track = parseUrl(url);
+            if (track) {
+                crate.unshift(track);
+                saveCrate();
+                renderCrate();
+                input.value = '';
+            } else {
+                alert('Invalid music link. Please use Spotify, Apple Music, YouTube, SoundCloud, Tidal, or Amazon Music.');
+            }
+        }
+
+        // Remove track from crate
+        function removeFromCrate(id) {
+            crate = crate.filter(track => track.id !== id);
+            saveCrate();
+            renderCrate();
+        }
+
+        // Render the crate
+        function renderCrate() {
+            const container = document.getElementById('crateContainer');
+
+            // Update stats
+            document.getElementById('totalCount').textContent = crate.length;
+            const uniquePlatforms = new Set(crate.map(t => t.platform));
+            document.getElementById('platformCount').textContent = uniquePlatforms.size;
+
+            // Render table or empty state
+            if (crate.length === 0) {
+                container.innerHTML = '<div class="empty-state">No tracks in your crate yet.</div>';
+            } else {
+                let html = '<table><thead><tr><th>#</th><th>Platform</th><th>Link</th><th>Added</th><th>Action</th></tr></thead><tbody>';
+
+                crate.forEach((track, index) => {
+                    html += `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td><span class="platform-badge">${track.platform}</span></td>
+                            <td><a href="${track.url}" target="_blank">${track.url}</a></td>
+                            <td>${track.addedAt}</td>
+                            <td><button class="btn-remove" onclick="removeFromCrate(${track.id})">Remove</button></td>
+                        </tr>
+                    `;
+                });
+
+                html += '</tbody></table>';
+                container.innerHTML = html;
+            }
+        }
+
+        // Handle Enter key in input
+        document.getElementById('urlInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                addToCrate();
+            }
+        });
+
+        // Load crate on page load
+        loadCrate();
+    </script>
+</body>
+</html>
