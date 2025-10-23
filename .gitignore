@@ -1,0 +1,74 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Production
+build/
+dist/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Expo (React Native)
+.expo/
+.expo-shared/
+
+# iOS
+*.ipa
+*.dSYM.zip
+*.dSYM
+ios/Pods/
+ios/.xcode.env.local
+
+# Android
+*.apk
+*.aab
+.gradle/
+local.properties
+*.iml
+.idea/
+.gradle
+build/
+
+# Turborepo
+.turbo/
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Misc
+.cache/
+temp/
+tmp/

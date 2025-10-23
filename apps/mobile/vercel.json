@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/converter",
+      "destination": "/api/converter.js"
+    }
+  ]
+}
