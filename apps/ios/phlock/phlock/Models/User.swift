@@ -13,8 +13,8 @@ struct User: Codable, Identifiable {
     let platformUserId: String
     let platformData: PlatformUserData?
     let privacyWhoCanSend: String
-    let createdAt: Date
-    let updatedAt: Date
+    let createdAt: Date?
+    let updatedAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -29,6 +29,56 @@ struct User: Codable, Identifiable {
         case privacyWhoCanSend = "privacy_who_can_send"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+
+    // Custom decoding to handle platform_data as either JSON object or string
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = try container.decode(UUID.self, forKey: .id)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        profilePhotoUrl = try container.decodeIfPresent(String.self, forKey: .profilePhotoUrl)
+        bio = try container.decodeIfPresent(String.self, forKey: .bio)
+        email = try container.decodeIfPresent(String.self, forKey: .email)
+        phone = try container.decodeIfPresent(String.self, forKey: .phone)
+        platformType = try container.decode(PlatformType.self, forKey: .platformType)
+        platformUserId = try container.decode(String.self, forKey: .platformUserId)
+        privacyWhoCanSend = try container.decode(String.self, forKey: .privacyWhoCanSend)
+        createdAt = try? container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try? container.decode(Date.self, forKey: .updatedAt)
+
+        // Handle platform_data which might be a string or object
+        if let platformDataString = try? container.decode(String.self, forKey: .platformData) {
+            // It's a JSON string, decode it
+            if let data = platformDataString.data(using: .utf8) {
+                platformData = try? JSONDecoder().decode(PlatformUserData.self, from: data)
+            } else {
+                platformData = nil
+            }
+        } else {
+            // It's already an object, decode directly
+            platformData = try? container.decode(PlatformUserData.self, forKey: .platformData)
+        }
+    }
+
+    // Custom encoding
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        try container.encode(id, forKey: .id)
+        try container.encode(displayName, forKey: .displayName)
+        try container.encodeIfPresent(profilePhotoUrl, forKey: .profilePhotoUrl)
+        try container.encodeIfPresent(bio, forKey: .bio)
+        try container.encodeIfPresent(email, forKey: .email)
+        try container.encodeIfPresent(phone, forKey: .phone)
+        try container.encode(platformType, forKey: .platformType)
+        try container.encode(platformUserId, forKey: .platformUserId)
+        try container.encode(privacyWhoCanSend, forKey: .privacyWhoCanSend)
+        try container.encodeIfPresent(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(updatedAt, forKey: .updatedAt)
+
+        // Encode platform_data as object
+        try container.encodeIfPresent(platformData, forKey: .platformData)
     }
 }
 

@@ -61,13 +61,20 @@ struct PlatformSelectionView: View {
     }
 
     private func signInWithSpotify() async {
+        print("🎵 Starting Spotify sign-in...")
         await authState.signInWithSpotify()
 
+        print("🎵 Sign-in completed. isAuthenticated: \(authState.isAuthenticated), error: \(String(describing: authState.error))")
+
         if let error = authState.error {
+            print("❌ Spotify sign-in error: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
             showError = true
         } else if authState.isAuthenticated {
+            print("✅ Successfully authenticated, showing profile setup")
             showProfileSetup = true
+        } else {
+            print("⚠️ Sign-in completed but not authenticated and no error?")
         }
     }
 

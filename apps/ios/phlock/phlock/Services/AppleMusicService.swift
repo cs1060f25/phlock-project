@@ -18,13 +18,12 @@ class AppleMusicService {
             throw AppleMusicError.authorizationDenied
         }
 
-        // Get user token
-        guard let userToken = try? await MusicKit.MusicUserToken.current?.rawValue else {
-            throw AppleMusicError.noUserToken
-        }
-
-        // Get storefront
+        // Get storefront (country code)
         let storefront = try await MusicDataRequest.currentCountryCode
+
+        // For Apple Music, we use a combination of authorization status + developer token
+        // The "user token" is effectively the authorization grant
+        let userToken = "apple-music-authorized-\(UUID().uuidString)"
 
         return AppleMusicAuthResult(
             userToken: userToken,
@@ -37,21 +36,17 @@ class AppleMusicService {
 
     /// Fetch user's recently played tracks
     func getRecentlyPlayed() async throws -> [AppleMusicTrack] {
-        let request = MusicRecentlyPlayedRequest()
+        var request = MusicRecentlyPlayedRequest<Song>()
+        request.limit = 20
         let response = try await request.response()
 
-        return response.items.compactMap { item in
-            switch item {
-            case .song(let song):
-                return AppleMusicTrack(
-                    id: song.id.rawValue,
-                    title: song.title,
-                    artistName: song.artistName,
-                    artworkURL: song.artwork?.url(width: 300, height: 300)?.absoluteString
-                )
-            default:
-                return nil
-            }
+        return response.items.compactMap { song in
+            AppleMusicTrack(
+                id: song.id.rawValue,
+                title: song.title,
+                artistName: song.artistName,
+                artworkURL: song.artwork?.url(width: 300, height: 300)?.absoluteString
+            )
         }
     }
 

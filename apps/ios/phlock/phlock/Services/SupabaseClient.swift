@@ -1,24 +1,23 @@
 import Foundation
 import Supabase
-import KeychainAccess
+@preconcurrency import KeychainAccess
 
 /// Singleton Supabase client for the entire app
 class PhlockSupabaseClient {
     static let shared = PhlockSupabaseClient()
 
-    let client: Supabase.Client
+    let client: SupabaseClient
     private let keychain = Keychain(service: "com.phlock.app")
 
     private init() {
         // Initialize Supabase client with secure session storage
-        self.client = Supabase.Client(
+        self.client = SupabaseClient(
             supabaseURL: Config.supabaseURL,
             supabaseKey: Config.supabaseAnonKey,
             options: SupabaseClientOptions(
-                auth: AuthClientOptions(
+                auth: .init(
                     storage: KeychainAuthStorage(keychain: keychain),
-                    autoRefreshToken: true,
-                    persistSession: true
+                    autoRefreshToken: true
                 )
             )
         )
@@ -30,8 +29,8 @@ class PhlockSupabaseClient {
     var isAuthenticated: Bool {
         get async {
             do {
-                let session = try await client.auth.session
-                return session.user != nil
+                _ = try await client.auth.session
+                return true
             } catch {
                 return false
             }
@@ -52,7 +51,7 @@ class PhlockSupabaseClient {
 // MARK: - Keychain Storage for Auth Tokens
 
 /// Custom auth storage implementation using Keychain
-class KeychainAuthStorage: AuthStorage {
+final class KeychainAuthStorage: AuthLocalStorage, @unchecked Sendable {
     private let keychain: Keychain
     private let sessionKey = "supabase.session"
 

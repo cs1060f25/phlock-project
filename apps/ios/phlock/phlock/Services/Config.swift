@@ -5,12 +5,12 @@ import Foundation
 enum Config {
     // Supabase Configuration
     // Get these from your Supabase project settings
-    static let supabaseURL = URL(string: "https://your-project.supabase.co")!
-    static let supabaseAnonKey = "your-anon-key-here"
+    static let supabaseURL = URL(string: "https://szfxnzsapojuemltjghb.supabase.co")!
+    static let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN6ZnhuenNhcG9qdWVtbHRqZ2hiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNTQ0NjcsImV4cCI6MjA3NjgzMDQ2N30.DcKveqZzSWTVWQGy8SbQR0XDxwinYhcSDV7CH4C2itc"
 
     // Spotify Configuration
     // Get these from Spotify Developer Dashboard
-    static let spotifyClientId = "your-spotify-client-id"
+    static let spotifyClientId = "68032dd9c4774f2b8f16ced8c77c9d25"
     static let spotifyRedirectURI = "phlock-spotify://callback"
 
     // Spotify API Scopes
@@ -25,8 +25,8 @@ enum Config {
     ]
 
     // Apple Music Configuration
-    // Generate this from Apple Developer Portal
-    static let appleMusicDeveloperToken = "your-apple-music-developer-token"
+    // Generated JWT token (valid until 2026-04-22)
+    static let appleMusicDeveloperToken = "eyJhbGciOiJFUzI1NiIsImtpZCI6IlI0V1lEUDhENzIiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJZMjNSSlpNVjVNIiwiaWF0IjoxNzYxMzU3ODczLCJleHAiOjE3NzY5MDk4NzN9.jFaNSmBqza4HVJcK7BvJ8MIyyQcQAYJhZLzitfKv2jQ48XdRD45Fr3phlHJa1dxdJeqxa4agdHa0WQHHJftSgA"
 }
 
 // MARK: - Setup Instructions

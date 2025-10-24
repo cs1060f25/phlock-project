@@ -127,14 +127,21 @@ class AuthService {
         bio: String?,
         profilePhotoUrl: String?
     ) async throws {
+        var updates: [String: String] = [
+            "display_name": displayName,
+            "updated_at": ISO8601DateFormatter().string(from: Date())
+        ]
+
+        if let bio = bio {
+            updates["bio"] = bio
+        }
+        if let profilePhotoUrl = profilePhotoUrl {
+            updates["profile_photo_url"] = profilePhotoUrl
+        }
+
         try await supabase
             .from("users")
-            .update([
-                "display_name": displayName,
-                "bio": bio as Any,
-                "profile_photo_url": profilePhotoUrl as Any,
-                "updated_at": ISO8601DateFormatter().string(from: Date())
-            ])
+            .update(updates)
             .eq("id", value: userId.uuidString)
             .execute()
     }
@@ -146,7 +153,7 @@ class AuthService {
 
         try await supabase.storage
             .from("profile-photos")
-            .upload(path: filePath, file: imageData, options: FileOptions(contentType: "image/jpeg"))
+            .upload(filePath, data: imageData, options: FileOptions(contentType: "image/jpeg"))
 
         let publicURL = try supabase.storage
             .from("profile-photos")
@@ -157,13 +164,16 @@ class AuthService {
 
     /// Get current user profile
     func getCurrentUser() async throws -> User? {
-        guard let session = try await supabase.auth.session else {
+        let session: Session
+        do {
+            session = try await supabase.auth.session
+        } catch {
             return nil
         }
 
         let response: [User] = try await supabase
             .from("users")
-            .select()
+            .select("*")
             .eq("id", value: session.user.id.uuidString)
             .execute()
             .value
@@ -190,21 +200,25 @@ class AuthService {
         // Check if user exists
         let existingUsers: [User] = try await supabase
             .from("users")
-            .select()
+            .select("*")
             .eq("platform_type", value: platformType.rawValue)
             .eq("platform_user_id", value: platformUserId)
             .execute()
             .value
+
+        // Encode platform data as JSON string
+        let platformDataJSON = String(data: try JSONEncoder().encode(platformData), encoding: .utf8) ?? "{}"
 
         if let existingUser = existingUsers.first {
             // Update existing user
             let updatedUsers: [User] = try await supabase
                 .from("users")
                 .update([
-                    "platform_data": try JSONEncoder().encode(platformData),
+                    "platform_data": platformDataJSON,
                     "updated_at": ISO8601DateFormatter().string(from: Date())
                 ])
                 .eq("id", value: existingUser.id.uuidString)
+                .select("*")
                 .execute()
                 .value
 
@@ -214,17 +228,24 @@ class AuthService {
             return user
         } else {
             // Create new user
+            var insertData: [String: String] = [
+                "platform_type": platformType.rawValue,
+                "platform_user_id": platformUserId,
+                "display_name": displayName,
+                "platform_data": platformDataJSON
+            ]
+
+            if let email = email {
+                insertData["email"] = email
+            }
+            if let profilePhotoUrl = profilePhotoUrl {
+                insertData["profile_photo_url"] = profilePhotoUrl
+            }
+
             let newUsers: [User] = try await supabase
                 .from("users")
-                .insert([
-                    "platform_type": platformType.rawValue,
-                    "platform_user_id": platformUserId,
-                    "email": email as Any,
-                    "display_name": displayName,
-                    "profile_photo_url": profilePhotoUrl as Any,
-                    "platform_data": try JSONEncoder().encode(platformData)
-                ])
-                .select()
+                .insert(insertData)
+                .select("*")
                 .execute()
                 .value
 
@@ -245,16 +266,21 @@ class AuthService {
     ) async throws {
         let expiresAt = Date().addingTimeInterval(TimeInterval(expiresIn))
 
+        var tokenData: [String: String] = [
+            "user_id": userId.uuidString,
+            "platform_type": platformType.rawValue,
+            "access_token": accessToken,
+            "token_expires_at": ISO8601DateFormatter().string(from: expiresAt),
+            "scope": scope
+        ]
+
+        if let refreshToken = refreshToken {
+            tokenData["refresh_token"] = refreshToken
+        }
+
         try await supabase
             .from("platform_tokens")
-            .insert([
-                "user_id": userId.uuidString,
-                "platform_type": platformType.rawValue,
-                "access_token": accessToken,
-                "refresh_token": refreshToken as Any,
-                "token_expires_at": ISO8601DateFormatter().string(from: expiresAt),
-                "scope": scope
-            ])
+            .insert(tokenData)
             .execute()
     }
 }

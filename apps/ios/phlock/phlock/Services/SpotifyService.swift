@@ -47,12 +47,22 @@ class SpotifyService: NSObject {
                     return
                 }
 
-                guard let callbackURL = callbackURL,
-                      let code = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
-                        .queryItems?.first(where: { $0.name == "code" })?.value else {
+                guard let callbackURL = callbackURL else {
+                    print("❌ No callback URL received")
                     continuation.resume(throwing: SpotifyError.noAuthCode)
                     return
                 }
+
+                print("✅ Callback URL: \(callbackURL)")
+
+                guard let code = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
+                        .queryItems?.first(where: { $0.name == "code" })?.value else {
+                    print("❌ Failed to extract code from callback")
+                    continuation.resume(throwing: SpotifyError.noAuthCode)
+                    return
+                }
+
+                print("✅ Got auth code: \(code.prefix(20))...")
 
                 // Exchange code for token
                 Task {
@@ -76,6 +86,7 @@ class SpotifyService: NSObject {
     // MARK: - Token Exchange
 
     private func exchangeCodeForToken(code: String, verifier: String) async throws -> SpotifyAuthResult {
+        print("🔄 Exchanging code for token...")
         var request = URLRequest(url: URL(string: "https://accounts.spotify.com/api/token")!)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -97,8 +108,12 @@ class SpotifyService: NSObject {
 
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? "No response body"
+            print("❌ Token exchange failed. Status: \((response as? HTTPURLResponse)?.statusCode ?? 0), Body: \(responseBody)")
             throw SpotifyError.tokenExchangeFailed
         }
+
+        print("✅ Token exchange successful!")
 
         let tokenResponse = try JSONDecoder().decode(SpotifyTokenResponse.self, from: data)
         return SpotifyAuthResult(
@@ -189,6 +204,11 @@ class SpotifyService: NSObject {
 
 extension SpotifyService: ASWebAuthenticationPresentationContextProviding {
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        // Get the first connected window scene
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            return ASPresentationAnchor(windowScene: windowScene)
+        }
+        // Fallback to deprecated initializer if no window scene available
         return ASPresentationAnchor()
     }
 }
