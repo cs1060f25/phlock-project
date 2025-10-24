@@ -18,7 +18,7 @@ import {
   Modal,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import MusicConverter from './services/music-converter';
+import MusicConverter from './src/services/music-converter';
 
 // Import SVG logos
 import SpotifyLogo from './assets/logos/Spotify_icon.svg';
