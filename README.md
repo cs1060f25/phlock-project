@@ -11,17 +11,19 @@ This is a monorepo containing all Phlock applications and shared packages:
 ```
 phlock/
 ├── apps/
-│   ├── mobile/           # React Native + Expo mobile app (iOS & Android)
-│   └── artist-dashboard/ # Next.js web app for artists (Phase 5+)
+│   ├── ios/                   # SwiftUI native iOS app
+│   ├── android/               # Kotlin native Android app (planned)
+│   ├── mobile-rn-archive/     # Archived React Native implementation
+│   └── artist-dashboard/      # Next.js web app for artists (Phase 5+)
 ├── packages/
-│   ├── api/              # Backend API & serverless functions
-│   ├── database/         # Supabase schemas & migrations
-│   ├── shared-types/     # Shared TypeScript types
-│   └── utils/            # Shared utilities
+│   ├── api/                   # Backend API & serverless functions
+│   ├── database/              # Supabase schemas & migrations
+│   ├── shared-types/          # Shared TypeScript types
+│   └── utils/                 # Shared utilities
 ├── docs/
 │   ├── PHLOCK_ROADMAP.md        # Comprehensive 7-phase roadmap
 │   └── BRANCHING_STRATEGY.md    # Git workflow & branch structure
-└── package.json          # Workspace root configuration
+└── package.json               # Workspace root configuration
 ```
 
 ## 🚀 Quick Start
@@ -45,20 +47,17 @@ npm run dev:mobile
 npm run dev:dashboard
 ```
 
-### Mobile App Development
+### iOS App Development
 
 ```bash
-cd apps/mobile
+# Open Xcode project
+open apps/ios/Phlock.xcodeproj
 
-# Start Expo development server
-npm start
-
-# Run on iOS simulator
-npm run ios
-
-# Run on Android emulator
-npm run android
+# Or use Xcode command line
+xcodebuild -project apps/ios/Phlock.xcodeproj -scheme Phlock -sdk iphonesimulator
 ```
+
+> **Note:** Phlock has transitioned from React Native to native Swift/Kotlin development for optimal music platform API integration (Spotify SDK, MusicKit). The previous React Native implementation is archived in `apps/mobile-rn-archive/`.
 
 ## 🎯 Phase-Based Development Roadmap
 
@@ -105,12 +104,19 @@ git push origin feature/1-firebase-auth
 
 ## 🏗️ Architecture
 
-### Mobile App (`apps/mobile/`)
+### iOS App (`apps/ios/`)
 
-- **Framework:** React Native + Expo
-- **Foundation:** musiclinkr-mobile (cross-platform music link converter)
-- **APIs:** Spotify, Apple Music, YouTube, SoundCloud, Tidal, Amazon Music
-- **Key Feature:** Universal Track ID (UTID) system for cross-platform mapping
+- **Framework:** SwiftUI (native iOS)
+- **Backend:** Supabase (auth, database, storage)
+- **Music APIs:** Spotify iOS SDK, Apple MusicKit
+- **Foundation:** Built from musiclinkr-mobile foundation
+- **Key Features:** OAuth authentication with music platforms, native music playback
+
+### Android App (`apps/android/`) - Planned
+
+- **Framework:** Kotlin + Jetpack Compose (native Android)
+- **Music APIs:** Spotify Android SDK, MusicKit for Android
+- **Backend:** Shared Supabase infrastructure
 
 ### Artist Dashboard (`apps/artist-dashboard/`)
 
@@ -156,7 +162,7 @@ npm test --workspace=apps/mobile
 
 - [Phlock Roadmap](docs/PHLOCK_ROADMAP.md) - Comprehensive 7-phase development plan
 - [Branching Strategy](docs/BRANCHING_STRATEGY.md) - Git workflow & conventions
-- [Mobile App README](apps/mobile/README.md) - React Native app documentation
+- [iOS App Documentation](apps/ios/README.md) - SwiftUI native app (coming soon)
 
 ## 🤝 Contributing
 
