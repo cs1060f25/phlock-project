@@ -1,22 +1,20 @@
 import Foundation
 
-/// Represents a friendship relationship between two users
+/// Represents a friendship/friend request between two users
 /// Maps to the 'friendships' table in Supabase
 struct Friendship: Codable, Identifiable {
     let id: UUID
-    let userId: UUID
-    let friendId: UUID
+    let userId1: UUID
+    let userId2: UUID
     let status: FriendshipStatus
-    let createdAt: Date
-    let acceptedAt: Date?
+    let createdAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id
-        case userId = "user_id"
-        case friendId = "friend_id"
+        case userId1 = "user_id_1"
+        case userId2 = "user_id_2"
         case status
         case createdAt = "created_at"
-        case acceptedAt = "accepted_at"
     }
 }
 
@@ -24,4 +22,12 @@ enum FriendshipStatus: String, Codable {
     case pending
     case accepted
     case blocked
+}
+
+/// Enriched friendship with user data
+struct FriendshipWithUser: Identifiable {
+    let id: UUID
+    let friendship: Friendship
+    let user: User
+    let isRequester: Bool // true if current user sent the request
 }
