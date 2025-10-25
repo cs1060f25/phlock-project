@@ -2,7 +2,6 @@ import SwiftUI
 
 struct PlatformSelectionView: View {
     @EnvironmentObject var authState: AuthenticationState
-    @State private var showProfileSetup = false
     @State private var showError = false
     @State private var errorMessage = ""
 
@@ -55,9 +54,6 @@ struct PlatformSelectionView: View {
         } message: {
             Text(errorMessage)
         }
-        .navigationDestination(isPresented: $showProfileSetup) {
-            ProfileSetupView()
-        }
     }
 
     private func signInWithSpotify() async {
@@ -71,21 +67,22 @@ struct PlatformSelectionView: View {
             errorMessage = error.localizedDescription
             showError = true
         } else if authState.isAuthenticated {
-            print("✅ Successfully authenticated, showing profile setup")
-            showProfileSetup = true
-        } else {
-            print("⚠️ Sign-in completed but not authenticated and no error?")
+            print("✅ Successfully authenticated with Spotify!")
         }
     }
 
     private func signInWithAppleMusic() async {
+        print("🍎 Starting Apple Music sign-in...")
         await authState.signInWithAppleMusic()
 
+        print("🍎 Sign-in completed. isAuthenticated: \(authState.isAuthenticated), error: \(String(describing: authState.error))")
+
         if let error = authState.error {
+            print("❌ Apple Music sign-in error: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
             showError = true
         } else if authState.isAuthenticated {
-            showProfileSetup = true
+            print("✅ Successfully authenticated with Apple Music!")
         }
     }
 }

@@ -11,20 +11,30 @@ class AppleMusicService {
 
     /// Request Apple Music authorization and get user token
     func authenticate() async throws -> AppleMusicAuthResult {
+        print("🎵 Requesting Apple Music authorization...")
+
         // Request authorization
         let status = await MusicAuthorization.request()
 
+        print("🎵 Authorization status: \(status)")
+
         guard status == .authorized else {
+            print("❌ Apple Music authorization denied. Status: \(status)")
             throw AppleMusicError.authorizationDenied
         }
 
+        print("✅ Apple Music authorized!")
+
         // Get storefront (country code)
+        print("🌍 Fetching storefront...")
         let storefront = try await MusicDataRequest.currentCountryCode
+        print("✅ Storefront: \(storefront)")
 
         // For Apple Music, we use a combination of authorization status + developer token
         // The "user token" is effectively the authorization grant
         let userToken = "apple-music-authorized-\(UUID().uuidString)"
 
+        print("✅ Apple Music auth complete!")
         return AppleMusicAuthResult(
             userToken: userToken,
             storefront: storefront,
