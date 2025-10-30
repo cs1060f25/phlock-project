@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Supabase
 
 @main
 struct phlockApp: App {
@@ -15,6 +16,17 @@ struct phlockApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(authState)
+                .onOpenURL { url in
+                    // Handle OAuth callback from Supabase
+                    Task {
+                        do {
+                            try await PhlockSupabaseClient.shared.client.auth.session(from: url)
+                            print("✅ OAuth callback handled: \(url)")
+                        } catch {
+                            print("❌ Failed to handle OAuth callback: \(error)")
+                        }
+                    }
+                }
         }
     }
 }

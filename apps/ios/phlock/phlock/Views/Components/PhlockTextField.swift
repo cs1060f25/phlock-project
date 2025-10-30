@@ -9,7 +9,7 @@ struct PhlockTextField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(label)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.nunitoSans(size: 15, weight: .semiBold))
                 .foregroundColor(.primary)
 
             if multiline {

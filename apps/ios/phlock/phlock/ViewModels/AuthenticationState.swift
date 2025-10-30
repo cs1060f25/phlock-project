@@ -22,7 +22,7 @@ class AuthenticationState: ObservableObject {
         isLoading = true
 
         do {
-            currentUser = try await AuthService.shared.getCurrentUser()
+            currentUser = try await AuthServiceV2.shared.currentUser
             isAuthenticated = currentUser != nil
         } catch {
             self.error = error
@@ -40,7 +40,7 @@ class AuthenticationState: ObservableObject {
         error = nil
 
         do {
-            let user = try await AuthService.shared.signInWithSpotify()
+            let user = try await AuthServiceV2.shared.signInWithSpotify()
             currentUser = user
             isAuthenticated = true
         } catch {
@@ -56,7 +56,7 @@ class AuthenticationState: ObservableObject {
         error = nil
 
         do {
-            let user = try await AuthService.shared.signInWithAppleMusic()
+            let user = try await AuthServiceV2.shared.signInWithApple()
             currentUser = user
             isAuthenticated = true
         } catch {
@@ -76,15 +76,15 @@ class AuthenticationState: ObservableObject {
         error = nil
 
         do {
-            try await AuthService.shared.updateUserProfile(
+            try await AuthServiceV2.shared.updateUserProfile(
                 userId: userId,
                 displayName: displayName,
                 bio: bio,
                 profilePhotoUrl: profilePhotoUrl
             )
 
-            // Refresh user data
-            await checkAuthStatus()
+            // Refresh user data by fetching directly
+            currentUser = try await AuthServiceV2.shared.getUserById(userId)
         } catch {
             self.error = error
         }
@@ -96,10 +96,23 @@ class AuthenticationState: ObservableObject {
         guard let userId = currentUser?.id else { return nil }
 
         do {
-            return try await AuthService.shared.uploadProfilePhoto(userId: userId, imageData: imageData)
+            return try await AuthServiceV2.shared.uploadProfilePhoto(userId: userId, imageData: imageData)
         } catch {
             self.error = error
             return nil
+        }
+    }
+
+    // MARK: - Refresh Music Data
+
+    func refreshMusicData() async {
+        do {
+            if let updatedUser = try await AuthServiceV2.shared.refreshMusicData() {
+                currentUser = updatedUser
+            }
+        } catch {
+            print("❌ Failed to refresh music data: \(error)")
+            self.error = error
         }
     }
 
@@ -107,7 +120,7 @@ class AuthenticationState: ObservableObject {
 
     func signOut() async {
         do {
-            try await AuthService.shared.signOut()
+            try await AuthServiceV2.shared.signOut()
             currentUser = nil
             isAuthenticated = false
         } catch {

@@ -2,32 +2,70 @@ import SwiftUI
 
 struct MainView: View {
     @EnvironmentObject var authState: AuthenticationState
+    @StateObject private var playbackService = PlaybackService.shared
+    @AppStorage("selectedTab") private var selectedTabStorage = 0
     @State private var selectedTab = 0
+    @State private var showFullPlayer = false
+    @State private var feedNavigationPath = NavigationPath()
+    @State private var discoverNavigationPath = NavigationPath()
+    @State private var inboxNavigationPath = NavigationPath()
+    @State private var clearDiscoverSearchTrigger = 0
+    @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            // The Crate Tab
-            TheCrateView()
-                .tabItem {
-                    Label("The Crate", systemImage: "square.stack.3d.up.fill")
-                }
-                .tag(0)
+        ZStack(alignment: .bottom) {
+            CustomTabBarView(
+                selectedTab: $selectedTab,
+                feedNavigationPath: $feedNavigationPath,
+                discoverNavigationPath: $discoverNavigationPath,
+                inboxNavigationPath: $inboxNavigationPath,
+                clearDiscoverSearchTrigger: $clearDiscoverSearchTrigger,
+                feedView: AnyView(
+                    FeedView(navigationPath: $feedNavigationPath)
+                        .environmentObject(authState)
+                        .environmentObject(playbackService)
+                        .environment(\.colorScheme, colorScheme)
+                ),
+                discoverView: AnyView(
+                    DiscoverView(navigationPath: $discoverNavigationPath, clearSearchTrigger: $clearDiscoverSearchTrigger)
+                        .environmentObject(authState)
+                        .environmentObject(playbackService)
+                ),
+                inboxView: AnyView(
+                    TheCrateView(navigationPath: $inboxNavigationPath)
+                        .environmentObject(authState)
+                        .environmentObject(playbackService)
+                        .environment(\.colorScheme, colorScheme)
+                )
+            )
+            .ignoresSafeArea(.keyboard)
+            .onAppear {
+                // Initialize from storage
+                selectedTab = selectedTabStorage
+            }
 
-            // Friends Tab
-            FriendsView()
-                .tabItem {
-                    Label("Friends", systemImage: "person.2.fill")
+            // Mini Player sits above tab bar
+            if playbackService.currentTrack != nil {
+                VStack(spacing: 0) {
+                    Spacer()
+                    MiniPlayerView(
+                        playbackService: playbackService,
+                        showFullPlayer: $showFullPlayer
+                    )
+                    .environmentObject(authState)
+                    .padding(.bottom, 53) // Position directly on top of tab bar
                 }
-                .tag(1)
-
-            // Profile Tab
-            ProfileView()
-                .tabItem {
-                    Label("Profile", systemImage: "person.circle.fill")
-                }
-                .tag(2)
+                .ignoresSafeArea(.keyboard)
+            }
         }
-        .accentColor(.black)
+        .environmentObject(playbackService)
+        .sheet(isPresented: $showFullPlayer) {
+            FullScreenPlayerView(
+                playbackService: playbackService,
+                isPresented: $showFullPlayer
+            )
+            .environmentObject(authState)
+        }
     }
 }
 

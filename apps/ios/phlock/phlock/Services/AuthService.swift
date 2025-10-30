@@ -7,6 +7,23 @@ class AuthService {
 
     private let supabase = PhlockSupabaseClient.shared.client
 
+    // Store current user ID locally since we're not using Supabase Auth sessions
+    private let userIdKey = "phlock_current_user_id"
+
+    private var currentUserId: UUID? {
+        get {
+            guard let uuidString = UserDefaults.standard.string(forKey: userIdKey) else { return nil }
+            return UUID(uuidString: uuidString)
+        }
+        set {
+            if let newValue = newValue {
+                UserDefaults.standard.set(newValue.uuidString, forKey: userIdKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: userIdKey)
+            }
+        }
+    }
+
     private init() {}
 
     // MARK: - Spotify Authentication Flow
@@ -18,9 +35,24 @@ class AuthService {
 
         // Step 2: Fetch user data from Spotify
         let profile = try await SpotifyService.shared.getUserProfile(accessToken: authResult.accessToken)
-        let playlists = try await SpotifyService.shared.getUserPlaylists(accessToken: authResult.accessToken)
-        let topTracks = try await SpotifyService.shared.getTopTracks(accessToken: authResult.accessToken)
-        let topArtists = try await SpotifyService.shared.getTopArtists(accessToken: authResult.accessToken)
+        let recentlyPlayed = try await SpotifyService.shared.getRecentlyPlayed(accessToken: authResult.accessToken)
+        let topArtistsResponse = try await SpotifyService.shared.getTopArtists(accessToken: authResult.accessToken) // short_term (last 4 weeks)
+
+        // Fetch Apple Music IDs for top artists (cross-platform linking)
+        let topArtistsWithCrossPlatformIds = await withTaskGroup(of: (String, String, String?, String?).self) { group in
+            for artist in topArtistsResponse.items.prefix(10) {
+                group.addTask {
+                    let appleMusicId = try? await AppleMusicService.shared.searchArtistId(artistName: artist.name)
+                    return (artist.id, artist.name, artist.images?.first?.url, appleMusicId)
+                }
+            }
+
+            var results: [(String, String, String?, String?)] = []
+            for await result in group {
+                results.append(result)
+            }
+            return results
+        }
 
         // Step 3: Create or update user in Supabase
         let user = try await createOrUpdateUser(
@@ -37,16 +69,51 @@ class AuthService {
                 spotifyProduct: profile.product,
                 appleMusicUserId: nil,
                 appleMusicStorefront: nil,
-                topArtists: topArtists.items.prefix(10).map { $0.name },
-                topTracks: topTracks.items.prefix(10).map { $0.name },
-                playlists: playlists.items.prefix(10).map { playlist in
-                    PlaylistInfo(
-                        id: playlist.id,
-                        name: playlist.name,
-                        imageUrl: playlist.images?.first?.url,
-                        trackCount: playlist.tracks.total
+                topArtists: topArtistsWithCrossPlatformIds.map {
+                    MusicItem(
+                        id: $0.0, // Spotify ID
+                        name: $0.1,
+                        artistName: nil,
+                        previewUrl: nil,
+                        albumArtUrl: $0.2,
+                        isrc: nil,
+                        playedAt: nil,
+                        spotifyId: $0.0, // Store Spotify ID
+                        appleMusicId: $0.3 // Store Apple Music ID (if found)
                     )
-                }
+                },
+                topTracks: recentlyPlayed.items.prefix(20).map {
+                    let formatter = ISO8601DateFormatter()
+                    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                    let playedDate = formatter.date(from: $0.playedAt)
+                    if playedDate == nil {
+                        print("⚠️ Failed to parse timestamp: \($0.playedAt)")
+                    }
+                    return MusicItem(
+                        id: $0.track.id,
+                        name: $0.track.name,
+                        artistName: $0.track.artists.first?.name,
+                        previewUrl: $0.track.previewUrl,
+                        albumArtUrl: $0.track.album.images.first?.url,
+                        isrc: $0.track.externalIds?.isrc,
+                        playedAt: playedDate
+                    )
+                },
+                recentlyPlayed: recentlyPlayed.items.prefix(20).map {
+                    let formatter = ISO8601DateFormatter()
+                    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                    let playedDate = formatter.date(from: $0.playedAt)
+                    return MusicItem(
+                        id: $0.track.id,
+                        name: $0.track.name,
+                        artistName: $0.track.artists.first?.name,
+                        previewUrl: $0.track.previewUrl,
+                        albumArtUrl: $0.track.album.images.first?.url,
+                        isrc: $0.track.externalIds?.isrc,
+                        playedAt: playedDate
+                    )
+                },
+                playlists: nil
             )
         )
 
@@ -60,6 +127,12 @@ class AuthService {
             scope: authResult.scope
         )
 
+        // Step 5: Create or link Supabase Auth session
+        try await linkToSupabaseAuth(userId: user.id, email: profile.email ?? "noemail@phlock.app")
+
+        // Step 6: Store user ID locally for session persistence
+        currentUserId = user.id
+
         return user
     }
 
@@ -71,16 +144,35 @@ class AuthService {
         let authResult = try await AppleMusicService.shared.authenticate()
 
         // Step 2: Fetch user data from Apple Music
-        let playlists = try await AppleMusicService.shared.getUserPlaylists()
         let topSongs = try await AppleMusicService.shared.getTopSongs()
+        let topArtists = try await AppleMusicService.shared.getTopArtists()
+        let recentlyPlayedWithArtists = try await AppleMusicService.shared.getRecentlyPlayed()
         let storefront = try await AppleMusicService.shared.getStorefront()
+
+        // Fetch artist artwork and Spotify IDs for top artists (cross-platform linking)
+        // Using Supabase Edge Function to keep client secret secure
+        let topArtistsWithCrossPlatformData = await withTaskGroup(of: (String, String, String?, String?).self) { group in
+            for artist in topArtists {
+                group.addTask {
+                    let artwork = try? await AppleMusicService.shared.fetchArtistArtwork(artistName: artist.name)
+                    let spotifyId = try? await self.searchSpotifyArtist(artistName: artist.name)
+                    return (artist.id, artist.name, artwork, spotifyId)
+                }
+            }
+
+            var results: [(String, String, String?, String?)] = []
+            for await result in group {
+                results.append(result)
+            }
+            return results
+        }
 
         // Step 3: Create or update user in Supabase
         // Note: Apple Music doesn't provide email/name directly through MusicKit
         // We'll need to get this from profile setup screen
         let user = try await createOrUpdateUser(
             platformType: .appleMusic,
-            platformUserId: authResult.userToken, // Using user token as ID
+            platformUserId: authResult.userToken, // Using stable user token as ID
             email: nil, // Will be set during profile setup
             displayName: "Apple Music User", // Will be updated during profile setup
             profilePhotoUrl: nil,
@@ -92,16 +184,42 @@ class AuthService {
                 spotifyProduct: nil,
                 appleMusicUserId: authResult.userToken,
                 appleMusicStorefront: storefront,
-                topArtists: nil,
-                topTracks: topSongs.prefix(10).map { $0.title },
-                playlists: playlists.prefix(10).map { playlist in
-                    PlaylistInfo(
-                        id: playlist.id,
-                        name: playlist.name,
-                        imageUrl: playlist.artworkURL,
-                        trackCount: playlist.trackCount
+                topArtists: topArtistsWithCrossPlatformData.map {
+                    MusicItem(
+                        id: $0.0, // Apple Music ID
+                        name: $0.1,
+                        artistName: nil,
+                        previewUrl: nil,
+                        albumArtUrl: $0.2,
+                        isrc: nil,
+                        playedAt: nil,
+                        spotifyId: $0.3, // Store Spotify ID (if found)
+                        appleMusicId: $0.0 // Store Apple Music ID
                     )
-                }
+                },
+                topTracks: topSongs.prefix(20).map {
+                    MusicItem(
+                        id: $0.id,
+                        name: $0.title,
+                        artistName: $0.artistName,
+                        previewUrl: $0.previewURL,
+                        albumArtUrl: $0.artworkURL,
+                        isrc: nil, // Apple Music doesn't expose ISRC in recently played, we'll get it during catalog search
+                        playedAt: nil // Apple Music MusicKit doesn't provide timestamps for top songs
+                    )
+                },
+                recentlyPlayed: recentlyPlayedWithArtists.prefix(20).map {
+                    MusicItem(
+                        id: $0.track.id,
+                        name: $0.track.title,
+                        artistName: $0.track.artistName,
+                        previewUrl: $0.track.previewURL,
+                        albumArtUrl: $0.track.artworkURL,
+                        isrc: nil, // Apple Music doesn't expose ISRC in recently played, we'll get it during catalog search
+                        playedAt: nil // Apple Music MusicKit doesn't provide timestamps
+                    )
+                },
+                playlists: nil
             )
         )
 
@@ -114,6 +232,14 @@ class AuthService {
             expiresIn: 86400 * 365, // Apple Music tokens last 1 year
             scope: "music"
         )
+
+        // Step 5: Create or link Supabase Auth session
+        // Note: Apple Music doesn't provide email, so we'll use a placeholder
+        let email = "\(user.id.uuidString)@phlock.app"
+        try await linkToSupabaseAuth(userId: user.id, email: email)
+
+        // Step 6: Store user ID locally for session persistence
+        currentUserId = user.id
 
         return user
     }
@@ -151,40 +277,379 @@ class AuthService {
         let fileName = "\(userId.uuidString).jpg"
         let filePath = "profile-photos/\(fileName)"
 
+        // Upload with upsert to replace existing photo
         try await supabase.storage
             .from("profile-photos")
-            .upload(filePath, data: imageData, options: FileOptions(contentType: "image/jpeg"))
+            .upload(
+                filePath,
+                data: imageData,
+                options: FileOptions(
+                    contentType: "image/jpeg",
+                    upsert: true  // Replace existing file if it exists
+                )
+            )
 
         let publicURL = try supabase.storage
             .from("profile-photos")
             .getPublicURL(path: filePath)
 
-        return publicURL.absoluteString
+        // Add timestamp to bust AsyncImage cache when photo is updated
+        let timestamp = Int(Date().timeIntervalSince1970)
+        return "\(publicURL.absoluteString)?t=\(timestamp)"
     }
 
     /// Get current user profile
     func getCurrentUser() async throws -> User? {
-        let session: Session
-        do {
-            session = try await supabase.auth.session
-        } catch {
+        // Use locally stored user ID instead of Supabase Auth session
+        guard let userId = currentUserId else {
             return nil
         }
 
         let response: [User] = try await supabase
             .from("users")
             .select("*")
-            .eq("id", value: session.user.id.uuidString)
+            .eq("id", value: userId.uuidString)
             .execute()
             .value
 
         return response.first
     }
 
+    /// Get user by ID and update stored session
+    func getUserById(_ userId: UUID) async throws -> User? {
+        let response: [User] = try await supabase
+            .from("users")
+            .select("*")
+            .eq("id", value: userId.uuidString)
+            .execute()
+            .value
+
+        if let user = response.first {
+            // Store the user ID for future sessions
+            currentUserId = user.id
+        }
+
+        return response.first
+    }
+
+    // MARK: - Refresh Music Data
+
+    /// Refresh the current user's music data from their streaming platform
+    func refreshMusicData() async throws -> User? {
+        guard let currentUser = try await getCurrentUser() else {
+            print("❌ No current user to refresh")
+            return nil
+        }
+
+        print("🔄 Refreshing music data for \(currentUser.displayName)")
+
+        let updatedPlatformData: PlatformUserData
+
+        switch currentUser.platformType {
+        case .spotify:
+            print("🎵 Refreshing Spotify data...")
+
+            // Get access token for Spotify
+            guard let accessToken = try await getPlatformAccessToken(userId: currentUser.id, platformType: .spotify) else {
+                print("❌ No Spotify access token found")
+                return currentUser
+            }
+
+            // Fetch fresh data from Spotify
+            let recentlyPlayed = try await SpotifyService.shared.getRecentlyPlayed(accessToken: accessToken)
+            let topArtistsResponse = try await SpotifyService.shared.getTopArtists(accessToken: accessToken)
+
+            // Fetch Apple Music IDs for top artists (cross-platform linking)
+            let topArtistsWithCrossPlatformIds = await withTaskGroup(of: (String, String, String?, String?).self) { group in
+                for artist in topArtistsResponse.items.prefix(10) {
+                    group.addTask {
+                        let appleMusicId = try? await AppleMusicService.shared.searchArtistId(artistName: artist.name)
+                        return (artist.id, artist.name, artist.images?.first?.url, appleMusicId)
+                    }
+                }
+
+                var results: [(String, String, String?, String?)] = []
+                for await result in group {
+                    results.append(result)
+                }
+                return results
+            }
+
+            // Update platform data
+            updatedPlatformData = PlatformUserData(
+                spotifyEmail: currentUser.platformData?.spotifyEmail,
+                spotifyDisplayName: currentUser.platformData?.spotifyDisplayName,
+                spotifyImageUrl: currentUser.platformData?.spotifyImageUrl,
+                spotifyCountry: currentUser.platformData?.spotifyCountry,
+                spotifyProduct: currentUser.platformData?.spotifyProduct,
+                appleMusicUserId: currentUser.platformData?.appleMusicUserId,
+                appleMusicStorefront: currentUser.platformData?.appleMusicStorefront,
+                topArtists: topArtistsWithCrossPlatformIds.map {
+                    MusicItem(
+                        id: $0.0, // Spotify ID
+                        name: $0.1,
+                        artistName: nil,
+                        previewUrl: nil,
+                        albumArtUrl: $0.2,
+                        isrc: nil,
+                        playedAt: nil,
+                        spotifyId: $0.0, // Store Spotify ID
+                        appleMusicId: $0.3 // Store Apple Music ID (if found)
+                    )
+                },
+                topTracks: recentlyPlayed.items.prefix(20).map {
+                    let formatter = ISO8601DateFormatter()
+                    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                    let playedDate = formatter.date(from: $0.playedAt)
+                    if playedDate == nil {
+                        print("⚠️ Failed to parse timestamp: \($0.playedAt)")
+                    }
+                    return MusicItem(
+                        id: $0.track.id,
+                        name: $0.track.name,
+                        artistName: $0.track.artists.first?.name,
+                        previewUrl: $0.track.previewUrl,
+                        albumArtUrl: $0.track.album.images.first?.url,
+                        isrc: $0.track.externalIds?.isrc,
+                        playedAt: playedDate
+                    )
+                },
+                recentlyPlayed: recentlyPlayed.items.prefix(20).map {
+                    let formatter = ISO8601DateFormatter()
+                    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                    let playedDate = formatter.date(from: $0.playedAt)
+                    return MusicItem(
+                        id: $0.track.id,
+                        name: $0.track.name,
+                        artistName: $0.track.artists.first?.name,
+                        previewUrl: $0.track.previewUrl,
+                        albumArtUrl: $0.track.album.images.first?.url,
+                        isrc: $0.track.externalIds?.isrc,
+                        playedAt: playedDate
+                    )
+                },
+                playlists: currentUser.platformData?.playlists
+            )
+
+        case .appleMusic:
+            print("🍎 Refreshing Apple Music data...")
+
+            // Fetch fresh data from Apple Music
+            let topSongs = try await AppleMusicService.shared.getTopSongs()
+            let topArtists = try await AppleMusicService.shared.getTopArtists()
+            let recentlyPlayedWithArtists = try await AppleMusicService.shared.getRecentlyPlayed()
+
+            // Fetch artist artwork and Spotify IDs for top artists (cross-platform linking)
+            // Using Supabase Edge Function to keep client secret secure
+            let topArtistsWithCrossPlatformData = await withTaskGroup(of: (String, String, String?, String?).self) { group in
+                for artist in topArtists {
+                    group.addTask {
+                        let artwork = try? await AppleMusicService.shared.fetchArtistArtwork(artistName: artist.name)
+                        let spotifyId = try? await self.searchSpotifyArtist(artistName: artist.name)
+                        return (artist.id, artist.name, artwork, spotifyId)
+                    }
+                }
+
+                var results: [(String, String, String?, String?)] = []
+                for await result in group {
+                    results.append(result)
+                }
+                return results
+            }
+
+            // Update platform data
+            updatedPlatformData = PlatformUserData(
+                spotifyEmail: currentUser.platformData?.spotifyEmail,
+                spotifyDisplayName: currentUser.platformData?.spotifyDisplayName,
+                spotifyImageUrl: currentUser.platformData?.spotifyImageUrl,
+                spotifyCountry: currentUser.platformData?.spotifyCountry,
+                spotifyProduct: currentUser.platformData?.spotifyProduct,
+                appleMusicUserId: currentUser.platformData?.appleMusicUserId,
+                appleMusicStorefront: currentUser.platformData?.appleMusicStorefront,
+                topArtists: topArtistsWithCrossPlatformData.map {
+                    MusicItem(
+                        id: $0.0, // Apple Music ID
+                        name: $0.1,
+                        artistName: nil,
+                        previewUrl: nil,
+                        albumArtUrl: $0.2,
+                        isrc: nil,
+                        playedAt: nil,
+                        spotifyId: $0.3, // Store Spotify ID (if found)
+                        appleMusicId: $0.0 // Store Apple Music ID
+                    )
+                },
+                topTracks: topSongs.prefix(20).map {
+                    MusicItem(
+                        id: $0.id,
+                        name: $0.title,
+                        artistName: $0.artistName,
+                        previewUrl: $0.previewURL,
+                        albumArtUrl: $0.artworkURL,
+                        isrc: nil,
+                        playedAt: nil
+                    )
+                },
+                recentlyPlayed: recentlyPlayedWithArtists.prefix(20).map {
+                    MusicItem(
+                        id: $0.track.id,
+                        name: $0.track.title,
+                        artistName: $0.track.artistName,
+                        previewUrl: $0.track.previewURL,
+                        albumArtUrl: $0.track.artworkURL,
+                        isrc: nil,
+                        playedAt: nil
+                    )
+                },
+                playlists: currentUser.platformData?.playlists
+            )
+
+        case .none:
+            print("⚠️ No platform type set for user")
+            return currentUser
+        }
+
+        // Update user in database
+        let updated: User = try await supabase
+            .from("users")
+            .update(["platform_data": updatedPlatformData])
+            .eq("id", value: currentUser.id.uuidString)
+            .select()
+            .single()
+            .execute()
+            .value
+
+        print("✅ Music data refreshed successfully")
+        return updated
+    }
+
     // MARK: - Sign Out
 
     func signOut() async throws {
-        try await supabase.auth.signOut()
+        // Clear locally stored user ID
+        currentUserId = nil
+
+        // Try to sign out from Supabase Auth (may not have session, that's ok)
+        try? await supabase.auth.signOut()
+    }
+
+    // MARK: - Supabase Auth Integration
+
+    /// Link custom user to Supabase Auth by creating or signing into a Supabase Auth account
+    private func linkToSupabaseAuth(userId: UUID, email: String) async throws {
+        print("🔗 Linking user \(userId) to Supabase Auth with email: \(email)")
+
+        // Generate a deterministic password based on user ID so it's the same across devices
+        // This allows the user to sign in on multiple devices with the same credentials
+        // We don't need users to remember this since they authenticate via OAuth
+        let password = "phlock_\(userId.uuidString)_auth_key"
+
+        do {
+            // Try to sign up a new Supabase Auth user
+            let authResponse = try await supabase.auth.signUp(
+                email: email,
+                password: password
+            )
+
+            let authUserId = authResponse.user.id
+
+            print("✅ Created new Supabase Auth user: \(authUserId)")
+
+            // Link the auth user ID to the custom user record
+            try await supabase
+                .from("users")
+                .update(["auth_user_id": authUserId.uuidString])
+                .eq("id", value: userId.uuidString)
+                .execute()
+
+            print("✅ Linked custom user \(userId) to auth user \(authUserId)")
+
+        } catch {
+            // If sign up fails (e.g., user already exists), try to sign in
+            print("⚠️ Sign up failed, trying to sign in: \(error)")
+
+            do {
+                let signInResponse = try await supabase.auth.signIn(
+                    email: email,
+                    password: password
+                )
+
+                let authUserId = signInResponse.user.id
+
+                print("✅ Signed in to existing Supabase Auth user: \(authUserId)")
+
+                // Update the link (might already exist, but ensure it's current)
+                try await supabase
+                    .from("users")
+                    .update(["auth_user_id": authUserId.uuidString])
+                    .eq("id", value: userId.uuidString)
+                    .execute()
+
+                print("✅ Updated link for custom user \(userId) to auth user \(authUserId)")
+
+            } catch let signInError {
+                // If sign-in fails with invalid credentials, the password might be outdated
+                // Try to update the password using admin edge function, then retry sign-in
+                print("⚠️ Sign in failed: \(signInError)")
+
+                // Check if error message contains "Invalid login credentials" or "invalid_credentials"
+                let errorDescription = String(describing: signInError)
+                print("🔍 Full error description: '\(errorDescription)'")
+                print("🔍 Checking for 'invalid_credentials': \(errorDescription.contains("invalid_credentials"))")
+                print("🔍 Checking for 'Invalid login credentials': \(errorDescription.contains("Invalid login credentials"))")
+
+                if errorDescription.contains("invalid_credentials") || errorDescription.contains("Invalid login credentials") {
+
+                    print("🔧 Invalid credentials detected - attempting password migration")
+
+                    do {
+                        // Call edge function to update password
+                        struct UpdatePasswordResponse: Decodable {
+                            let success: Bool
+                            let authUserId: String
+                        }
+
+                        let response: UpdatePasswordResponse = try await supabase.functions.invoke(
+                            "update-auth-password",
+                            options: FunctionInvokeOptions(
+                                body: [
+                                    "email": email,
+                                    "newPassword": password
+                                ]
+                            )
+                        )
+
+                        print("✅ Password migration successful for auth user: \(response.authUserId)")
+
+                        // Now try signing in again with the updated password
+                        let retrySignInResponse = try await supabase.auth.signIn(
+                            email: email,
+                            password: password
+                        )
+
+                        let authUserId = retrySignInResponse.user.id
+
+                        print("✅ Signed in after password migration: \(authUserId)")
+
+                        // Update the link
+                        try await supabase
+                            .from("users")
+                            .update(["auth_user_id": authUserId.uuidString])
+                            .eq("id", value: userId.uuidString)
+                            .execute()
+
+                        print("✅ Updated link for custom user \(userId) to auth user \(authUserId)")
+
+                    } catch {
+                        print("❌ Password migration failed: \(error)")
+                        print("⚠️ User will not be able to access RLS-protected data until linked")
+                    }
+                } else {
+                    print("❌ Failed to link to Supabase Auth: \(signInError)")
+                    print("⚠️ User will not be able to access RLS-protected data until linked")
+                }
+            }
+        }
     }
 
     // MARK: - Private Helper Methods
@@ -210,13 +675,15 @@ class AuthService {
         let platformDataJSON = String(data: try JSONEncoder().encode(platformData), encoding: .utf8) ?? "{}"
 
         if let existingUser = existingUsers.first {
-            // Update existing user
+            // Update existing user - ONLY update platform_data, preserve all user-set profile fields
+            let updateData: [String: String] = [
+                "platform_data": platformDataJSON,
+                "updated_at": ISO8601DateFormatter().string(from: Date())
+            ]
+
             let updatedUsers: [User] = try await supabase
                 .from("users")
-                .update([
-                    "platform_data": platformDataJSON,
-                    "updated_at": ISO8601DateFormatter().string(from: Date())
-                ])
+                .update(updateData)
                 .eq("id", value: existingUser.id.uuidString)
                 .select("*")
                 .execute()
@@ -256,6 +723,28 @@ class AuthService {
         }
     }
 
+    private func getPlatformAccessToken(userId: UUID, platformType: PlatformType) async throws -> String? {
+        struct TokenResponse: Codable {
+            let accessToken: String
+
+            enum CodingKeys: String, CodingKey {
+                case accessToken = "access_token"
+            }
+        }
+
+        let response: [TokenResponse] = try await supabase
+            .from("platform_tokens")
+            .select()
+            .eq("user_id", value: userId.uuidString)
+            .eq("platform_type", value: platformType.rawValue)
+            .order("created_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+
+        return response.first?.accessToken
+    }
+
     private func storePlatformToken(
         userId: UUID,
         platformType: PlatformType,
@@ -283,6 +772,35 @@ class AuthService {
             .insert(tokenData)
             .execute()
     }
+
+    /// Search for a Spotify artist using the Supabase Edge Function
+    /// This keeps the Spotify client secret secure on the server side
+    private func searchSpotifyArtist(artistName: String) async throws -> String? {
+        print("🔍 Searching for Spotify artist via Edge Function: \(artistName)")
+
+        struct SearchResponse: Decodable {
+            let spotifyId: String?
+        }
+
+        do {
+            // Call Supabase Edge Function with generic response type
+            let response: SearchResponse = try await supabase.functions.invoke(
+                "search-spotify-artist",
+                options: FunctionInvokeOptions(body: ["artistName": artistName])
+            )
+
+            if let spotifyId = response.spotifyId {
+                print("✅ Found Spotify ID via Edge Function: \(spotifyId)")
+                return spotifyId
+            }
+
+            print("⚠️ No Spotify artist found via Edge Function")
+            return nil
+        } catch {
+            print("❌ Error searching for Spotify artist: \(error)")
+            return nil
+        }
+    }
 }
 
 // MARK: - Errors
@@ -291,6 +809,7 @@ enum AuthError: LocalizedError {
     case userCreationFailed
     case userUpdateFailed
     case profileUploadFailed
+    case missingProviderToken
 
     var errorDescription: String? {
         switch self {
@@ -300,6 +819,8 @@ enum AuthError: LocalizedError {
             return "Failed to update user profile"
         case .profileUploadFailed:
             return "Failed to upload profile photo"
+        case .missingProviderToken:
+            return "OAuth provider token is missing"
         }
     }
 }

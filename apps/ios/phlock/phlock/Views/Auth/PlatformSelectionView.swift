@@ -9,11 +9,11 @@ struct PlatformSelectionView: View {
         VStack(spacing: 32) {
             // Header
             VStack(spacing: 12) {
-                Text("Connect Your Music")
-                    .font(.system(size: 32, weight: .bold))
+                Text("connect your music")
+                    .font(.nunitoSans(size: 32, weight: .bold))
 
-                Text("Choose your streaming platform to get started")
-                    .font(.system(size: 17))
+                Text("choose your streaming platform to get started")
+                    .font(.nunitoSans(size: 17))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -25,7 +25,7 @@ struct PlatformSelectionView: View {
             VStack(spacing: 20) {
                 PlatformCard(
                     platform: "Spotify",
-                    icon: "music.note",
+                    logo: "SpotifyLogo",
                     color: Color(red: 0.11, green: 0.73, blue: 0.33)
                 ) {
                     await signInWithSpotify()
@@ -33,7 +33,7 @@ struct PlatformSelectionView: View {
 
                 PlatformCard(
                     platform: "Apple Music",
-                    icon: "applelogo",
+                    logo: "AppleMusicLogo",
                     color: Color(red: 0.98, green: 0.26, blue: 0.42)
                 ) {
                     await signInWithAppleMusic()
@@ -89,7 +89,7 @@ struct PlatformSelectionView: View {
 
 struct PlatformCard: View {
     let platform: String
-    let icon: String
+    let logo: String
     let color: Color
     let action: () async -> Void
 
@@ -104,22 +104,19 @@ struct PlatformCard: View {
             }
         } label: {
             HStack(spacing: 16) {
-                Image(systemName: icon)
-                    .font(.system(size: 28))
-                    .foregroundColor(.white)
-                    .frame(width: 50, height: 50)
+                Image(logo)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 32, height: 32)
+                    .padding(9)
                     .background(color.opacity(0.2))
                     .clipShape(Circle())
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Continue with \(platform)")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.primary)
-
-                    Text("Connect and sync your music")
-                        .font(.system(size: 15))
-                        .foregroundColor(.secondary)
-                }
+                Text("continue with \(platform)")
+                    .font(.nunitoSans(size: 17, weight: .semiBold))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
 
                 Spacer()
 

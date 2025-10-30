@@ -13,6 +13,7 @@
 		D0B627082EAC08E500E6C099 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = D0B627072EAC08E500E6C099 /* Storage */; };
 		D0B6270A2EAC08E500E6C099 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = D0B627092EAC08E500E6C099 /* Supabase */; };
 		D0B6270D2EAC091500E6C099 /* KeychainAccess in Frameworks */ = {isa = PBXBuildFile; productRef = D0B6270C2EAC091500E6C099 /* KeychainAccess */; };
+		D0B627622EAC83AF00E6C099 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = D0B627612EAC83AF00E6C099 /* Lottie */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,6 +43,10 @@
 		D0B626FF2EAC04A100E6C099 /* Exceptions for "phlock" folder in "phlock" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Fonts/Lora/OFL.txt,
+				Fonts/Lora/README.txt,
+				Fonts/Montserrat/OFL.txt,
+				Fonts/Montserrat/README.txt,
 				Info.plist,
 			);
 			target = D0B626D32EAC034B00E6C099 /* phlock */;
@@ -75,6 +80,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D0B6270A2EAC08E500E6C099 /* Supabase in Frameworks */,
+				D0B627622EAC83AF00E6C099 /* Lottie in Frameworks */,
 				D0B627082EAC08E500E6C099 /* Storage in Frameworks */,
 				D0B6270D2EAC091500E6C099 /* KeychainAccess in Frameworks */,
 				D0B627062EAC08E500E6C099 /* Realtime in Frameworks */,
@@ -146,6 +152,7 @@
 				D0B627072EAC08E500E6C099 /* Storage */,
 				D0B627092EAC08E500E6C099 /* Supabase */,
 				D0B6270C2EAC091500E6C099 /* KeychainAccess */,
+				D0B627612EAC83AF00E6C099 /* Lottie */,
 			);
 			productName = phlock;
 			productReference = D0B626D42EAC034B00E6C099 /* phlock.app */;
@@ -232,6 +239,7 @@
 			packageReferences = (
 				D0B627002EAC08E500E6C099 /* XCRemoteSwiftPackageReference "supabase-swift" */,
 				D0B6270B2EAC091500E6C099 /* XCRemoteSwiftPackageReference "KeychainAccess" */,
+				D0B6275E2EAC820B00E6C099 /* XCRemoteSwiftPackageReference "lottie-spm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D0B626D52EAC034B00E6C099 /* Products */;
@@ -433,6 +441,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = phlock/phlock.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = Y23RJZMV5M;
@@ -468,6 +477,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = phlock/phlock.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = Y23RJZMV5M;
@@ -640,6 +650,14 @@
 				kind = branch;
 			};
 		};
+		D0B6275E2EAC820B00E6C099 /* XCRemoteSwiftPackageReference "lottie-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/airbnb/lottie-spm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.5.2;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -672,6 +690,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = D0B6270B2EAC091500E6C099 /* XCRemoteSwiftPackageReference "KeychainAccess" */;
 			productName = KeychainAccess;
+		};
+		D0B627612EAC83AF00E6C099 /* Lottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D0B6275E2EAC820B00E6C099 /* XCRemoteSwiftPackageReference "lottie-spm" */;
+			productName = Lottie;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

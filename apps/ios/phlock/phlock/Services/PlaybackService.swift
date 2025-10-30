@@ -1,0 +1,201 @@
+import Foundation
+import AVFoundation
+import Combine
+
+/// Service for managing music playback
+class PlaybackService: ObservableObject {
+    static let shared = PlaybackService()
+
+    private var player: AVPlayer?
+    private var timeObserver: Any?
+
+    @Published var currentTrack: MusicItem?
+    @Published var isPlaying = false
+    @Published var currentTime: Double = 0
+    @Published var duration: Double = 0
+
+    private init() {
+        setupAudioSession()
+    }
+
+    deinit {
+        stopPlayback()
+    }
+
+    // MARK: - Audio Session Setup
+
+    private func setupAudioSession() {
+        do {
+            let audioSession = AVAudioSession.sharedInstance()
+            try audioSession.setCategory(.playback, mode: .default)
+            try audioSession.setActive(true)
+        } catch {
+            print("❌ Failed to setup audio session: \(error)")
+        }
+    }
+
+    // MARK: - Playback Control
+
+    /// Play a track by its preview URL
+    func play(track: MusicItem) {
+        print("🎵 Attempting to play track: \(track.name)")
+        print("   Preview URL: \(track.previewUrl ?? "nil")")
+        print("   Album Art URL: \(track.albumArtUrl ?? "nil")")
+        print("   ISRC: \(track.isrc ?? "nil")")
+
+        // If track has a preview URL, use it
+        if let previewUrl = track.previewUrl, !previewUrl.isEmpty {
+            playFromURL(previewUrl, track: track)
+            return
+        }
+
+        // No preview URL - try to find one from Apple Music catalog
+        print("⚠️ No preview URL from primary source, searching Apple Music catalog...")
+
+        guard let artistName = track.artistName else {
+            print("❌ Cannot search Apple Music - missing artist name")
+            return
+        }
+
+        Task {
+            do {
+                // Pass ISRC if available for exact matching
+                if let appleMusicTrack = try await AppleMusicService.shared.searchTrack(
+                    name: track.name,
+                    artist: artistName,
+                    isrc: track.isrc
+                ) {
+                    if let applePreviewUrl = appleMusicTrack.previewURL, !applePreviewUrl.isEmpty {
+                        // Update track with Apple Music preview
+                        var updatedTrack = track
+                        updatedTrack = MusicItem(
+                            id: track.id,
+                            name: track.name,
+                            artistName: track.artistName,
+                            previewUrl: applePreviewUrl,
+                            albumArtUrl: appleMusicTrack.artworkURL ?? track.albumArtUrl,
+                            isrc: track.isrc
+                        )
+                        await MainActor.run {
+                            self.playFromURL(applePreviewUrl, track: updatedTrack)
+                        }
+                    } else {
+                        print("❌ Apple Music match found but no preview URL available")
+                    }
+                } else {
+                    print("❌ Could not find track in Apple Music catalog")
+                }
+            } catch {
+                print("❌ Error searching Apple Music: \(error)")
+            }
+        }
+    }
+
+    private func playFromURL(_ urlString: String, track: MusicItem) {
+        guard let url = URL(string: urlString) else {
+            print("❌ Invalid URL: \(urlString)")
+            return
+        }
+
+        // If same track is already playing, toggle play/pause
+        if currentTrack?.id == track.id, let player = player {
+            if isPlaying {
+                pause()
+            } else {
+                resume()
+            }
+            return
+        }
+
+        // Stop current playback
+        stopPlayback()
+
+        // Create new player
+        let playerItem = AVPlayerItem(url: url)
+        player = AVPlayer(playerItem: playerItem)
+
+        // Set up time observer
+        setupTimeObserver()
+
+        // Set up playback end observer
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(playerDidFinishPlaying),
+            name: .AVPlayerItemDidPlayToEndTime,
+            object: playerItem
+        )
+
+        // Update state
+        currentTrack = track
+        isPlaying = true
+
+        // Get duration
+        Task { @MainActor in
+            if let duration = try? await playerItem.asset.load(.duration) {
+                self.duration = CMTimeGetSeconds(duration)
+            }
+        }
+
+        // Start playback
+        player?.play()
+
+        print("▶️ Playing: \(track.name)")
+    }
+
+    /// Pause playback
+    func pause() {
+        player?.pause()
+        isPlaying = false
+        print("⏸️ Paused")
+    }
+
+    /// Resume playback
+    func resume() {
+        player?.play()
+        isPlaying = true
+        print("▶️ Resumed")
+    }
+
+    /// Stop playback and clear current track
+    func stopPlayback() {
+        player?.pause()
+        player = nil
+
+        if let timeObserver = timeObserver {
+            player?.removeTimeObserver(timeObserver)
+            self.timeObserver = nil
+        }
+
+        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
+
+        currentTrack = nil
+        isPlaying = false
+        currentTime = 0
+        duration = 0
+
+        print("⏹️ Stopped")
+    }
+
+    /// Seek to specific time
+    func seek(to time: Double) {
+        let cmTime = CMTime(seconds: time, preferredTimescale: 600)
+        player?.seek(to: cmTime)
+        currentTime = time
+    }
+
+    // MARK: - Private Helpers
+
+    private func setupTimeObserver() {
+        let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
+        timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            self?.currentTime = CMTimeGetSeconds(time)
+        }
+    }
+
+    @objc private func playerDidFinishPlaying() {
+        // Just stop playback (don't auto-advance)
+        DispatchQueue.main.async {
+            self.stopPlayback()
+        }
+    }
+}

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct UserProfileView: View {
     @EnvironmentObject var authState: AuthenticationState
+    @Environment(\.colorScheme) var colorScheme
     let user: User
 
     @State private var friendshipStatus: FriendshipStatus?
@@ -34,13 +35,12 @@ struct UserProfileView: View {
 
                     // Display Name
                     Text(user.displayName)
-                        .font(.system(size: 28, weight: .bold))
+                        .font(.nunitoSans(size: 28, weight: .bold))
 
                     // Bio
                     if let bio = user.bio {
                         Text(bio)
-                            .font(.system(size: 15))
-                            .foregroundColor(.secondary)
+                            .font(.nunitoSans(size: 15))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
                     }
@@ -49,8 +49,8 @@ struct UserProfileView: View {
                     HStack(spacing: 6) {
                         Image(systemName: user.platformType == .spotify ? "music.note" : "applelogo")
                             .font(.system(size: 12))
-                        Text(user.platformType == .spotify ? "Spotify" : "Apple Music")
-                            .font(.system(size: 13, weight: .medium))
+                        Text(user.platformType == .spotify ? "spotify" : "apple music")
+                            .font(.nunitoSans(size: 13, weight: .medium))
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 12)
@@ -70,24 +70,24 @@ struct UserProfileView: View {
                                 HStack(spacing: 8) {
                                     Image(systemName: "checkmark.circle.fill")
                                         .foregroundColor(.green)
-                                    Text("Friends")
-                                        .font(.system(size: 15, weight: .semibold))
+                                    Text("friends")
+                                        .font(.nunitoSans(size: 15, weight: .semiBold))
                                 }
                                 .foregroundColor(.primary)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
-                                .background(Color.gray.opacity(0.1))
+                                .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
                                 .cornerRadius(12)
 
                             case .pending:
                                 if let friendship = friendship, friendship.userId1 == authState.currentUser?.id {
                                     // Current user sent the request
-                                    Text("Request Sent")
-                                        .font(.system(size: 15, weight: .semibold))
+                                    Text("request sent")
+                                        .font(.nunitoSans(size: 15, weight: .semiBold))
                                         .foregroundColor(.secondary)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 12)
-                                        .background(Color.gray.opacity(0.1))
+                                        .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
                                         .cornerRadius(12)
                                 } else {
                                     // Other user sent the request - show accept/reject
@@ -95,20 +95,20 @@ struct UserProfileView: View {
                                         Button {
                                             Task { await rejectFriendRequest() }
                                         } label: {
-                                            Text("Reject")
-                                                .font(.system(size: 15, weight: .semibold))
+                                            Text("reject")
+                                                .font(.nunitoSans(size: 15, weight: .semiBold))
                                                 .foregroundColor(.primary)
                                                 .frame(maxWidth: .infinity)
                                                 .padding(.vertical, 12)
-                                                .background(Color.gray.opacity(0.1))
+                                                .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
                                                 .cornerRadius(12)
                                         }
 
                                         Button {
                                             Task { await acceptFriendRequest() }
                                         } label: {
-                                            Text("Accept")
-                                                .font(.system(size: 15, weight: .semibold))
+                                            Text("accept")
+                                                .font(.nunitoSans(size: 15, weight: .semiBold))
                                                 .foregroundColor(.white)
                                                 .frame(maxWidth: .infinity)
                                                 .padding(.vertical, 12)
@@ -131,8 +131,8 @@ struct UserProfileView: View {
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 12)
                                 } else {
-                                    Text("Add Friend")
-                                        .font(.system(size: 15, weight: .semibold))
+                                    Text("add friend")
+                                        .font(.nunitoSans(size: 15, weight: .semiBold))
                                         .foregroundColor(.white)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 12)
@@ -150,24 +150,31 @@ struct UserProfileView: View {
                 // Music Stats
                 if let platformData = user.platformData {
                     VStack(spacing: 16) {
-                        Text("Music Taste")
-                            .font(.system(size: 20, weight: .bold))
+                        Text("music taste")
+                            .font(.nunitoSans(size: 20, weight: .bold))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 24)
 
                         // Top Tracks
-                        if let topTracks = platformData.topTracks, !topTracks.isEmpty {
-                            MusicStatsCard(title: "Top Tracks", items: topTracks)
+                        if let topTracks = platformData.topTracks, !topTracks.isEmpty,
+                           let platformType = getPlatformType(from: user) {
+                            MusicStatsCard(
+                                title: "what i'm listening to",
+                                items: topTracks,
+                                platformType: platformType,
+                                itemType: .track
+                            )
                         }
 
                         // Top Artists
-                        if let topArtists = platformData.topArtists, !topArtists.isEmpty {
-                            MusicStatsCard(title: "Top Artists", items: topArtists)
-                        }
-
-                        // Playlists
-                        if let playlists = platformData.playlists, !playlists.isEmpty {
-                            MusicStatsCard(title: "Playlists", items: playlists.map { $0.name })
+                        if let topArtists = platformData.topArtists, !topArtists.isEmpty,
+                           let platformType = getPlatformType(from: user) {
+                            MusicStatsCard(
+                                title: "who i'm listening to",
+                                items: topArtists,
+                                platformType: platformType,
+                                itemType: .artist
+                            )
                         }
                     }
                     .padding(.top, 16)
@@ -240,6 +247,18 @@ struct UserProfileView: View {
             errorMessage = error.localizedDescription
             showError = true
         }
+    }
+
+    private func getPlatformType(from user: User) -> PlatformType? {
+        // Try to get from platformType field first
+        if let platformType = user.platformType {
+            return platformType
+        }
+        // Otherwise derive from musicPlatform field
+        if let musicPlatform = user.musicPlatform {
+            return musicPlatform == "apple_music" ? .appleMusic : .spotify
+        }
+        return nil
     }
 }
 

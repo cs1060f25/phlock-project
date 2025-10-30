@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FriendsView: View {
     @EnvironmentObject var authState: AuthenticationState
+    @Environment(\.colorScheme) var colorScheme
     @State private var selectedSegment = 0
     @State private var searchText = ""
     @State private var searchResults: [User] = []
@@ -17,9 +18,9 @@ struct FriendsView: View {
             VStack(spacing: 0) {
                 // Segment Control
                 Picker("View", selection: $selectedSegment) {
-                    Text("Friends").tag(0)
-                    Text("Search").tag(1)
-                    Text("Requests").tag(2)
+                    Text("friends").tag(0)
+                    Text("search").tag(1)
+                    Text("requests").tag(2)
                 }
                 .pickerStyle(.segmented)
                 .padding()
@@ -122,11 +123,11 @@ struct FriendsListView: View {
                         .font(.system(size: 48))
                         .foregroundColor(.gray)
 
-                    Text("No friends yet")
-                        .font(.system(size: 20, weight: .semibold))
+                    Text("no friends yet")
+                        .font(.nunitoSans(size: 20, weight: .semiBold))
 
-                    Text("Search for users to add friends")
-                        .font(.system(size: 15))
+                    Text("search for users to add friends")
+                        .font(.nunitoSans(size: 15))
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -146,6 +147,7 @@ struct FriendsListView: View {
 
 struct SearchUsersView: View {
     @EnvironmentObject var authState: AuthenticationState
+    @Environment(\.colorScheme) var colorScheme
     @Binding var searchText: String
     @Binding var searchResults: [User]
     @Binding var isSearching: Bool
@@ -157,7 +159,7 @@ struct SearchUsersView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.gray)
 
-                TextField("Search users...", text: $searchText)
+                TextField("search users...", text: $searchText)
                     .textFieldStyle(.plain)
                     .autocorrectionDisabled()
                     .onChange(of: searchText) { oldValue, newValue in
@@ -177,7 +179,7 @@ struct SearchUsersView: View {
                 }
             }
             .padding(12)
-            .background(Color.gray.opacity(0.1))
+            .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
             .cornerRadius(12)
             .padding()
 
@@ -191,11 +193,11 @@ struct SearchUsersView: View {
                         .font(.system(size: 48))
                         .foregroundColor(.gray)
 
-                    Text("Search for friends")
-                        .font(.system(size: 20, weight: .semibold))
+                    Text("search for friends")
+                        .font(.nunitoSans(size: 20, weight: .semiBold))
 
-                    Text("Enter a name to find users")
-                        .font(.system(size: 15))
+                    Text("enter a name to find users")
+                        .font(.nunitoSans(size: 15))
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -205,11 +207,11 @@ struct SearchUsersView: View {
                         .font(.system(size: 48))
                         .foregroundColor(.gray)
 
-                    Text("No users found")
-                        .font(.system(size: 20, weight: .semibold))
+                    Text("no users found")
+                        .font(.nunitoSans(size: 20, weight: .semiBold))
 
-                    Text("Try a different search")
-                        .font(.system(size: 15))
+                    Text("try a different search")
+                        .font(.nunitoSans(size: 15))
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -261,11 +263,11 @@ struct PendingRequestsView: View {
                         .font(.system(size: 48))
                         .foregroundColor(.gray)
 
-                    Text("No pending requests")
-                        .font(.system(size: 20, weight: .semibold))
+                    Text("no pending requests")
+                        .font(.nunitoSans(size: 20, weight: .semiBold))
 
-                    Text("Friend requests will appear here")
-                        .font(.system(size: 15))
+                    Text("friend requests will appear here")
+                        .font(.nunitoSans(size: 15))
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -308,13 +310,13 @@ struct UserRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(user.displayName)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.nunitoSans(size: 17, weight: .semiBold))
 
                 HStack(spacing: 4) {
                     Image(systemName: user.platformType == .spotify ? "music.note" : "applelogo")
                         .font(.system(size: 11))
-                    Text(user.platformType == .spotify ? "Spotify" : "Apple Music")
-                        .font(.system(size: 13))
+                    Text(user.platformType == .spotify ? "spotify" : "apple music")
+                        .font(.nunitoSans(size: 13))
                 }
                 .foregroundColor(.secondary)
             }
@@ -328,6 +330,7 @@ struct UserRow: View {
 // MARK: - Friend Request Row Component
 
 struct FriendRequestRow: View {
+    @Environment(\.colorScheme) var colorScheme
     let friendshipWithUser: FriendshipWithUser
     let onAccept: () -> Void
     let onReject: () -> Void
@@ -353,10 +356,10 @@ struct FriendRequestRow: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(friendshipWithUser.user.displayName)
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.nunitoSans(size: 17, weight: .semiBold))
 
                     Text("wants to be friends")
-                        .font(.system(size: 15))
+                        .font(.nunitoSans(size: 15))
                         .foregroundColor(.secondary)
                 }
 
@@ -368,20 +371,20 @@ struct FriendRequestRow: View {
                 Button {
                     onReject()
                 } label: {
-                    Text("Reject")
-                        .font(.system(size: 15, weight: .semibold))
+                    Text("reject")
+                        .font(.nunitoSans(size: 15, weight: .semiBold))
                         .foregroundColor(.primary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(Color.gray.opacity(0.1))
+                        .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
                         .cornerRadius(8)
                 }
 
                 Button {
                     onAccept()
                 } label: {
-                    Text("Accept")
-                        .font(.system(size: 15, weight: .semibold))
+                    Text("accept")
+                        .font(.nunitoSans(size: 15, weight: .semiBold))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)

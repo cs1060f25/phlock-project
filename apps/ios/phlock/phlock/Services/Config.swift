@@ -44,6 +44,7 @@ enum Config {
     - Copy the Client ID
     - Add redirect URI: phlock-spotify://callback
     - Replace spotifyClientId above
+    - For the Client Secret: Set it as a Supabase secret (see supabase/functions/search-spotify-artist/README.md)
 
  3. Apple Music Setup:
     - Go to Apple Developer Portal

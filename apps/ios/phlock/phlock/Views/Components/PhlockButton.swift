@@ -6,6 +6,7 @@ struct PhlockButton: View {
     var variant: ButtonVariant = .primary
     var isLoading: Bool = false
     var fullWidth: Bool = false
+    @Environment(\.colorScheme) var colorScheme
 
     enum ButtonVariant {
         case primary
@@ -13,19 +14,20 @@ struct PhlockButton: View {
         case spotify
         case appleMusic
 
-        var backgroundColor: Color {
+        func backgroundColor(for colorScheme: ColorScheme) -> Color {
             switch self {
-            case .primary: return Color.black
-            case .secondary: return Color.gray.opacity(0.2)
+            case .primary: return colorScheme == .dark ? .white : .black
+            case .secondary: return Color.gray.opacity(colorScheme == .dark ? 0.3 : 0.2)
             case .spotify: return Color(red: 0.11, green: 0.73, blue: 0.33) // Spotify green
             case .appleMusic: return Color(red: 0.98, green: 0.26, blue: 0.42) // Apple Music red
             }
         }
 
-        var foregroundColor: Color {
+        func foregroundColor(for colorScheme: ColorScheme) -> Color {
             switch self {
-            case .primary, .spotify, .appleMusic: return .white
-            case .secondary: return .black
+            case .primary: return colorScheme == .dark ? .black : .white
+            case .secondary: return .primary
+            case .spotify, .appleMusic: return .white
             }
         }
     }
@@ -35,17 +37,17 @@ struct PhlockButton: View {
             HStack {
                 if isLoading {
                     ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: variant.foregroundColor))
+                        .progressViewStyle(CircularProgressViewStyle(tint: variant.foregroundColor(for: colorScheme)))
                 } else {
                     Text(title)
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.nunitoSans(size: 17, weight: .semiBold))
                 }
             }
             .frame(maxWidth: fullWidth ? .infinity : nil)
             .frame(height: 50)
             .padding(.horizontal, 24)
-            .background(variant.backgroundColor)
-            .foregroundColor(variant.foregroundColor)
+            .background(variant.backgroundColor(for: colorScheme))
+            .foregroundColor(variant.foregroundColor(for: colorScheme))
             .cornerRadius(12)
         }
         .disabled(isLoading)

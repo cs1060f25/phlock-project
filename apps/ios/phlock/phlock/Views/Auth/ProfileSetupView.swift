@@ -17,11 +17,11 @@ struct ProfileSetupView: View {
             VStack(spacing: 32) {
                 // Header
                 VStack(spacing: 12) {
-                    Text("Set up your profile")
-                        .font(.system(size: 32, weight: .bold))
+                    Text("set up your profile")
+                        .font(.nunitoSans(size: 32, weight: .bold))
 
-                    Text("Let your friends know who you are")
-                        .font(.system(size: 17))
+                    Text("let your friends know who you are")
+                        .font(.nunitoSans(size: 17))
                         .foregroundColor(.secondary)
                 }
                 .padding(.top, 40)
@@ -50,8 +50,8 @@ struct ProfileSetupView: View {
                                     .font(.system(size: 32))
                                     .foregroundColor(.gray)
 
-                                Text("Add Photo")
-                                    .font(.system(size: 13, weight: .semibold))
+                                Text("add photo")
+                                    .font(.nunitoSans(size: 13, weight: .semiBold))
                                     .foregroundColor(.gray)
                             }
                         }

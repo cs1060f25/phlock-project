@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Phlock Visualization</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+            background: transparent;
+            touch-action: none;
+        }
+
+        #visualization {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* Links/Edges */
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.4;
+            stroke-width: 2px;
+            fill: none;
+        }
+
+        .link.animated {
+            stroke-dasharray: 5, 5;
+            animation: dash 20s linear infinite;
+        }
+
+        @keyframes dash {
+            to {
+                stroke-dashoffset: -100;
+            }
+        }
+
+        /* Nodes */
+        .node {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .node-circle {
+            stroke: #fff;
+            stroke-width: 3px;
+            transition: all 0.3s ease;
+        }
+
+        .node-circle.root {
+            stroke-width: 4px;
+        }
+
+        .node-circle.saved {
+            fill: #34C759;
+        }
+
+        .node-circle.forwarded {
+            fill: #007AFF;
+        }
+
+        .node-circle.played {
+            fill: #8E8E93;
+        }
+
+        .node-circle.saved.forwarded {
+            fill: #30B0C7;
+        }
+
+        .node.highlighted .node-circle {
+            stroke-width: 5px;
+            filter: drop-shadow(0 0 8px rgba(0,0,0,0.3));
+        }
+
+        /* Node Images */
+        .node-image {
+            clip-path: circle(50%);
+        }
+
+        /* Node Labels */
+        .node-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-anchor: middle;
+            fill: #000;
+            pointer-events: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .node-label {
+                fill: #fff;
+            }
+
+            .link {
+                stroke: #666;
+            }
+        }
+
+        /* Generation Rings */
+        .generation-ring {
+            fill: none;
+            stroke: #E5E5EA;
+            stroke-width: 1;
+            stroke-dasharray: 3, 3;
+            opacity: 0.3;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .generation-ring {
+                stroke: #48484A;
+            }
+        }
+
+        /* Loading State */
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #8E8E93;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007AFF;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #loading.hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="visualization">
+        <svg id="network-graph"></svg>
+        <div id="loading">
+            <div class="spinner"></div>
+            <div>Loading phlock...</div>
+        </div>
+    </div>
+
+    <!-- D3.js from CDN -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+
+    <script>
+        // Global state
+        let simulation;
+        let phlockData = null;
+        let isPlaying = false;
+        let currentFrame = 0;
+
+        // SVG setup
+        const svg = d3.select("#network-graph");
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        svg.attr("viewBox", [0, 0, width, height]);
+
+        // Create groups for layers
+        const ringsGroup = svg.append("g").attr("class", "rings");
+        const linksGroup = svg.append("g").attr("class", "links");
+        const nodesGroup = svg.append("g").attr("class", "nodes");
+
+        // Zoom behavior
+        const zoom = d3.zoom()
+            .scaleExtent([0.5, 3])
+            .on("zoom", (event) => {
+                nodesGroup.attr("transform", event.transform);
+                linksGroup.attr("transform", event.transform);
+                ringsGroup.attr("transform", event.transform);
+            });
+
+        svg.call(zoom);
+
+        // Main function to load and render phlock
+        function loadPhlockData(jsonString) {
+            try {
+                phlockData = JSON.parse(jsonString);
+                document.getElementById("loading").classList.add("hidden");
+                renderPhlock(phlockData);
+            } catch (error) {
+                console.error("Error parsing phlock data:", error);
+                notifySwift("error", { message: error.message });
+            }
+        }
+
+        function renderPhlock(data) {
+            // Clear existing visualization
+            nodesGroup.selectAll("*").remove();
+            linksGroup.selectAll("*").remove();
+            ringsGroup.selectAll("*").remove();
+
+            // Find root node
+            const rootNode = data.nodes.find(n => n.is_root);
+            if (!rootNode) {
+                console.error("No root node found");
+                return;
+            }
+
+            // Calculate generation ring radii
+            const maxDepth = Math.max(...data.nodes.map(n => n.depth));
+            const ringSpacing = Math.min(width, height) / (maxDepth + 3);
+
+            // Draw generation rings
+            for (let i = 1; i <= maxDepth; i++) {
+                ringsGroup.append("circle")
+                    .attr("class", "generation-ring")
+                    .attr("cx", width / 2)
+                    .attr("cy", height / 2)
+                    .attr("r", i * ringSpacing);
+            }
+
+            // Create force simulation
+            simulation = d3.forceSimulation(data.nodes)
+                .force("link", d3.forceLink(data.links)
+                    .id(d => d.id)
+                    .distance(d => {
+                        // Distance based on depth difference
+                        const sourceNode = data.nodes.find(n => n.id === d.source.id || n.id === d.source);
+                        const targetNode = data.nodes.find(n => n.id === d.target.id || n.id === d.target);
+                        return ringSpacing * 0.8;
+                    })
+                )
+                .force("charge", d3.forceManyBody()
+                    .strength(-300)
+                )
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("radial", d3.forceRadial(
+                    d => d.depth * ringSpacing,
+                    width / 2,
+                    height / 2
+                ).strength(0.8))
+                .force("collision", d3.forceCollide().radius(40));
+
+            // Draw links
+            const link = linksGroup.selectAll(".link")
+                .data(data.links)
+                .enter().append("path")
+                .attr("class", "link")
+                .attr("stroke-width", 2);
+
+            // Draw nodes
+            const node = nodesGroup.selectAll(".node")
+                .data(data.nodes)
+                .enter().append("g")
+                .attr("class", "node")
+                .on("click", (event, d) => {
+                    event.stopPropagation();
+                    notifySwift("nodeTapped", { nodeId: d.id });
+                    highlightNode(d.id);
+                })
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended)
+                );
+
+            // Add circles for nodes
+            node.append("circle")
+                .attr("class", d => {
+                    let classes = "node-circle";
+                    if (d.is_root) classes += " root";
+                    if (d.saved) classes += " saved";
+                    if (d.forwarded) classes += " forwarded";
+                    if (!d.saved && !d.forwarded && d.played) classes += " played";
+                    return classes;
+                })
+                .attr("r", d => d.is_root ? 35 : 25)
+                .attr("fill", d => {
+                    if (d.is_root) return "#007AFF";
+                    if (d.saved && d.forwarded) return "#30B0C7";
+                    if (d.saved) return "#34C759";
+                    if (d.forwarded) return "#007AFF";
+                    return "#8E8E93";
+                });
+
+            // Add profile images (clip-path circles)
+            node.filter(d => d.profile_photo_url)
+                .append("image")
+                .attr("class", "node-image")
+                .attr("xlink:href", d => d.profile_photo_url)
+                .attr("x", d => -(d.is_root ? 28 : 20))
+                .attr("y", d => -(d.is_root ? 28 : 20))
+                .attr("width", d => d.is_root ? 56 : 40)
+                .attr("height", d => d.is_root ? 56 : 40)
+                .attr("clip-path", "circle()");
+
+            // Add labels
+            node.append("text")
+                .attr("class", "node-label")
+                .attr("dy", d => d.is_root ? 50 : 38)
+                .text(d => {
+                    const name = d.name || "Unknown";
+                    return name.length > 12 ? name.substring(0, 10) + "..." : name;
+                });
+
+            // Update positions on each tick
+            simulation.on("tick", () => {
+                link.attr("d", d => {
+                    const sourceX = d.source.x || 0;
+                    const sourceY = d.source.y || 0;
+                    const targetX = d.target.x || 0;
+                    const targetY = d.target.y || 0;
+                    return `M${sourceX},${sourceY} L${targetX},${targetY}`;
+                });
+
+                node.attr("transform", d => `translate(${d.x || 0},${d.y || 0})`);
+            });
+
+            notifySwift("visualizationReady", {});
+        }
+
+        // Highlight a specific node
+        function highlightNode(nodeId) {
+            nodesGroup.selectAll(".node")
+                .classed("highlighted", d => d.id === nodeId);
+
+            setTimeout(() => {
+                nodesGroup.selectAll(".node")
+                    .classed("highlighted", false);
+            }, 2000);
+        }
+
+        // Play spread animation
+        function playSpreadAnimation() {
+            if (!phlockData || isPlaying) return;
+
+            isPlaying = true;
+            currentFrame = 0;
+
+            // Sort nodes by creation time
+            const sortedNodes = [...phlockData.nodes].sort((a, b) => {
+                if (a.is_root) return -1;
+                if (b.is_root) return 1;
+                return a.depth - b.depth;
+            });
+
+            // Sort links by timestamp
+            const sortedLinks = [...phlockData.links].sort((a, b) => {
+                return new Date(a.timestamp) - new Date(b.timestamp);
+            });
+
+            // Hide all initially
+            nodesGroup.selectAll(".node").style("opacity", 0);
+            linksGroup.selectAll(".link").style("opacity", 0);
+
+            // Animate in sequence
+            let delay = 0;
+            sortedNodes.forEach((node, i) => {
+                setTimeout(() => {
+                    nodesGroup.selectAll(".node")
+                        .filter(d => d.id === node.id)
+                        .transition()
+                        .duration(500)
+                        .style("opacity", 1);
+
+                    notifySwift("animationProgress", { frame: i, total: sortedNodes.length });
+                }, delay);
+                delay += 300;
+            });
+
+            // Animate links
+            sortedLinks.forEach((link, i) => {
+                setTimeout(() => {
+                    linksGroup.selectAll(".link")
+                        .filter(d => d.source.id === link.source && d.target.id === link.target)
+                        .transition()
+                        .duration(500)
+                        .style("opacity", 1);
+                }, delay);
+                delay += 200;
+            });
+
+            setTimeout(() => {
+                isPlaying = false;
+                notifySwift("animationComplete", {});
+            }, delay + 500);
+        }
+
+        // Reset animation
+        function resetAnimation() {
+            nodesGroup.selectAll(".node").style("opacity", 1);
+            linksGroup.selectAll(".link").style("opacity", 1);
+            isPlaying = false;
+            currentFrame = 0;
+        }
+
+        // Drag functions
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+
+        // Communication bridge with Swift
+        function notifySwift(action, data) {
+            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.phlockAction) {
+                window.webkit.messageHandlers.phlockAction.postMessage({
+                    action: action,
+                    data: data
+                });
+            }
+        }
+
+        // Expose functions to Swift
+        window.loadPhlockData = loadPhlockData;
+        window.playSpreadAnimation = playSpreadAnimation;
+        window.resetAnimation = resetAnimation;
+        window.highlightNode = highlightNode;
+
+        // Handle window resize
+        window.addEventListener("resize", () => {
+            const newWidth = window.innerWidth;
+            const newHeight = window.innerHeight;
+            svg.attr("viewBox", [0, 0, newWidth, newHeight]);
+        });
+    </script>
+</body>
+</html>

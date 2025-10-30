@@ -140,14 +140,45 @@ class SpotifyService: NSObject {
         var components = URLComponents(string: "https://api.spotify.com/v1/me/top/tracks")!
         components.queryItems = [
             URLQueryItem(name: "limit", value: "\(limit)"),
-            URLQueryItem(name: "time_range", value: "medium_term")
+            URLQueryItem(name: "time_range", value: "medium_term"),
+            URLQueryItem(name: "market", value: "from_token") // Use user's market for preview availability
         ]
 
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
         let (data, _) = try await URLSession.shared.data(for: request)
-        return try JSONDecoder().decode(SpotifyTopTracksResponse.self, from: data)
+
+        // Debug: Print raw JSON for first track
+        if let jsonString = String(data: data, encoding: .utf8),
+           let jsonData = jsonString.data(using: .utf8),
+           let jsonObject = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+           let items = jsonObject["items"] as? [[String: Any]],
+           let firstTrack = items.first {
+            print("📄 First track from Spotify API:")
+            if let trackData = try? JSONSerialization.data(withJSONObject: firstTrack, options: .prettyPrinted),
+               let prettyJSON = String(data: trackData, encoding: .utf8) {
+                print(prettyJSON)
+            }
+        }
+
+        let response = try JSONDecoder().decode(SpotifyTopTracksResponse.self, from: data)
+
+        // Debug: Check if tracks have preview URLs and ISRCs
+        print("🎵 Fetched \(response.items.count) top tracks from Spotify")
+        let tracksWithPreviews = response.items.filter { $0.previewUrl != nil }.count
+        let tracksWithISRC = response.items.filter { $0.externalIds?.isrc != nil }.count
+        print("   \(tracksWithPreviews) tracks have preview URLs")
+        print("   \(tracksWithISRC) tracks have ISRC codes")
+
+        // Debug: Print first track details
+        if let firstTrack = response.items.first {
+            print("   First track: \(firstTrack.name)")
+            print("   Preview URL: \(firstTrack.previewUrl ?? "nil")")
+            print("   ISRC: \(firstTrack.externalIds?.isrc ?? "nil")")
+        }
+
+        return response
     }
 
     /// Fetch user's top artists
@@ -155,7 +186,7 @@ class SpotifyService: NSObject {
         var components = URLComponents(string: "https://api.spotify.com/v1/me/top/artists")!
         components.queryItems = [
             URLQueryItem(name: "limit", value: "\(limit)"),
-            URLQueryItem(name: "time_range", value: "medium_term")
+            URLQueryItem(name: "time_range", value: "short_term") // Last 4 weeks
         ]
 
         var request = URLRequest(url: components.url!)
@@ -172,6 +203,56 @@ class SpotifyService: NSObject {
 
         let (data, _) = try await URLSession.shared.data(for: request)
         return try JSONDecoder().decode(SpotifyPlaylistsResponse.self, from: data)
+    }
+
+    func getRecentlyPlayed(accessToken: String, limit: Int = 20) async throws -> SpotifyRecentlyPlayedResponse {
+        var components = URLComponents(string: "https://api.spotify.com/v1/me/player/recently-played")!
+        components.queryItems = [
+            URLQueryItem(name: "limit", value: "\(limit)"),
+            URLQueryItem(name: "market", value: "from_token") // Use user's market for preview availability
+        ]
+
+        var request = URLRequest(url: components.url!)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try JSONDecoder().decode(SpotifyRecentlyPlayedResponse.self, from: data)
+
+        // Debug: Check if tracks have preview URLs and ISRCs
+        print("🎵 Fetched \(response.items.count) recently played tracks from Spotify")
+        let tracksWithPreviews = response.items.filter { $0.track.previewUrl != nil }.count
+        let tracksWithISRC = response.items.filter { $0.track.externalIds?.isrc != nil }.count
+        print("   \(tracksWithPreviews) tracks have preview URLs")
+        print("   \(tracksWithISRC) tracks have ISRC codes")
+
+        return response
+    }
+
+    /// Search for an artist by name and return their Spotify ID
+    /// Used for cross-platform artist matching (e.g., Apple Music -> Spotify)
+    func searchArtist(name: String, accessToken: String) async throws -> String? {
+        let searchQuery = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
+        let searchURL = "https://api.spotify.com/v1/search?q=\(searchQuery)&type=artist&limit=1"
+
+        guard let url = URL(string: searchURL) else { return nil }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, _) = try await URLSession.shared.data(for: request)
+
+        // Parse JSON to get first artist's ID
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let artists = json["artists"] as? [String: Any],
+           let items = artists["items"] as? [[String: Any]],
+           let firstArtist = items.first,
+           let spotifyId = firstArtist["id"] as? String {
+            print("✅ Found Spotify ID for '\(name)': \(spotifyId)")
+            return spotifyId
+        }
+
+        print("⚠️ No Spotify artist found for: \(name)")
+        return nil
     }
 
     // MARK: - PKCE Helper Methods
@@ -268,6 +349,18 @@ struct SpotifyTrack: Codable {
     let name: String
     let artists: [SpotifyArtist]
     let album: SpotifyAlbum
+    let previewUrl: String?
+    let externalIds: SpotifyExternalIds?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, artists, album
+        case previewUrl = "preview_url"
+        case externalIds = "external_ids"
+    }
+}
+
+struct SpotifyExternalIds: Codable {
+    let isrc: String?
 }
 
 struct SpotifyArtist: Codable {
@@ -304,6 +397,20 @@ struct SpotifyPlaylist: Codable {
 
     struct SpotifyPlaylistTracks: Codable {
         let total: Int
+    }
+}
+
+struct SpotifyRecentlyPlayedResponse: Codable {
+    let items: [SpotifyPlayHistoryItem]
+
+    struct SpotifyPlayHistoryItem: Codable {
+        let track: SpotifyTrack
+        let playedAt: String // ISO 8601 timestamp
+
+        enum CodingKeys: String, CodingKey {
+            case track
+            case playedAt = "played_at"
+        }
     }
 }
 
