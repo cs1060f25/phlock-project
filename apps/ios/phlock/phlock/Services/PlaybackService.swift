@@ -66,7 +66,7 @@ class PlaybackService: ObservableObject {
                     isrc: track.isrc
                 ) {
                     if let applePreviewUrl = appleMusicTrack.previewURL, !applePreviewUrl.isEmpty {
-                        // Update track with Apple Music preview
+                        // Update track with Apple Music preview while preserving platform IDs
                         var updatedTrack = track
                         updatedTrack = MusicItem(
                             id: track.id,
@@ -74,7 +74,12 @@ class PlaybackService: ObservableObject {
                             artistName: track.artistName,
                             previewUrl: applePreviewUrl,
                             albumArtUrl: appleMusicTrack.artworkURL ?? track.albumArtUrl,
-                            isrc: track.isrc
+                            isrc: track.isrc,
+                            playedAt: track.playedAt,
+                            spotifyId: track.spotifyId, // Preserve Spotify ID
+                            appleMusicId: track.appleMusicId, // Preserve Apple Music ID
+                            popularity: track.popularity,
+                            followerCount: track.followerCount
                         )
                         await MainActor.run {
                             self.playFromURL(applePreviewUrl, track: updatedTrack)

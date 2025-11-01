@@ -442,6 +442,8 @@ struct NetworkShareRowView: View {
     }
 
     private func createMusicItem() -> MusicItem {
+        // For now, assume all share track_ids are Spotify IDs (from dummy data)
+        // TODO: Implement cross-platform matching with ISRC codes
         MusicItem(
             id: share.trackId,
             name: share.trackName,
@@ -450,7 +452,7 @@ struct NetworkShareRowView: View {
             albumArtUrl: share.albumArtUrl,
             isrc: nil,
             playedAt: nil,
-            spotifyId: nil,
+            spotifyId: share.trackId, // Use track_id as Spotify ID
             appleMusicId: nil,
             popularity: nil,
             followerCount: nil
