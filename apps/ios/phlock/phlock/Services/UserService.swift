@@ -16,7 +16,7 @@ class UserService {
         let users: [User] = try await supabase
             .from("users")
             .select("*")
-            .ilike("display_name", value: "%\(query)%")
+            .ilike("display_name", pattern: "%\(query)%")
             .limit(20)
             .execute()
             .value
@@ -109,7 +109,6 @@ class UserService {
         guard !friendIds.isEmpty else { return [] }
 
         // Fetch friend user data
-        let friendIdsString = friendIds.map { $0.uuidString }.joined(separator: ",")
         let friends: [User] = try await supabase
             .from("users")
             .select("*")

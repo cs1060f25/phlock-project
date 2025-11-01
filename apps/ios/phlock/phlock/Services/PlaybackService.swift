@@ -98,7 +98,7 @@ class PlaybackService: ObservableObject {
         }
 
         // If same track is already playing, toggle play/pause
-        if currentTrack?.id == track.id, let player = player {
+        if currentTrack?.id == track.id, player != nil {
             if isPlaying {
                 pause()
             } else {

@@ -63,13 +63,6 @@ struct GeometricLogoView: View {
     ]
 }
 
-extension CGPoint: Hashable {
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(x)
-        hasher.combine(y)
-    }
-}
-
 #Preview {
     VStack(spacing: 40) {
         GeometricLogoView(size: 200, color: .black)

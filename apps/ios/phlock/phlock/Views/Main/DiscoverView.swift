@@ -148,7 +148,7 @@ struct DiscoverView: View {
             try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
 
             if !Task.isCancelled {
-                await performSearch()
+                performSearch()
             }
         }
     }

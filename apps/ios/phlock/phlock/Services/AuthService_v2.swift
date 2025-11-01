@@ -64,6 +64,8 @@ class AuthServiceV2 {
                     print("📝 User updated: \(session?.user.email ?? "no email")")
                 case .userDeleted:
                     print("🗑️ User deleted")
+                case .mfaChallengeVerified:
+                    print("🔐 MFA challenge verified")
                 @unknown default:
                     print("⚠️ Unknown auth state change")
                 }
@@ -363,7 +365,7 @@ class AuthServiceV2 {
         )
 
         // Step 9: Store Apple Music token
-        if let appleUserId = appleUserId {
+        if appleUserId != nil {
             try await storePlatformToken(
                 userId: newUser.id,
                 platformType: .appleMusic,
@@ -495,7 +497,7 @@ class AuthServiceV2 {
     /// Update Spotify music data for existing user
     private func updateSpotifyMusicData(userId: UUID, accessToken: String) async throws {
         let recentlyPlayed = try await SpotifyService.shared.getRecentlyPlayed(accessToken: accessToken)
-        let topArtistsResponse = try await SpotifyService.shared.getTopArtists(accessToken: accessToken)
+        let _ = try await SpotifyService.shared.getTopArtists(accessToken: accessToken) // TODO: Update top artists too
 
         // Fetch existing platform_data
         let users: [User] = try await supabase
@@ -695,8 +697,8 @@ class AuthServiceV2 {
         try await supabase.storage
             .from("profile-photos")
             .upload(
-                path: filePath,
-                file: imageData,
+                filePath,
+                data: imageData,
                 options: FileOptions(
                     contentType: "image/jpeg",
                     upsert: true

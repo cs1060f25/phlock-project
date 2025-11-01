@@ -168,7 +168,7 @@ class SearchService {
 
     private func searchAppleMusic(query: String, type: SearchType) async throws -> SearchResult {
         var tracks: [MusicItem] = []
-        var artists: [MusicItem] = []
+        let artists: [MusicItem] = []
 
         // Use existing AppleMusicService search capabilities
         if type == .all || type == .tracks {

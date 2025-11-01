@@ -36,5 +36,8 @@
     "apple-music"
   ],
   "author": "woon-1",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2"
+  }
 }
