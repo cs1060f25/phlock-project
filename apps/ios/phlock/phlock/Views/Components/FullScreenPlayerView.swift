@@ -134,20 +134,24 @@ struct FullScreenPlayerView: View {
                                 .frame(width: geometry.size.width / 3, alignment: .center)
 
                                 // Share Button (right side)
-                                Button {
-                                    withAnimation(.easeInOut(duration: 0.3)) {
-                                        showShareBar.toggle()
-                                    }
-                                } label: {
-                                    ZStack {
-                                        Circle()
-                                            .fill(showShareBar ? Color.black : Color.gray.opacity(0.2))
-                                            .frame(width: 60, height: 60)
+                                HStack {
+                                    Spacer()
+                                    Button {
+                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                            showShareBar.toggle()
+                                        }
+                                    } label: {
+                                        ZStack {
+                                            Circle()
+                                                .fill(showShareBar ? Color.black : Color.gray.opacity(0.2))
+                                                .frame(width: 60, height: 60)
 
-                                        Image(systemName: "paperplane.fill")
-                                            .font(.system(size: 22))
-                                            .foregroundColor(showShareBar ? .white : .primary)
+                                            Image(systemName: "paperplane.fill")
+                                                .font(.system(size: 22))
+                                                .foregroundColor(showShareBar ? .white : .primary)
+                                        }
                                     }
+                                    Spacer()
                                 }
                                 .frame(width: geometry.size.width / 3, alignment: .trailing)
                             }

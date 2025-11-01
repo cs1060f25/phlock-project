@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import Combine
+import Supabase
 
 /// Service for managing music playback
 class PlaybackService: ObservableObject {
@@ -41,6 +42,7 @@ class PlaybackService: ObservableObject {
         print("🎵 Attempting to play track: \(track.name)")
         print("   Preview URL: \(track.previewUrl ?? "nil")")
         print("   Album Art URL: \(track.albumArtUrl ?? "nil")")
+        print("   Spotify ID: \(track.spotifyId ?? "nil")")
         print("   ISRC: \(track.isrc ?? "nil")")
 
         // If track has a preview URL, use it
@@ -49,8 +51,44 @@ class PlaybackService: ObservableObject {
             return
         }
 
-        // No preview URL - try to find one from Apple Music catalog
-        print("⚠️ No preview URL from primary source, searching Apple Music catalog...")
+        // No preview URL - try to fetch preview URL from Spotify if we have a Spotify ID
+        if let spotifyId = track.spotifyId {
+            print("⚠️ No preview URL, fetching from Spotify using track ID: \(spotifyId)")
+            Task {
+                do {
+                    if let previewUrl = try await fetchSpotifyPreviewUrl(spotifyId: spotifyId) {
+                        // Use preview URL from Spotify but keep all existing metadata (album art, etc.)
+                        var updatedTrack = track
+                        updatedTrack = MusicItem(
+                            id: track.id,
+                            name: track.name,
+                            artistName: track.artistName,
+                            previewUrl: previewUrl,
+                            albumArtUrl: track.albumArtUrl, // Keep original album art from database
+                            isrc: track.isrc,
+                            playedAt: track.playedAt,
+                            spotifyId: track.spotifyId,
+                            appleMusicId: track.appleMusicId,
+                            popularity: track.popularity,
+                            followerCount: track.followerCount
+                        )
+                        await MainActor.run {
+                            print("✅ Found preview URL from Spotify, keeping original metadata")
+                            self.playFromURL(previewUrl, track: updatedTrack)
+                        }
+                        return
+                    } else {
+                        print("❌ Spotify track has no preview URL available")
+                    }
+                } catch {
+                    print("❌ Error fetching Spotify track: \(error)")
+                }
+            }
+            return
+        }
+
+        // Fallback: try to find preview from Apple Music catalog
+        print("⚠️ No Spotify ID, searching Apple Music catalog as fallback...")
 
         guard let artistName = track.artistName else {
             print("❌ Cannot search Apple Music - missing artist name")
@@ -66,14 +104,14 @@ class PlaybackService: ObservableObject {
                     isrc: track.isrc
                 ) {
                     if let applePreviewUrl = appleMusicTrack.previewURL, !applePreviewUrl.isEmpty {
-                        // Update track with Apple Music preview while preserving platform IDs
+                        // Update track with Apple Music preview while preserving original metadata
                         var updatedTrack = track
                         updatedTrack = MusicItem(
                             id: track.id,
                             name: track.name,
                             artistName: track.artistName,
                             previewUrl: applePreviewUrl,
-                            albumArtUrl: appleMusicTrack.artworkURL ?? track.albumArtUrl,
+                            albumArtUrl: track.albumArtUrl, // Keep original album art from feed
                             isrc: track.isrc,
                             playedAt: track.playedAt,
                             spotifyId: track.spotifyId, // Preserve Spotify ID
@@ -94,6 +132,60 @@ class PlaybackService: ObservableObject {
                 print("❌ Error searching Apple Music: \(error)")
             }
         }
+    }
+
+    /// Fetch preview URL from Spotify by track ID (keeps all other metadata unchanged)
+    private func fetchSpotifyPreviewUrl(spotifyId: String) async throws -> String? {
+        let supabase = PhlockSupabaseClient.shared.client
+
+        struct TrackRequest: Encodable {
+            let trackId: String
+        }
+
+        struct SpotifyTrackResponse: Decodable {
+            let id: String
+            let name: String
+            let artists: [Artist]
+            let album: Album
+            let previewUrl: String?
+            let externalIds: ExternalIds?
+            let popularity: Int?
+
+            struct Artist: Decodable {
+                let id: String
+                let name: String
+            }
+
+            struct Album: Decodable {
+                let id: String
+                let name: String
+                let images: [Image]
+
+                struct Image: Decodable {
+                    let url: String
+                    let height: Int?
+                    let width: Int?
+                }
+            }
+
+            struct ExternalIds: Decodable {
+                let isrc: String?
+            }
+
+            enum CodingKeys: String, CodingKey {
+                case id, name, artists, album, popularity
+                case previewUrl = "preview_url"
+                case externalIds = "external_ids"
+            }
+        }
+
+        let request = TrackRequest(trackId: spotifyId)
+        let response: SpotifyTrackResponse = try await supabase.functions.invoke(
+            "get-spotify-track",
+            options: FunctionInvokeOptions(body: request)
+        )
+
+        return response.previewUrl
     }
 
     private func playFromURL(_ urlString: String, track: MusicItem) {
