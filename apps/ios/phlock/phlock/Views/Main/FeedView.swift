@@ -254,6 +254,23 @@ struct FeedView: View {
                 networkShares = sharesWithUsers
                 isLoading = false
             }
+
+            // Pre-fetch preview URLs for faster playback
+            let tracks = sharesWithUsers.map { networkShare in
+                MusicItem(
+                    id: networkShare.share.trackId,
+                    name: networkShare.share.trackName,
+                    artistName: networkShare.share.artistName,
+                    previewUrl: nil,
+                    albumArtUrl: networkShare.share.albumArtUrl,
+                    isrc: nil,
+                    playedAt: nil,
+                    spotifyId: networkShare.share.trackId, // Use track_id as Spotify ID
+                    appleMusicId: nil,
+                    popularity: nil
+                )
+            }
+            playbackService.prefetchPreviewUrls(for: tracks)
         } catch {
             print("❌ Failed to load network activity: \(error)")
             await MainActor.run {

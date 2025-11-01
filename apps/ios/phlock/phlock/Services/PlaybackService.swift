@@ -10,6 +10,10 @@ class PlaybackService: ObservableObject {
     private var player: AVPlayer?
     private var timeObserver: Any?
 
+    // Cache for ISRC and preview URL lookups
+    private var isrcCache: [String: String] = [:] // spotifyId -> ISRC
+    private var previewUrlCache: [String: String] = [:] // ISRC -> previewUrl
+
     @Published var currentTrack: MusicItem?
     @Published var isPlaying = false
     @Published var currentTime: Double = 0
@@ -35,6 +39,52 @@ class PlaybackService: ObservableObject {
         }
     }
 
+    // MARK: - Pre-fetching
+
+    /// Pre-fetch preview URLs for tracks in the background to reduce latency
+    func prefetchPreviewUrls(for tracks: [MusicItem]) {
+        Task {
+            for track in tracks {
+                // Skip if already has preview URL or already cached
+                if track.previewUrl != nil { continue }
+                guard let spotifyId = track.spotifyId else { continue }
+                if previewUrlCache.values.contains(where: { _ in true }) && isrcCache[spotifyId] != nil {
+                    continue // Already cached
+                }
+
+                // Fetch in background
+                do {
+                    // Get ISRC if not cached
+                    let isrc: String
+                    if let cachedIsrc = isrcCache[spotifyId] {
+                        isrc = cachedIsrc
+                    } else if let fetchedIsrc = try await fetchSpotifyISRC(spotifyId: spotifyId) {
+                        isrcCache[spotifyId] = fetchedIsrc
+                        isrc = fetchedIsrc
+                    } else {
+                        continue
+                    }
+
+                    // Skip if preview URL already cached
+                    if previewUrlCache[isrc] != nil { continue }
+
+                    // Fetch Apple Music preview
+                    guard let artistName = track.artistName else { continue }
+                    if let appleMusicTrack = try await AppleMusicService.shared.searchTrack(
+                        name: track.name,
+                        artist: artistName,
+                        isrc: isrc
+                    ), let previewUrl = appleMusicTrack.previewURL, !previewUrl.isEmpty {
+                        previewUrlCache[isrc] = previewUrl
+                        print("⚡️ Pre-fetched preview for: \(track.name)")
+                    }
+                } catch {
+                    // Silently fail for background pre-fetching
+                }
+            }
+        }
+    }
+
     // MARK: - Playback Control
 
     /// Play a track by its preview URL
@@ -51,37 +101,76 @@ class PlaybackService: ObservableObject {
             return
         }
 
-        // No preview URL - try to fetch preview URL from Spotify if we have a Spotify ID
+        // No preview URL - fetch ISRC from Spotify, then find exact match on Apple Music
         if let spotifyId = track.spotifyId {
-            print("⚠️ No preview URL, fetching from Spotify using track ID: \(spotifyId)")
+            print("⚠️ No preview URL, fetching ISRC and Apple Music preview")
             Task {
                 do {
-                    if let previewUrl = try await fetchSpotifyPreviewUrl(spotifyId: spotifyId) {
-                        // Use preview URL from Spotify but keep all existing metadata (album art, etc.)
-                        var updatedTrack = track
-                        updatedTrack = MusicItem(
-                            id: track.id,
-                            name: track.name,
-                            artistName: track.artistName,
-                            previewUrl: previewUrl,
-                            albumArtUrl: track.albumArtUrl, // Keep original album art from database
-                            isrc: track.isrc,
-                            playedAt: track.playedAt,
-                            spotifyId: track.spotifyId,
-                            appleMusicId: track.appleMusicId,
-                            popularity: track.popularity,
-                            followerCount: track.followerCount
-                        )
-                        await MainActor.run {
-                            print("✅ Found preview URL from Spotify, keeping original metadata")
-                            self.playFromURL(previewUrl, track: updatedTrack)
-                        }
-                        return
+                    // Step 1: Get ISRC from Spotify (check cache first)
+                    let isrc: String
+                    if let cachedIsrc = isrcCache[spotifyId] {
+                        print("⚡️ Using cached ISRC: \(cachedIsrc)")
+                        isrc = cachedIsrc
+                    } else if let fetchedIsrc = try await fetchSpotifyISRC(spotifyId: spotifyId) {
+                        print("✅ Got ISRC from Spotify: \(fetchedIsrc)")
+                        isrcCache[spotifyId] = fetchedIsrc
+                        isrc = fetchedIsrc
                     } else {
-                        print("❌ Spotify track has no preview URL available")
+                        print("⚠️ No ISRC available from Spotify")
+                        return
+                    }
+
+                    // Step 2: Get preview URL from Apple Music (check cache first)
+                    let applePreviewUrl: String
+                    if let cachedUrl = previewUrlCache[isrc] {
+                        print("⚡️ Using cached preview URL")
+                        applePreviewUrl = cachedUrl
+                    } else {
+                        // Search Apple Music with ISRC
+                        guard let artistName = track.artistName else {
+                            print("❌ Cannot search Apple Music - missing artist name")
+                            return
+                        }
+
+                        if let appleMusicTrack = try await AppleMusicService.shared.searchTrack(
+                            name: track.name,
+                            artist: artistName,
+                            isrc: isrc
+                        ) {
+                            if let url = appleMusicTrack.previewURL, !url.isEmpty {
+                                print("✅ Found exact match on Apple Music with preview URL")
+                                previewUrlCache[isrc] = url
+                                applePreviewUrl = url
+                            } else {
+                                print("❌ Apple Music match found but no preview URL available")
+                                return
+                            }
+                        } else {
+                            print("❌ Could not find matching track on Apple Music with ISRC")
+                            return
+                        }
+                    }
+
+                    // Use Apple Music preview but keep original metadata
+                    var updatedTrack = track
+                    updatedTrack = MusicItem(
+                        id: track.id,
+                        name: track.name,
+                        artistName: track.artistName,
+                        previewUrl: applePreviewUrl,
+                        albumArtUrl: track.albumArtUrl, // Keep original album art
+                        isrc: isrc,
+                        playedAt: track.playedAt,
+                        spotifyId: track.spotifyId,
+                        appleMusicId: track.appleMusicId,
+                        popularity: track.popularity,
+                        followerCount: track.followerCount
+                    )
+                    await MainActor.run {
+                        self.playFromURL(applePreviewUrl, track: updatedTrack)
                     }
                 } catch {
-                    print("❌ Error fetching Spotify track: \(error)")
+                    print("❌ Error fetching preview: \(error)")
                 }
             }
             return
@@ -134,8 +223,8 @@ class PlaybackService: ObservableObject {
         }
     }
 
-    /// Fetch preview URL from Spotify by track ID (keeps all other metadata unchanged)
-    private func fetchSpotifyPreviewUrl(spotifyId: String) async throws -> String? {
+    /// Fetch ISRC from Spotify by track ID to enable exact matching on Apple Music
+    private func fetchSpotifyISRC(spotifyId: String) async throws -> String? {
         let supabase = PhlockSupabaseClient.shared.client
 
         struct TrackRequest: Encodable {
@@ -185,7 +274,7 @@ class PlaybackService: ObservableObject {
             options: FunctionInvokeOptions(body: request)
         )
 
-        return response.previewUrl
+        return response.externalIds?.isrc
     }
 
     private func playFromURL(_ urlString: String, track: MusicItem) {
