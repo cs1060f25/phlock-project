@@ -7,6 +7,13 @@ class UserService {
 
     private let supabase = PhlockSupabaseClient.shared.client
 
+    // Cache for user data and friends list
+    private var userCache: [UUID: User] = [:]
+    private var friendsCache: [UUID: [User]] = [:]
+    private var pendingRequestsCache: [UUID: [FriendshipWithUser]] = [:]
+    private var cacheTimestamp: [String: Date] = [:]
+    private let cacheExpiration: TimeInterval = 60 // 1 minute
+
     private init() {}
 
     // MARK: - User Search
@@ -24,14 +31,24 @@ class UserService {
         return users
     }
 
-    /// Get a specific user by ID
+    /// Get a specific user by ID (with caching)
     func getUser(userId: UUID) async throws -> User? {
+        // Check cache first
+        if let cachedUser = userCache[userId] {
+            return cachedUser
+        }
+
         let users: [User] = try await supabase
             .from("users")
             .select("*")
             .eq("id", value: userId.uuidString)
             .execute()
             .value
+
+        // Cache the result
+        if let user = users.first {
+            userCache[userId] = user
+        }
 
         return users.first
     }
@@ -85,8 +102,17 @@ class UserService {
 
     // MARK: - Friends List
 
-    /// Get all accepted friends for a user
+    /// Get all accepted friends for a user (with caching)
     func getFriends(for userId: UUID) async throws -> [User] {
+        // Check cache first
+        let cacheKey = "friends_\(userId.uuidString)"
+        if let cachedFriends = friendsCache[userId],
+           let timestamp = cacheTimestamp[cacheKey],
+           Date().timeIntervalSince(timestamp) < cacheExpiration {
+            print("⚡️ Using cached friends list")
+            return cachedFriends
+        }
+
         // Get all accepted friendships where user is either user_id_1 or user_id_2
         let friendships: [Friendship] = try await supabase
             .from("friendships")
@@ -106,7 +132,12 @@ class UserService {
             }
         }
 
-        guard !friendIds.isEmpty else { return [] }
+        guard !friendIds.isEmpty else {
+            // Cache empty result
+            friendsCache[userId] = []
+            cacheTimestamp[cacheKey] = Date()
+            return []
+        }
 
         // Fetch friend user data
         let friends: [User] = try await supabase
@@ -116,11 +147,29 @@ class UserService {
             .execute()
             .value
 
+        // Cache the results
+        friendsCache[userId] = friends
+        cacheTimestamp[cacheKey] = Date()
+
+        // Also cache individual users
+        for friend in friends {
+            userCache[friend.id] = friend
+        }
+
         return friends
     }
 
-    /// Get all pending friend requests (sent to the user)
+    /// Get all pending friend requests (sent to the user) - optimized with batch query
     func getPendingRequests(for userId: UUID) async throws -> [FriendshipWithUser] {
+        // Check cache first
+        let cacheKey = "pending_\(userId.uuidString)"
+        if let cachedRequests = pendingRequestsCache[userId],
+           let timestamp = cacheTimestamp[cacheKey],
+           Date().timeIntervalSince(timestamp) < cacheExpiration {
+            print("⚡️ Using cached pending requests")
+            return cachedRequests
+        }
+
         // Get pending friendships where user is user_id_2 (recipient)
         let friendships: [Friendship] = try await supabase
             .from("friendships")
@@ -130,10 +179,29 @@ class UserService {
             .execute()
             .value
 
-        // Fetch requester user data
+        guard !friendships.isEmpty else {
+            // Cache empty result
+            pendingRequestsCache[userId] = []
+            cacheTimestamp[cacheKey] = Date()
+            return []
+        }
+
+        // OPTIMIZATION: Batch fetch all requesters in ONE query instead of N queries
+        let requesterIds = friendships.map { $0.userId1 }
+        let requesters: [User] = try await supabase
+            .from("users")
+            .select("*")
+            .in("id", values: requesterIds.map { $0.uuidString })
+            .execute()
+            .value
+
+        // Create lookup dictionary
+        let userDict = Dictionary(uniqueKeysWithValues: requesters.map { ($0.id, $0) })
+
+        // Build friendships with user data
         var friendshipsWithUsers: [FriendshipWithUser] = []
         for friendship in friendships {
-            if let user = try await getUser(userId: friendship.userId1) {
+            if let user = userDict[friendship.userId1] {
                 friendshipsWithUsers.append(
                     FriendshipWithUser(
                         id: friendship.id,
@@ -142,10 +210,25 @@ class UserService {
                         isRequester: false
                     )
                 )
+
+                // Cache individual users
+                userCache[user.id] = user
             }
         }
 
+        // Cache the results
+        pendingRequestsCache[userId] = friendshipsWithUsers
+        cacheTimestamp[cacheKey] = Date()
+
         return friendshipsWithUsers
+    }
+
+    /// Clear cache (call after accepting/rejecting friend requests)
+    func clearCache(for userId: UUID) {
+        friendsCache.removeValue(forKey: userId)
+        pendingRequestsCache.removeValue(forKey: userId)
+        cacheTimestamp.removeValue(forKey: "friends_\(userId.uuidString)")
+        cacheTimestamp.removeValue(forKey: "pending_\(userId.uuidString)")
     }
 
     /// Get friendship status between current user and another user

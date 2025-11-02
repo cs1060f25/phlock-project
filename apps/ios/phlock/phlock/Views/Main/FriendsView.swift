@@ -86,8 +86,14 @@ struct FriendsView: View {
     }
 
     private func acceptRequest(_ friendshipWithUser: FriendshipWithUser) async {
+        guard let currentUser = authState.currentUser else { return }
+
         do {
             try await UserService.shared.acceptFriendRequest(friendshipId: friendshipWithUser.friendship.id)
+
+            // Clear cache to ensure fresh data
+            UserService.shared.clearCache(for: currentUser.id)
+
             await loadData()
         } catch {
             errorMessage = error.localizedDescription
@@ -96,8 +102,14 @@ struct FriendsView: View {
     }
 
     private func rejectRequest(_ friendshipWithUser: FriendshipWithUser) async {
+        guard let currentUser = authState.currentUser else { return }
+
         do {
             try await UserService.shared.rejectFriendRequest(friendshipId: friendshipWithUser.friendship.id)
+
+            // Clear cache to ensure fresh data
+            UserService.shared.clearCache(for: currentUser.id)
+
             await loadData()
         } catch {
             errorMessage = error.localizedDescription
