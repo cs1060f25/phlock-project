@@ -313,6 +313,22 @@ class ShareService {
         return rate
     }
 
+    /// Get all shares sent by a user (for batch processing in ranking engine)
+    /// - Parameter senderId: The sender's ID
+    /// - Returns: Array of all shares sent by this user
+    func getAllSharesForSender(senderId: UUID) async throws -> [Share] {
+        let shares: [Share] = try await supabase
+            .from("shares")
+            .select("*")
+            .eq("sender_id", value: senderId.uuidString)
+            .order("created_at", ascending: false)
+            .limit(200) // Limit to recent 200 shares for performance
+            .execute()
+            .value
+
+        return shares
+    }
+
     // MARK: - Counts
 
     /// Get count of unplayed shares for a user

@@ -29,6 +29,16 @@ class FriendRankingEngine {
 
         print("🧮 Ranking \(friends.count) friends for quick-send (track: \(track?.name ?? "nil"))")
 
+        // OPTIMIZATION: Batch-fetch all sharing data ONCE instead of N queries
+        let recentRecipients = (try? await ShareService.shared.getRecentRecipients(
+            userId: currentUser.id,
+            limit: 50
+        )) ?? []
+
+        let allShares = (try? await ShareService.shared.getAllSharesForSender(
+            senderId: currentUser.id
+        )) ?? []
+
         // Calculate scores for each friend
         var friendScores: [(userId: UUID, score: Double)] = []
 
@@ -44,23 +54,20 @@ class FriendRankingEngine {
             score += musicTasteScore * MUSIC_TASTE_WEIGHT
 
             // 2. Recent Sharing Frequency (30%)
-            let recentSharingScore = await calculateRecentSharingScore(
+            let recentSharingScore = calculateRecentSharingScoreFromCache(
                 friendId: friend.id,
-                currentUserId: currentUser.id
+                recentRecipients: recentRecipients
             )
             score += recentSharingScore * RECENT_SHARING_WEIGHT
 
             // 3. Time Pattern Match (20%)
-            let timePatternScore = await calculateTimePatternScore(
-                friendId: friend.id,
-                currentUserId: currentUser.id
-            )
+            let timePatternScore = calculateTimePatternScore()
             score += timePatternScore * TIME_PATTERN_WEIGHT
 
             // 4. Engagement Rate (10%)
-            let engagementScore = await calculateEngagementScore(
+            let engagementScore = calculateEngagementScoreFromCache(
                 friendId: friend.id,
-                currentUserId: currentUser.id
+                allShares: allShares
             )
             score += engagementScore * ENGAGEMENT_WEIGHT
 
@@ -127,63 +134,62 @@ class FriendRankingEngine {
         return min(score, 1.0) // Cap at 1.0
     }
 
-    /// Calculate recent sharing frequency score (0.0 - 1.0)
-    /// Based on how often user has shared with this friend in the last 7 days
-    private static func calculateRecentSharingScore(
+    /// Calculate recent sharing frequency score from cached data (0.0 - 1.0)
+    /// Based on how often user has shared with this friend recently
+    private static func calculateRecentSharingScoreFromCache(
         friendId: UUID,
-        currentUserId: UUID
-    ) async -> Double {
-        do {
-            // Get shares from last 7 days
-            let recentRecipients = try await ShareService.shared.getRecentRecipients(
-                userId: currentUserId,
-                limit: 20
-            )
-
-            // Find position of this friend in recent recipients (if any)
-            if let index = recentRecipients.firstIndex(of: friendId) {
-                // Score decreases with position: 1.0 for first, 0.5 for 10th, 0.0 for 20th+
-                let score = max(0.0, 1.0 - (Double(index) / 20.0))
-                return score
-            }
-
-            return 0.0
-        } catch {
-            print("    ⚠️ Failed to calculate recent sharing score: \(error)")
-            return 0.0
+        recentRecipients: [UUID]
+    ) -> Double {
+        // Find position of this friend in recent recipients (if any)
+        if let index = recentRecipients.firstIndex(of: friendId) {
+            // Score decreases with position: 1.0 for first, 0.5 for 25th, 0.0 for 50th+
+            let score = max(0.0, 1.0 - (Double(index) / 50.0))
+            return score
         }
+
+        return 0.0
     }
 
     /// Calculate time pattern match score (0.0 - 1.0)
     /// Based on whether user typically shares with this friend at this time of day
-    private static func calculateTimePatternScore(
-        friendId: UUID,
-        currentUserId: UUID
-    ) async -> Double {
+    private static func calculateTimePatternScore() -> Double {
         // TODO: Implement time pattern analysis
         // For now, return neutral score
         // In future: analyze historical share times and compare to current hour
         return 0.5
     }
 
-    /// Calculate engagement rate score (0.0 - 1.0)
+    /// Calculate engagement rate score from cached data (0.0 - 1.0)
     /// Based on how often friend actually plays/saves shares from user
-    private static func calculateEngagementScore(
+    private static func calculateEngagementScoreFromCache(
         friendId: UUID,
-        currentUserId: UUID
-    ) async -> Double {
-        do {
-            let engagementRate = try await ShareService.shared.getEngagementRate(
-                senderId: currentUserId,
-                recipientId: friendId
-            )
-
-            // Convert percentage (0-100) to score (0.0-1.0)
-            return engagementRate / 100.0
-        } catch {
-            print("    ⚠️ Failed to calculate engagement score: \(error)")
-            return 0.5 // Neutral score if we can't calculate
+        allShares: [Share]
+    ) -> Double {
+        // Filter shares sent to this friend
+        var sharesToFriend: [Share] = []
+        for share in allShares {
+            if share.recipientId == friendId {
+                sharesToFriend.append(share)
+            }
         }
+
+        guard !sharesToFriend.isEmpty else {
+            return 0.5 // Neutral score if no history
+        }
+
+        // Count how many were played or saved
+        var engagedCount = 0
+        for share in sharesToFriend {
+            if share.status == .played || share.status == .saved || share.status == .forwarded {
+                engagedCount += 1
+            }
+        }
+
+        // Calculate percentage
+        let engagementRate = (Double(engagedCount) / Double(sharesToFriend.count)) * 100.0
+
+        // Convert percentage (0-100) to score (0.0-1.0)
+        return engagementRate / 100.0
     }
 
     /// Get quick friend suggestions for a track
