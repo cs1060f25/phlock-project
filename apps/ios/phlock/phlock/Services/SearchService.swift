@@ -107,14 +107,15 @@ class SearchService {
         return response.tracks.map { track in
             // Get medium-sized image (usually index 1) or fallback to first available
             let albumArtUrl: String? = {
-                guard !track.album.images.isEmpty else { return nil }
+                guard !track.album.images.isEmpty else {
+                    print("⚠️ Track '\(track.name)' has no album images")
+                    return nil
+                }
                 // Spotify typically returns 3 sizes: 640x640, 300x300, 64x64
                 // We want the medium one for better performance
-                if track.album.images.count > 1 {
-                    return track.album.images[1].url
-                } else {
-                    return track.album.images.first?.url
-                }
+                let url = track.album.images.count > 1 ? track.album.images[1].url : track.album.images.first?.url
+                print("🎨 Track '\(track.name)' album art: \(url ?? "nil") (from \(track.album.images.count) images)")
+                return url
             }()
 
             return MusicItem(
@@ -284,14 +285,15 @@ class SearchService {
         return response.tracks.map { track in
             // Get medium-sized image (usually index 1) or fallback to first available
             let albumArtUrl: String? = {
-                guard !track.album.images.isEmpty else { return nil }
+                guard !track.album.images.isEmpty else {
+                    print("⚠️ Track '\(track.name)' has no album images")
+                    return nil
+                }
                 // Spotify typically returns 3 sizes: 640x640, 300x300, 64x64
                 // We want the medium one for better performance
-                if track.album.images.count > 1 {
-                    return track.album.images[1].url
-                } else {
-                    return track.album.images.first?.url
-                }
+                let url = track.album.images.count > 1 ? track.album.images[1].url : track.album.images.first?.url
+                print("🎨 Track '\(track.name)' album art: \(url ?? "nil") (from \(track.album.images.count) images)")
+                return url
             }()
 
             return MusicItem(

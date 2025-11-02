@@ -237,38 +237,44 @@ struct FullScreenPlayerView: View {
     }
 
     private func openInSpotify(track: MusicItem) async throws {
-        // Search for the track to get the correct Spotify ID
-        print("   🔍 Searching Spotify for: \(track.name) - \(track.artistName ?? "")")
+        // Use the exact Spotify ID if available, otherwise search
+        let spotifyId: String
 
-        let results = try await SearchService.shared.search(
-            query: "\(track.name) \(track.artistName ?? "")",
-            type: .tracks,
-            platformType: .spotify
-        )
+        if let existingSpotifyId = track.spotifyId, !existingSpotifyId.isEmpty {
+            // Use the exact track ID that was originally shared
+            print("   ✅ Using exact Spotify ID: \(existingSpotifyId)")
+            spotifyId = existingSpotifyId
+        } else {
+            // Fallback: Search for the track
+            print("   🔍 No Spotify ID available, searching: \(track.name) - \(track.artistName ?? "")")
 
-        guard !results.tracks.isEmpty else {
-            print("   ❌ No results found on Spotify")
-            return
+            let results = try await SearchService.shared.search(
+                query: "\(track.name) \(track.artistName ?? "")",
+                type: .tracks,
+                platformType: .spotify
+            )
+
+            guard !results.tracks.isEmpty else {
+                print("   ❌ No results found on Spotify")
+                return
+            }
+
+            // Smart matching: find best match by comparing track name and artist
+            guard let foundTrack = findBestMatch(
+                searchResults: results.tracks,
+                targetTrackName: track.name,
+                targetArtistName: track.artistName
+            ) else {
+                print("   ❌ Could not find matching track on Spotify")
+                print("   📊 Search returned \(results.tracks.count) results but none matched")
+                return
+            }
+
+            spotifyId = foundTrack.spotifyId ?? foundTrack.id
+            print("   ✅ Found match: \(foundTrack.name) (ID: \(spotifyId))")
         }
-
-        // Smart matching: find best match by comparing track name and artist
-        let foundTrack = findBestMatch(
-            searchResults: results.tracks,
-            targetTrackName: track.name,
-            targetArtistName: track.artistName
-        )
-
-        guard let foundTrack = foundTrack else {
-            print("   ❌ Could not find matching track on Spotify")
-            print("   📊 Search returned \(results.tracks.count) results but none matched")
-            return
-        }
-
-        let spotifyId = foundTrack.spotifyId ?? foundTrack.id
         let spotifyURL = URL(string: "spotify:track:\(spotifyId)")
         let webURL = URL(string: "https://open.spotify.com/track/\(spotifyId)")
-
-        print("   ✅ Found on Spotify: \(foundTrack.name) by \(foundTrack.artistName ?? "Unknown") (ID: \(spotifyId))")
 
         await MainActor.run {
             if let spotifyURL = spotifyURL, UIApplication.shared.canOpenURL(spotifyURL) {

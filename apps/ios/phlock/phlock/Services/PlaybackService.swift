@@ -175,15 +175,15 @@ class PlaybackService: ObservableObject {
                         }
                     }
 
-                    // Use Apple Music preview and artwork from the matched track
+                    // Use Apple Music preview but keep original Spotify metadata
                     var updatedTrack = track
                     updatedTrack = MusicItem(
                         id: track.id,
                         name: track.name,
                         artistName: track.artistName,
                         previewUrl: applePreviewUrl,
-                        // Use Apple Music artwork if available, otherwise keep original
-                        albumArtUrl: appleMusicTrack?.artworkURL ?? track.albumArtUrl,
+                        // IMPORTANT: Keep original Spotify album art
+                        albumArtUrl: track.albumArtUrl,
                         isrc: isrc,
                         playedAt: track.playedAt,
                         spotifyId: track.spotifyId,
@@ -218,15 +218,15 @@ class PlaybackService: ObservableObject {
                     isrc: track.isrc
                 ) {
                     if let applePreviewUrl = appleMusicTrack.previewURL, !applePreviewUrl.isEmpty {
-                        // Update track with Apple Music preview and artwork
+                        // Update track with Apple Music preview but keep original Spotify metadata
                         var updatedTrack = track
                         updatedTrack = MusicItem(
                             id: track.id,
                             name: track.name,
                             artistName: track.artistName,
                             previewUrl: applePreviewUrl,
-                            // Use Apple Music artwork if available, otherwise keep original
-                            albumArtUrl: appleMusicTrack.artworkURL ?? track.albumArtUrl,
+                            // IMPORTANT: Keep original Spotify album art
+                            albumArtUrl: track.albumArtUrl,
                             isrc: track.isrc,
                             playedAt: track.playedAt,
                             spotifyId: track.spotifyId, // Preserve Spotify ID

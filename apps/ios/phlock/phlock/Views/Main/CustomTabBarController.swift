@@ -99,10 +99,10 @@ struct CustomTabBarView: UIViewControllerRepresentable {
                         // First tap when at root - scroll to top
                         self.scrollFeedToTopTrigger += 1
                         print("⬆️ Scrolling feed to top")
-                    case 2, _:
-                        // Second+ tap - refresh feed
+                    default:
+                        // Second+ tap - refresh feed (reload data)
                         self.refreshFeedTrigger += 1
-                        print("🔄 Refreshing feed")
+                        print("🔄 Refreshing feed - trigger: \(self.refreshFeedTrigger)")
                     }
                 }
             }
@@ -135,10 +135,10 @@ struct CustomTabBarView: UIViewControllerRepresentable {
                         // First tap when at root - scroll to top
                         self.scrollInboxToTopTrigger += 1
                         print("⬆️ Scrolling inbox to top")
-                    case 2, _:
-                        // Second+ tap - refresh shares
+                    default:
+                        // Second+ tap - refresh shares (reload data)
                         self.refreshInboxTrigger += 1
-                        print("🔄 Refreshing shares")
+                        print("🔄 Refreshing shares - trigger: \(self.refreshInboxTrigger)")
                     }
                 }
             }

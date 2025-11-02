@@ -43,6 +43,7 @@ class ShareService {
                 message: message,
                 status: ShareStatus.sent.rawValue
             )
+            print("📤 Creating share for '\(track.name)' with album art: \(track.albumArtUrl ?? "nil")")
 
             let insertedShares: [Share] = try await supabase
                 .from("shares")

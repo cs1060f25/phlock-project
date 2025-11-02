@@ -22,6 +22,10 @@ struct FeedView: View {
     @State private var isRefreshing = false
     @State private var referenceDate = Date() // Stable reference for date calculations
 
+    // Cached grouping to prevent re-sorting on every render
+    @State private var cachedGroupedShares: [String: [NetworkShare]] = [:]
+    @State private var cachedSortedSections: [String] = []
+
     enum FeedFilter: String, CaseIterable {
         case friends = "Friends"
         case following = "Following"
@@ -165,7 +169,7 @@ struct FeedView: View {
                     .frame(height: 1)
                     .id("feedTop")
 
-                ForEach(sortedSections, id: \.self) { date in
+                ForEach(cachedSortedSections, id: \.self) { date in
                     Section(header: sectionHeader(for: date)) {
                         ForEach(sortedShares(for: date), id: \.share.id) { networkShare in
                             NetworkShareRowView(networkShare: networkShare, navigationPath: $navigationPath)
@@ -221,7 +225,7 @@ struct FeedView: View {
 
     // Get shares for a section, sorted by most recent first
     private func sortedShares(for section: String) -> [NetworkShare] {
-        guard let shares = groupedShares[section] else { return [] }
+        guard let shares = cachedGroupedShares[section] else { return [] }
         return shares.sorted { $0.share.createdAt > $1.share.createdAt }
     }
 
@@ -253,6 +257,22 @@ struct FeedView: View {
 
     // MARK: - Actions
 
+    private func updateCachedGrouping() {
+        // Group shares by date section using stable referenceDate
+        let grouped = Dictionary(grouping: filteredShares) { networkShare in
+            formatDateSection(networkShare.share.createdAt)
+        }
+        cachedGroupedShares = grouped
+
+        // Sort sections
+        let sections = Array(grouped.keys)
+        cachedSortedSections = sections.sorted { section1, section2 in
+            sectionOrder(section1) < sectionOrder(section2)
+        }
+
+        print("📊 Updated cached grouping: \(cachedSortedSections.count) sections, \(networkShares.count) total shares")
+    }
+
     private func loadNetworkActivity() async {
         guard let currentUser = authState.currentUser else {
             isLoading = false
@@ -274,6 +294,7 @@ struct FeedView: View {
             await MainActor.run {
                 networkShares = sharesWithUsers
                 referenceDate = Date() // Update reference date when data loads
+                updateCachedGrouping() // Update cached sections
                 isLoading = false
             }
 
@@ -496,7 +517,8 @@ struct NetworkShareRowView: View {
     private func createMusicItem() -> MusicItem {
         // For now, assume all share track_ids are Spotify IDs (from dummy data)
         // TODO: Implement cross-platform matching with ISRC codes
-        MusicItem(
+        print("📥 Loading share for '\(share.trackName)' with album art from DB: \(share.albumArtUrl ?? "nil")")
+        return MusicItem(
             id: share.trackId,
             name: share.trackName,
             artistName: share.artistName,
