@@ -11,6 +11,7 @@ struct QuickSendBar: View {
 
     @State private var rankedFriends: [User] = []
     @State private var isLoading = true
+    @State private var isRanking = false
     @State private var selectedFriends: Set<UUID> = []
     @State private var showFullFriendPicker = false
     @State private var allFriends: [User] = []
@@ -111,20 +112,33 @@ struct QuickSendBar: View {
         }
 
         do {
-            // Get all friends first
+            // Get all friends first (from cache if available)
             allFriends = try await UserService.shared.getFriends(for: currentUser.id)
 
-            // Get ranked suggestions (top 5)
-            rankedFriends = await FriendRankingEngine.getQuickSuggestions(
+            // Show friends IMMEDIATELY (first 5 in arbitrary order) - no waiting for ranking
+            await MainActor.run {
+                rankedFriends = Array(allFriends.prefix(5))
+                isLoading = false
+            }
+
+            // Now rank them asynchronously in background (will update UI when complete)
+            isRanking = true
+            let ranked = await FriendRankingEngine.getQuickSuggestions(
                 currentUser: currentUser,
                 track: track,
                 limit: 5
             )
 
-            isLoading = false
+            await MainActor.run {
+                rankedFriends = ranked
+                isRanking = false
+            }
         } catch {
-            print("❌ Failed to load ranked friends: \(error)")
-            isLoading = false
+            print("❌ Failed to load friends: \(error)")
+            await MainActor.run {
+                isLoading = false
+                isRanking = false
+            }
         }
     }
 
