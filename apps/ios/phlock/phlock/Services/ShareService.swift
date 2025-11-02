@@ -28,7 +28,7 @@ class ShareService {
                 let track_id: String
                 let track_name: String
                 let artist_name: String
-                let album_art_url: String
+                let album_art_url: String?
                 let message: String?
                 let status: String
             }
@@ -39,7 +39,7 @@ class ShareService {
                 track_id: track.id,
                 track_name: track.name,
                 artist_name: track.artistName ?? "Unknown Artist",
-                album_art_url: track.albumArtUrl ?? "",
+                album_art_url: track.albumArtUrl,  // Keep nil if no album art
                 message: message,
                 status: ShareStatus.sent.rawValue
             )

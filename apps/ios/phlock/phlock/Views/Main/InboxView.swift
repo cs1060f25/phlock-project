@@ -9,10 +9,11 @@ struct TheCrateView: View {
     @EnvironmentObject var authState: AuthenticationState
     @Binding var navigationPath: NavigationPath
     @Binding var refreshTrigger: Int
+    @Binding var scrollToTopTrigger: Int
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            InboxView(refreshTrigger: $refreshTrigger)
+            InboxView(refreshTrigger: $refreshTrigger, scrollToTopTrigger: $scrollToTopTrigger)
                 .navigationTitle("shares")
                 .navigationBarTitleDisplayMode(.large)
                 .toolbar {
@@ -55,6 +56,7 @@ struct InboxView: View {
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var playbackService: PlaybackService
     @Binding var refreshTrigger: Int
+    @Binding var scrollToTopTrigger: Int
     @Environment(\.colorScheme) var colorScheme
 
     @State private var selectedFilter: SharesFilter = .received
@@ -176,8 +178,14 @@ struct InboxView: View {
     // MARK: - Shares List
 
     private var sharesList: some View {
-        List {
-            ForEach(sortedSections, id: \.self) { date in
+        ScrollViewReader { scrollProxy in
+            List {
+                // Top anchor for scrolling
+                Color.clear
+                    .frame(height: 1)
+                    .id("inboxTop")
+
+                ForEach(sortedSections, id: \.self) { date in
                 Section(header: sectionHeader(for: date)) {
                     if selectedFilter == .received {
                         ForEach(sortedReceivedShares(for: date), id: \.share.id) { shareWithSender in
@@ -213,8 +221,14 @@ struct InboxView: View {
                     }
                 }
             }
+            }
+            .listStyle(.plain)
+            .onChange(of: scrollToTopTrigger) { _, _ in
+                withAnimation {
+                    scrollProxy.scrollTo("inboxTop", anchor: .top)
+                }
+            }
         }
-        .listStyle(.plain)
     }
 
     // MARK: - Section Header
@@ -747,6 +761,6 @@ struct SentShareRowView: View {
 }
 
 #Preview {
-    TheCrateView(navigationPath: .constant(NavigationPath()), refreshTrigger: .constant(0))
+    TheCrateView(navigationPath: .constant(NavigationPath()), refreshTrigger: .constant(0), scrollToTopTrigger: .constant(0))
         .environmentObject(AuthenticationState())
 }

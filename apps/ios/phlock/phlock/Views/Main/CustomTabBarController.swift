@@ -4,10 +4,14 @@ import UIKit
 // MARK: - Tab Bar Coordinator
 
 class TabBarCoordinator: NSObject, UITabBarControllerDelegate {
-    var onFeedTabReselected: (() -> Void)?
-    var onDiscoverTabReselected: (() -> Void)?
-    var onInboxTabReselected: (() -> Void)?
+    var onFeedTabReselected: ((Int) -> Void)?  // Pass tap count
+    var onDiscoverTabReselected: ((Int) -> Void)?  // Pass tap count
+    var onInboxTabReselected: ((Int) -> Void)?  // Pass tap count
     var onTabSelected: ((Int) -> Void)?
+
+    // Track consecutive taps for each tab
+    private var consecutiveTaps: [Int: Int] = [:]
+    private var lastTapTime: [Int: Date] = [:]
 
     func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
         // Get the index of the tapped tab
@@ -20,18 +24,34 @@ class TabBarCoordinator: NSObject, UITabBarControllerDelegate {
         print("📱 Tab tapped: \(index), current: \(currentIndex)")
 
         if index == currentIndex {
-            print("🔄 Reselecting tab \(index) - triggering callback")
-            // Reset navigation for the currently selected tab immediately
+            // Track consecutive taps
+            let now = Date()
+            if let lastTap = lastTapTime[index], now.timeIntervalSince(lastTap) < 1.0 {
+                // Within 1 second - increment consecutive count
+                consecutiveTaps[index] = (consecutiveTaps[index] ?? 1) + 1
+            } else {
+                // First tap or after timeout - reset to 1
+                consecutiveTaps[index] = 1
+            }
+            lastTapTime[index] = now
+
+            let tapCount = consecutiveTaps[index] ?? 1
+            print("🔄 Reselecting tab \(index) - tap #\(tapCount)")
+
+            // Pass tap count to appropriate handler
             switch index {
             case 0:
-                self.onFeedTabReselected?()
+                self.onFeedTabReselected?(tapCount)
             case 1:
-                self.onDiscoverTabReselected?()
+                self.onDiscoverTabReselected?(tapCount)
             case 2:
-                self.onInboxTabReselected?()
+                self.onInboxTabReselected?(tapCount)
             default:
                 break
             }
+        } else {
+            // Different tab selected - reset counters
+            consecutiveTaps[index] = 0
         }
 
         return true
@@ -55,6 +75,8 @@ struct CustomTabBarView: UIViewControllerRepresentable {
     @Binding var clearDiscoverSearchTrigger: Int
     @Binding var refreshFeedTrigger: Int
     @Binding var refreshInboxTrigger: Int
+    @Binding var scrollFeedToTopTrigger: Int
+    @Binding var scrollInboxToTopTrigger: Int
     @Environment(\.colorScheme) var colorScheme
 
     let feedView: AnyView
@@ -63,45 +85,61 @@ struct CustomTabBarView: UIViewControllerRepresentable {
 
     func makeCoordinator() -> TabBarCoordinator {
         let coordinator = TabBarCoordinator()
-        coordinator.onFeedTabReselected = {
-            print("🔄 Feed tab reselected")
+        coordinator.onFeedTabReselected = { tapCount in
+            print("🔄 Feed tab reselected - tap #\(tapCount)")
             DispatchQueue.main.async {
                 if self.feedNavigationPath.count > 0 {
-                    // Pop to root if we're in a nested view
+                    // Always pop to root first if in nested view
                     self.feedNavigationPath = NavigationPath()
-                    print("✅ Feed navigation path reset, count: \(self.feedNavigationPath.count)")
+                    print("✅ Feed navigation path reset")
                 } else {
-                    // Already at root, refresh the feed
-                    self.refreshFeedTrigger += 1
-                    print("🔄 Refreshing feed, trigger: \(self.refreshFeedTrigger)")
+                    // Already at root - handle based on tap count
+                    switch tapCount {
+                    case 1:
+                        // First tap when at root - scroll to top
+                        self.scrollFeedToTopTrigger += 1
+                        print("⬆️ Scrolling feed to top")
+                    case 2, _:
+                        // Second+ tap - refresh feed
+                        self.refreshFeedTrigger += 1
+                        print("🔄 Refreshing feed")
+                    }
                 }
             }
         }
-        coordinator.onDiscoverTabReselected = {
-            print("🔄 Discover tab reselected")
+        coordinator.onDiscoverTabReselected = { tapCount in
+            print("🔄 Discover tab reselected - tap #\(tapCount)")
             DispatchQueue.main.async {
                 if self.discoverNavigationPath.count > 0 {
                     // Pop to root if we're in a nested view
                     self.discoverNavigationPath = NavigationPath()
-                    print("✅ Discover navigation path reset, count: \(self.discoverNavigationPath.count)")
+                    print("✅ Discover navigation path reset")
                 } else {
                     // Already at root, clear search and focus field
                     self.clearDiscoverSearchTrigger += 1
-                    print("🔍 Clearing search and focusing field, trigger: \(self.clearDiscoverSearchTrigger)")
+                    print("🔍 Clearing search and focusing field")
                 }
             }
         }
-        coordinator.onInboxTabReselected = {
-            print("🔄 Inbox tab reselected")
+        coordinator.onInboxTabReselected = { tapCount in
+            print("🔄 Inbox tab reselected - tap #\(tapCount)")
             DispatchQueue.main.async {
                 if self.inboxNavigationPath.count > 0 {
-                    // Pop to root if we're in a nested view
+                    // Always pop to root first if in nested view
                     self.inboxNavigationPath = NavigationPath()
-                    print("✅ Inbox navigation path reset, count: \(self.inboxNavigationPath.count)")
+                    print("✅ Inbox navigation path reset")
                 } else {
-                    // Already at root, refresh the shares
-                    self.refreshInboxTrigger += 1
-                    print("🔄 Refreshing shares, trigger: \(self.refreshInboxTrigger)")
+                    // Already at root - handle based on tap count
+                    switch tapCount {
+                    case 1:
+                        // First tap when at root - scroll to top
+                        self.scrollInboxToTopTrigger += 1
+                        print("⬆️ Scrolling inbox to top")
+                    case 2, _:
+                        // Second+ tap - refresh shares
+                        self.refreshInboxTrigger += 1
+                        print("🔄 Refreshing shares")
+                    }
                 }
             }
         }

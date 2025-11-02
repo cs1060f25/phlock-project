@@ -13,6 +13,7 @@ struct FeedView: View {
     @EnvironmentObject var playbackService: PlaybackService
     @Binding var navigationPath: NavigationPath
     @Binding var refreshTrigger: Int
+    @Binding var scrollToTopTrigger: Int
     @Environment(\.colorScheme) var colorScheme
 
     @State private var selectedFilter: FeedFilter = .friends
@@ -156,18 +157,30 @@ struct FeedView: View {
     // MARK: - Feed List
 
     private var feedList: some View {
-        List {
-            ForEach(sortedSections, id: \.self) { date in
-                Section(header: sectionHeader(for: date)) {
-                    ForEach(sortedShares(for: date), id: \.share.id) { networkShare in
-                        NetworkShareRowView(networkShare: networkShare, navigationPath: $navigationPath)
-                            .environmentObject(playbackService)
-                            .environmentObject(authState)
+        ScrollViewReader { scrollProxy in
+            List {
+                // Top anchor for scrolling
+                Color.clear
+                    .frame(height: 1)
+                    .id("feedTop")
+
+                ForEach(sortedSections, id: \.self) { date in
+                    Section(header: sectionHeader(for: date)) {
+                        ForEach(sortedShares(for: date), id: \.share.id) { networkShare in
+                            NetworkShareRowView(networkShare: networkShare, navigationPath: $navigationPath)
+                                .environmentObject(playbackService)
+                                .environmentObject(authState)
+                        }
                     }
                 }
             }
+            .listStyle(.plain)
+            .onChange(of: scrollToTopTrigger) { _, _ in
+                withAnimation {
+                    scrollProxy.scrollTo("feedTop", anchor: .top)
+                }
+            }
         }
-        .listStyle(.plain)
     }
 
     // MARK: - Section Header
@@ -384,7 +397,9 @@ struct NetworkShareRowView: View {
                 // Track Info
                 HStack(spacing: 12) {
                     // Album Art
-                    if let artworkUrl = share.albumArtUrl, let url = URL(string: artworkUrl) {
+                    if let artworkUrl = share.albumArtUrl,
+                       !artworkUrl.isEmpty,
+                       let url = URL(string: artworkUrl) {
                         AsyncImage(url: url) { image in
                             image
                                 .resizable()
@@ -395,9 +410,19 @@ struct NetworkShareRowView: View {
                         .frame(width: 60, height: 60)
                         .cornerRadius(8)
                     } else {
-                        Color.gray.opacity(0.2)
-                            .frame(width: 60, height: 60)
-                            .cornerRadius(8)
+                        // Fallback for missing album art
+                        ZStack {
+                            LinearGradient(
+                                colors: [Color.purple.opacity(0.3), Color.blue.opacity(0.3)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            Image(systemName: "music.note")
+                                .font(.system(size: 24))
+                                .foregroundColor(.white.opacity(0.7))
+                        }
+                        .frame(width: 60, height: 60)
+                        .cornerRadius(8)
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
@@ -486,11 +511,15 @@ struct NetworkShareRowView: View {
     private func handleTap() {
         let track = createMusicItem()
 
-        if isPlaying {
-            // Pause if currently playing this track
-            playbackService.pause()
+        if isCurrentTrack {
+            // Same exact share instance - toggle play/pause
+            if isPlaying {
+                playbackService.pause()
+            } else {
+                playbackService.resume()
+            }
         } else {
-            // Play the track with share ID as source
+            // Different share instance or different track - always start fresh
             playbackService.play(track: track, sourceId: share.id.uuidString)
         }
     }
@@ -529,7 +558,7 @@ struct NetworkShareRowView: View {
 }
 
 #Preview {
-    FeedView(navigationPath: .constant(NavigationPath()), refreshTrigger: .constant(0))
+    FeedView(navigationPath: .constant(NavigationPath()), refreshTrigger: .constant(0), scrollToTopTrigger: .constant(0))
         .environmentObject(AuthenticationState())
         .environmentObject(PlaybackService.shared)
 }

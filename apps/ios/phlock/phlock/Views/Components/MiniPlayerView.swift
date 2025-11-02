@@ -39,7 +39,9 @@ struct MiniPlayerView: View {
                 } label: {
                     HStack(spacing: 12) {
                         // Album Art
-                        if let albumArtUrl = track.albumArtUrl, let url = URL(string: albumArtUrl) {
+                        if let albumArtUrl = track.albumArtUrl,
+                           !albumArtUrl.isEmpty,
+                           let url = URL(string: albumArtUrl) {
                             AsyncImage(url: url) { image in
                                 image
                                     .resizable()
@@ -51,14 +53,19 @@ struct MiniPlayerView: View {
                             .frame(width: 50, height: 50)
                             .cornerRadius(8)
                         } else {
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(width: 50, height: 50)
-                                .cornerRadius(8)
-                                .overlay(
-                                    Image(systemName: "music.note")
-                                        .foregroundColor(.gray)
+                            // Fallback for missing album art
+                            ZStack {
+                                LinearGradient(
+                                    colors: [Color.purple.opacity(0.3), Color.blue.opacity(0.3)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
                                 )
+                                Image(systemName: "music.note")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                            .frame(width: 50, height: 50)
+                            .cornerRadius(8)
                         }
 
                         // Track Info
@@ -134,13 +141,29 @@ struct MiniPlayerView: View {
                         VStack(spacing: 0) {
                             // Track preview at top
                             HStack(spacing: 12) {
-                                if let albumArtUrl = track.albumArtUrl, let url = URL(string: albumArtUrl) {
+                                if let albumArtUrl = track.albumArtUrl,
+                                   !albumArtUrl.isEmpty,
+                                   let url = URL(string: albumArtUrl) {
                                     AsyncImage(url: url) { image in
                                         image
                                             .resizable()
                                             .scaledToFill()
                                     } placeholder: {
                                         Color.gray.opacity(0.2)
+                                    }
+                                    .frame(width: 60, height: 60)
+                                    .cornerRadius(8)
+                                } else {
+                                    // Fallback for missing album art
+                                    ZStack {
+                                        LinearGradient(
+                                            colors: [Color.purple.opacity(0.3), Color.blue.opacity(0.3)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                        Image(systemName: "music.note")
+                                            .font(.system(size: 22))
+                                            .foregroundColor(.white.opacity(0.7))
                                     }
                                     .frame(width: 60, height: 60)
                                     .cornerRadius(8)

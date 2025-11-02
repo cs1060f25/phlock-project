@@ -12,6 +12,8 @@ struct MainView: View {
     @State private var clearDiscoverSearchTrigger = 0
     @State private var refreshFeedTrigger = 0
     @State private var refreshInboxTrigger = 0
+    @State private var scrollFeedToTopTrigger = 0
+    @State private var scrollInboxToTopTrigger = 0
     @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
@@ -24,8 +26,10 @@ struct MainView: View {
                 clearDiscoverSearchTrigger: $clearDiscoverSearchTrigger,
                 refreshFeedTrigger: $refreshFeedTrigger,
                 refreshInboxTrigger: $refreshInboxTrigger,
+                scrollFeedToTopTrigger: $scrollFeedToTopTrigger,
+                scrollInboxToTopTrigger: $scrollInboxToTopTrigger,
                 feedView: AnyView(
-                    FeedView(navigationPath: $feedNavigationPath, refreshTrigger: $refreshFeedTrigger)
+                    FeedView(navigationPath: $feedNavigationPath, refreshTrigger: $refreshFeedTrigger, scrollToTopTrigger: $scrollFeedToTopTrigger)
                         .environmentObject(authState)
                         .environmentObject(playbackService)
                         .environment(\.colorScheme, colorScheme)
@@ -36,7 +40,7 @@ struct MainView: View {
                         .environmentObject(playbackService)
                 ),
                 inboxView: AnyView(
-                    TheCrateView(navigationPath: $inboxNavigationPath, refreshTrigger: $refreshInboxTrigger)
+                    TheCrateView(navigationPath: $inboxNavigationPath, refreshTrigger: $refreshInboxTrigger, scrollToTopTrigger: $scrollInboxToTopTrigger)
                         .environmentObject(authState)
                         .environmentObject(playbackService)
                         .environment(\.colorScheme, colorScheme)

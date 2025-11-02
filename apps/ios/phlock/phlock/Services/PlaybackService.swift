@@ -90,12 +90,30 @@ class PlaybackService: ObservableObject {
 
     /// Play a track by its preview URL
     func play(track: MusicItem, sourceId: String? = nil) {
-        currentSourceId = sourceId
         print("🎵 Attempting to play track: \(track.name)")
+        print("   Source ID: \(sourceId ?? "nil")")
+        print("   Current Source ID: \(currentSourceId ?? "nil")")
         print("   Preview URL: \(track.previewUrl ?? "nil")")
         print("   Album Art URL: \(track.albumArtUrl ?? "nil")")
         print("   Spotify ID: \(track.spotifyId ?? "nil")")
         print("   ISRC: \(track.isrc ?? "nil")")
+
+        // Check if this is the exact same instance already playing
+        if let sourceId = sourceId,
+           currentTrack?.id == track.id,
+           currentSourceId == sourceId,
+           player != nil {
+            // Same exact share instance - just toggle play/pause
+            if isPlaying {
+                pause()
+            } else {
+                resume()
+            }
+            return
+        }
+
+        // Different instance or different track - update sourceId and play fresh
+        currentSourceId = sourceId
 
         // If track has a preview URL, use it
         if let previewUrl = track.previewUrl, !previewUrl.isEmpty {
@@ -285,17 +303,8 @@ class PlaybackService: ObservableObject {
             return
         }
 
-        // If same track is already playing, toggle play/pause
-        if currentTrack?.id == track.id, player != nil {
-            if isPlaying {
-                pause()
-            } else {
-                resume()
-            }
-            return
-        }
-
-        // Stop current playback
+        // Always stop and start fresh when playing from URL
+        // The decision to reuse or restart should be made at higher level (play method)
         stopPlayback()
 
         // Create new player

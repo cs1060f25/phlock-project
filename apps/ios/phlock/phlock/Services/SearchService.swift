@@ -105,12 +105,24 @@ class SearchService {
         )
 
         return response.tracks.map { track in
-            MusicItem(
+            // Get medium-sized image (usually index 1) or fallback to first available
+            let albumArtUrl: String? = {
+                guard !track.album.images.isEmpty else { return nil }
+                // Spotify typically returns 3 sizes: 640x640, 300x300, 64x64
+                // We want the medium one for better performance
+                if track.album.images.count > 1 {
+                    return track.album.images[1].url
+                } else {
+                    return track.album.images.first?.url
+                }
+            }()
+
+            return MusicItem(
                 id: track.id,
                 name: track.name,
                 artistName: track.artists.first?.name,
                 previewUrl: track.previewUrl,
-                albumArtUrl: track.album.images.first?.url,
+                albumArtUrl: albumArtUrl,
                 isrc: track.externalIds?.isrc,
                 playedAt: nil,
                 spotifyId: track.id,
@@ -148,12 +160,23 @@ class SearchService {
         )
 
         return response.artists.map { artist in
-            MusicItem(
+            // Get medium-sized image or fallback to first available
+            let artistImageUrl: String? = {
+                guard !artist.images.isEmpty else { return nil }
+                // Artists also typically have multiple image sizes
+                if artist.images.count > 1 {
+                    return artist.images[1].url
+                } else {
+                    return artist.images.first?.url
+                }
+            }()
+
+            return MusicItem(
                 id: artist.id,
                 name: artist.name,
                 artistName: nil,
                 previewUrl: nil,
-                albumArtUrl: artist.images.first?.url,
+                albumArtUrl: artistImageUrl,  // For artists, we use the artist image
                 isrc: nil,
                 playedAt: nil,
                 spotifyId: artist.id,
@@ -259,12 +282,24 @@ class SearchService {
         )
 
         return response.tracks.map { track in
-            MusicItem(
+            // Get medium-sized image (usually index 1) or fallback to first available
+            let albumArtUrl: String? = {
+                guard !track.album.images.isEmpty else { return nil }
+                // Spotify typically returns 3 sizes: 640x640, 300x300, 64x64
+                // We want the medium one for better performance
+                if track.album.images.count > 1 {
+                    return track.album.images[1].url
+                } else {
+                    return track.album.images.first?.url
+                }
+            }()
+
+            return MusicItem(
                 id: track.id,
                 name: track.name,
                 artistName: track.artists.first?.name,
                 previewUrl: track.previewUrl,
-                albumArtUrl: track.album.images.first?.url,
+                albumArtUrl: albumArtUrl,
                 isrc: track.externalIds?.isrc,
                 playedAt: nil,
                 spotifyId: track.id,
