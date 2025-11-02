@@ -117,7 +117,7 @@ class PlaybackService: ObservableObject {
 
         // If track has a preview URL, use it
         if let previewUrl = track.previewUrl, !previewUrl.isEmpty {
-            playFromURL(previewUrl, track: track)
+            playFromURL(previewUrl, track: track, sourceId: sourceId)
             return
         }
 
@@ -192,7 +192,7 @@ class PlaybackService: ObservableObject {
                         followerCount: track.followerCount
                     )
                     await MainActor.run {
-                        self.playFromURL(applePreviewUrl, track: updatedTrack)
+                        self.playFromURL(applePreviewUrl, track: updatedTrack, sourceId: sourceId)
                     }
                 } catch {
                     print("❌ Error fetching preview: \(error)")
@@ -235,7 +235,7 @@ class PlaybackService: ObservableObject {
                             followerCount: track.followerCount
                         )
                         await MainActor.run {
-                            self.playFromURL(applePreviewUrl, track: updatedTrack)
+                            self.playFromURL(applePreviewUrl, track: updatedTrack, sourceId: sourceId)
                         }
                     } else {
                         print("❌ Apple Music match found but no preview URL available")
@@ -303,7 +303,7 @@ class PlaybackService: ObservableObject {
         return response.externalIds?.isrc
     }
 
-    private func playFromURL(_ urlString: String, track: MusicItem) {
+    private func playFromURL(_ urlString: String, track: MusicItem, sourceId: String? = nil) {
         guard let url = URL(string: urlString) else {
             print("❌ Invalid URL: \(urlString)")
             return
@@ -330,6 +330,7 @@ class PlaybackService: ObservableObject {
 
         // Update state
         currentTrack = track
+        currentSourceId = sourceId  // Preserve source ID so we can detect same track on next tap
         isPlaying = true
 
         // Get duration
