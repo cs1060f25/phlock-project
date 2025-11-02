@@ -146,7 +146,7 @@ struct FullScreenPlayerView: View {
                                                 .fill(showShareBar ? Color.black : Color.gray.opacity(0.2))
                                                 .frame(width: 60, height: 60)
 
-                                            Image(systemName: "paperplane.fill")
+                                            Image(systemName: showShareBar ? "xmark" : "paperplane.fill")
                                                 .font(.system(size: 22))
                                                 .foregroundColor(showShareBar ? .white : .primary)
                                         }

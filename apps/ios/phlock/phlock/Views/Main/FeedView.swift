@@ -12,6 +12,7 @@ struct FeedView: View {
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var playbackService: PlaybackService
     @Binding var navigationPath: NavigationPath
+    @Binding var refreshTrigger: Int
     @Environment(\.colorScheme) var colorScheme
 
     @State private var selectedFilter: FeedFilter = .friends
@@ -84,6 +85,11 @@ struct FeedView: View {
         }
         .refreshable {
             await refreshNetworkActivity()
+        }
+        .onChange(of: refreshTrigger) { oldValue, newValue in
+            Task {
+                await refreshNetworkActivity()
+            }
         }
     }
 
@@ -315,7 +321,8 @@ struct NetworkShareRowView: View {
     private var recipient: User { networkShare.recipient }
 
     private var isCurrentTrack: Bool {
-        playbackService.currentTrack?.id == share.trackId
+        playbackService.currentTrack?.id == share.trackId &&
+        playbackService.currentSourceId == share.id.uuidString
     }
 
     private var isPlaying: Bool {
@@ -422,9 +429,9 @@ struct NetworkShareRowView: View {
                     Button {
                         showShareSheet.toggle()
                     } label: {
-                        Image(systemName: "paperplane")
+                        Image(systemName: showShareSheet ? "paperplane.fill" : "paperplane")
                             .font(.system(size: 20))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(showShareSheet ? .primary : .secondary)
                     }
                     .buttonStyle(.plain)
 
@@ -483,8 +490,8 @@ struct NetworkShareRowView: View {
             // Pause if currently playing this track
             playbackService.pause()
         } else {
-            // Play the track
-            playbackService.play(track: track)
+            // Play the track with share ID as source
+            playbackService.play(track: track, sourceId: share.id.uuidString)
         }
     }
 
@@ -522,7 +529,7 @@ struct NetworkShareRowView: View {
 }
 
 #Preview {
-    FeedView(navigationPath: .constant(NavigationPath()))
+    FeedView(navigationPath: .constant(NavigationPath()), refreshTrigger: .constant(0))
         .environmentObject(AuthenticationState())
         .environmentObject(PlaybackService.shared)
 }

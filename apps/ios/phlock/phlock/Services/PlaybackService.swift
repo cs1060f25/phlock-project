@@ -15,6 +15,7 @@ class PlaybackService: ObservableObject {
     private var previewUrlCache: [String: String] = [:] // ISRC -> previewUrl
 
     @Published var currentTrack: MusicItem?
+    @Published var currentSourceId: String? // Track which specific share/source is playing
     @Published var isPlaying = false
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
@@ -88,7 +89,8 @@ class PlaybackService: ObservableObject {
     // MARK: - Playback Control
 
     /// Play a track by its preview URL
-    func play(track: MusicItem) {
+    func play(track: MusicItem, sourceId: String? = nil) {
+        currentSourceId = sourceId
         print("🎵 Attempting to play track: \(track.name)")
         print("   Preview URL: \(track.previewUrl ?? "nil")")
         print("   Album Art URL: \(track.albumArtUrl ?? "nil")")
@@ -355,6 +357,7 @@ class PlaybackService: ObservableObject {
         NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
 
         currentTrack = nil
+        currentSourceId = nil
         isPlaying = false
         currentTime = 0
         duration = 0

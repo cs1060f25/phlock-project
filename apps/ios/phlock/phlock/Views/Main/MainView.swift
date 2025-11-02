@@ -10,6 +10,8 @@ struct MainView: View {
     @State private var discoverNavigationPath = NavigationPath()
     @State private var inboxNavigationPath = NavigationPath()
     @State private var clearDiscoverSearchTrigger = 0
+    @State private var refreshFeedTrigger = 0
+    @State private var refreshInboxTrigger = 0
     @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
@@ -20,8 +22,10 @@ struct MainView: View {
                 discoverNavigationPath: $discoverNavigationPath,
                 inboxNavigationPath: $inboxNavigationPath,
                 clearDiscoverSearchTrigger: $clearDiscoverSearchTrigger,
+                refreshFeedTrigger: $refreshFeedTrigger,
+                refreshInboxTrigger: $refreshInboxTrigger,
                 feedView: AnyView(
-                    FeedView(navigationPath: $feedNavigationPath)
+                    FeedView(navigationPath: $feedNavigationPath, refreshTrigger: $refreshFeedTrigger)
                         .environmentObject(authState)
                         .environmentObject(playbackService)
                         .environment(\.colorScheme, colorScheme)
@@ -32,7 +36,7 @@ struct MainView: View {
                         .environmentObject(playbackService)
                 ),
                 inboxView: AnyView(
-                    TheCrateView(navigationPath: $inboxNavigationPath)
+                    TheCrateView(navigationPath: $inboxNavigationPath, refreshTrigger: $refreshInboxTrigger)
                         .environmentObject(authState)
                         .environmentObject(playbackService)
                         .environment(\.colorScheme, colorScheme)

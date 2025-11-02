@@ -8,10 +8,11 @@ enum InboxDestination: Hashable {
 struct TheCrateView: View {
     @EnvironmentObject var authState: AuthenticationState
     @Binding var navigationPath: NavigationPath
+    @Binding var refreshTrigger: Int
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            InboxView()
+            InboxView(refreshTrigger: $refreshTrigger)
                 .navigationTitle("shares")
                 .navigationBarTitleDisplayMode(.large)
                 .toolbar {
@@ -53,6 +54,7 @@ struct TheCrateView: View {
 struct InboxView: View {
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var playbackService: PlaybackService
+    @Binding var refreshTrigger: Int
     @Environment(\.colorScheme) var colorScheme
 
     @State private var selectedFilter: SharesFilter = .received
@@ -90,6 +92,11 @@ struct InboxView: View {
         }
         .refreshable {
             await refreshShares()
+        }
+        .onChange(of: refreshTrigger) { oldValue, newValue in
+            Task {
+                await refreshShares()
+            }
         }
     }
 
@@ -740,6 +747,6 @@ struct SentShareRowView: View {
 }
 
 #Preview {
-    TheCrateView(navigationPath: .constant(NavigationPath()))
+    TheCrateView(navigationPath: .constant(NavigationPath()), refreshTrigger: .constant(0))
         .environmentObject(AuthenticationState())
 }

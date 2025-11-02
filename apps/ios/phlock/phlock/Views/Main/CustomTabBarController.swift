@@ -53,6 +53,8 @@ struct CustomTabBarView: UIViewControllerRepresentable {
     @Binding var discoverNavigationPath: NavigationPath
     @Binding var inboxNavigationPath: NavigationPath
     @Binding var clearDiscoverSearchTrigger: Int
+    @Binding var refreshFeedTrigger: Int
+    @Binding var refreshInboxTrigger: Int
     @Environment(\.colorScheme) var colorScheme
 
     let feedView: AnyView
@@ -62,10 +64,17 @@ struct CustomTabBarView: UIViewControllerRepresentable {
     func makeCoordinator() -> TabBarCoordinator {
         let coordinator = TabBarCoordinator()
         coordinator.onFeedTabReselected = {
-            print("🔄 Feed tab reselected - resetting navigation")
+            print("🔄 Feed tab reselected")
             DispatchQueue.main.async {
-                self.feedNavigationPath = NavigationPath()
-                print("✅ Feed navigation path reset, count: \(self.feedNavigationPath.count)")
+                if self.feedNavigationPath.count > 0 {
+                    // Pop to root if we're in a nested view
+                    self.feedNavigationPath = NavigationPath()
+                    print("✅ Feed navigation path reset, count: \(self.feedNavigationPath.count)")
+                } else {
+                    // Already at root, refresh the feed
+                    self.refreshFeedTrigger += 1
+                    print("🔄 Refreshing feed, trigger: \(self.refreshFeedTrigger)")
+                }
             }
         }
         coordinator.onDiscoverTabReselected = {
@@ -83,10 +92,17 @@ struct CustomTabBarView: UIViewControllerRepresentable {
             }
         }
         coordinator.onInboxTabReselected = {
-            print("🔄 Inbox tab reselected - resetting navigation")
+            print("🔄 Inbox tab reselected")
             DispatchQueue.main.async {
-                self.inboxNavigationPath = NavigationPath()
-                print("✅ Inbox navigation path reset, count: \(self.inboxNavigationPath.count)")
+                if self.inboxNavigationPath.count > 0 {
+                    // Pop to root if we're in a nested view
+                    self.inboxNavigationPath = NavigationPath()
+                    print("✅ Inbox navigation path reset, count: \(self.inboxNavigationPath.count)")
+                } else {
+                    // Already at root, refresh the shares
+                    self.refreshInboxTrigger += 1
+                    print("🔄 Refreshing shares, trigger: \(self.refreshInboxTrigger)")
+                }
             }
         }
         coordinator.onTabSelected = { index in
