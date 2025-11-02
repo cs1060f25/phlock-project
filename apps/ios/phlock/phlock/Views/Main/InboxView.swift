@@ -64,6 +64,7 @@ struct InboxView: View {
     @State private var sentShares: [ShareWithRecipient] = []
     @State private var isLoading = true
     @State private var isRefreshing = false
+    @State private var referenceDate = Date() // Stable reference for date calculations
 
     enum SharesFilter: String, CaseIterable {
         case received = "Received"
@@ -288,11 +289,12 @@ struct InboxView: View {
 
     private func formatDateSection(_ date: Date) -> String {
         let calendar = Calendar.current
-        if calendar.isDateInToday(date) {
+        // Use stable referenceDate instead of Date() to prevent re-sorting on every render
+        if calendar.isDate(date, equalTo: referenceDate, toGranularity: .day) {
             return "Today"
-        } else if calendar.isDateInYesterday(date) {
+        } else if calendar.isDate(date, equalTo: calendar.date(byAdding: .day, value: -1, to: referenceDate)!, toGranularity: .day) {
             return "Yesterday"
-        } else if calendar.isDate(date, equalTo: Date(), toGranularity: .weekOfYear) {
+        } else if calendar.isDate(date, equalTo: referenceDate, toGranularity: .weekOfYear) {
             return "This Week"
         } else {
             let formatter = DateFormatter()
@@ -331,6 +333,7 @@ struct InboxView: View {
             await MainActor.run {
                 receivedShares = sharesWithSenders
                 sentShares = sharesWithRecipients
+                referenceDate = Date() // Update reference date when data loads
                 isLoading = false
             }
         } catch {

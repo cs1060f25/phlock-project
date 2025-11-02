@@ -142,6 +142,8 @@ class PlaybackService: ObservableObject {
 
                     // Step 2: Get preview URL from Apple Music (check cache first)
                     let applePreviewUrl: String
+                    var appleMusicTrack: AppleMusicTrack? = nil
+
                     if let cachedUrl = previewUrlCache[isrc] {
                         print("⚡️ Using cached preview URL")
                         applePreviewUrl = cachedUrl
@@ -152,12 +154,14 @@ class PlaybackService: ObservableObject {
                             return
                         }
 
-                        if let appleMusicTrack = try await AppleMusicService.shared.searchTrack(
+                        // Store the Apple Music track for later use
+                        if let fetchedTrack = try await AppleMusicService.shared.searchTrack(
                             name: track.name,
                             artist: artistName,
                             isrc: isrc
                         ) {
-                            if let url = appleMusicTrack.previewURL, !url.isEmpty {
+                            appleMusicTrack = fetchedTrack
+                            if let url = fetchedTrack.previewURL, !url.isEmpty {
                                 print("✅ Found exact match on Apple Music with preview URL")
                                 previewUrlCache[isrc] = url
                                 applePreviewUrl = url
@@ -171,18 +175,19 @@ class PlaybackService: ObservableObject {
                         }
                     }
 
-                    // Use Apple Music preview but keep original metadata
+                    // Use Apple Music preview and artwork from the matched track
                     var updatedTrack = track
                     updatedTrack = MusicItem(
                         id: track.id,
                         name: track.name,
                         artistName: track.artistName,
                         previewUrl: applePreviewUrl,
-                        albumArtUrl: track.albumArtUrl, // Keep original album art
+                        // Use Apple Music artwork if available, otherwise keep original
+                        albumArtUrl: appleMusicTrack?.artworkURL ?? track.albumArtUrl,
                         isrc: isrc,
                         playedAt: track.playedAt,
                         spotifyId: track.spotifyId,
-                        appleMusicId: track.appleMusicId,
+                        appleMusicId: appleMusicTrack?.id ?? track.appleMusicId,
                         popularity: track.popularity,
                         followerCount: track.followerCount
                     )
@@ -213,18 +218,19 @@ class PlaybackService: ObservableObject {
                     isrc: track.isrc
                 ) {
                     if let applePreviewUrl = appleMusicTrack.previewURL, !applePreviewUrl.isEmpty {
-                        // Update track with Apple Music preview while preserving original metadata
+                        // Update track with Apple Music preview and artwork
                         var updatedTrack = track
                         updatedTrack = MusicItem(
                             id: track.id,
                             name: track.name,
                             artistName: track.artistName,
                             previewUrl: applePreviewUrl,
-                            albumArtUrl: track.albumArtUrl, // Keep original album art from feed
+                            // Use Apple Music artwork if available, otherwise keep original
+                            albumArtUrl: appleMusicTrack.artworkURL ?? track.albumArtUrl,
                             isrc: track.isrc,
                             playedAt: track.playedAt,
                             spotifyId: track.spotifyId, // Preserve Spotify ID
-                            appleMusicId: track.appleMusicId, // Preserve Apple Music ID
+                            appleMusicId: appleMusicTrack.id, // Use Apple Music ID from match
                             popularity: track.popularity,
                             followerCount: track.followerCount
                         )
