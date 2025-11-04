@@ -11,6 +11,82 @@ class ShareService {
 
     // MARK: - Create Shares
 
+    /// Validate and enrich track metadata by fetching fresh data from Spotify
+    /// - Parameter track: The music item to validate
+    /// - Returns: Validated music item with fresh metadata
+    private func validateTrackMetadata(_ track: MusicItem) async throws -> MusicItem {
+        // Only validate if we have a Spotify ID
+        guard let spotifyId = track.spotifyId, !spotifyId.isEmpty else {
+            print("⚠️ No Spotify ID for '\(track.name)', skipping validation")
+            return track
+        }
+
+        do {
+            struct TrackRequest: Encodable {
+                let trackId: String
+            }
+
+            struct SpotifyTrackResponse: Decodable {
+                let id: String
+                let name: String
+                let artists: [Artist]
+                let album: Album
+                let external_ids: ExternalIds?
+
+                struct Artist: Decodable {
+                    let name: String
+                }
+
+                struct Album: Decodable {
+                    let images: [Image]
+
+                    struct Image: Decodable {
+                        let url: String
+                        let height: Int?
+                        let width: Int?
+                    }
+                }
+
+                struct ExternalIds: Decodable {
+                    let isrc: String?
+                }
+            }
+
+            let request = TrackRequest(trackId: spotifyId)
+            let response: SpotifyTrackResponse = try await supabase.functions.invoke(
+                "get-spotify-track",
+                options: FunctionInvokeOptions(body: request)
+            )
+
+            // Get medium-sized image (usually index 1) or fallback to first available
+            let freshAlbumArtUrl: String? = response.album.images.count > 1
+                ? response.album.images[1].url
+                : response.album.images.first?.url
+
+            print("✅ Validated track '\(response.name)' (ID: \(response.id))")
+            print("   Fresh album art: \(freshAlbumArtUrl ?? "nil")")
+
+            // Return validated track with fresh metadata
+            return MusicItem(
+                id: track.id,
+                name: response.name,  // Use validated name
+                artistName: response.artists.first?.name,  // Use validated artist
+                previewUrl: track.previewUrl,  // Keep original preview URL
+                albumArtUrl: freshAlbumArtUrl,  // Use fresh album art
+                isrc: response.external_ids?.isrc ?? track.isrc,
+                playedAt: track.playedAt,
+                spotifyId: response.id,  // Use validated Spotify ID
+                appleMusicId: track.appleMusicId,
+                popularity: track.popularity,
+                followerCount: track.followerCount
+            )
+        } catch {
+            print("⚠️ Failed to validate track '\(track.name)': \(error)")
+            print("   Using original track data without validation")
+            return track  // Return original if validation fails
+        }
+    }
+
     /// Create a new share and send to multiple recipients
     /// - Parameters:
     ///   - track: The music item to share
@@ -19,6 +95,9 @@ class ShareService {
     ///   - senderId: ID of the user sending the share
     /// - Returns: Array of created share IDs
     func createShare(track: MusicItem, recipients: [UUID], message: String? = nil, senderId: UUID) async throws -> [UUID] {
+        // Validate and enrich track metadata before sharing
+        let validatedTrack = try await validateTrackMetadata(track)
+
         var shareIds: [UUID] = []
 
         for recipientId in recipients {
@@ -36,14 +115,14 @@ class ShareService {
             let shareData = ShareInsert(
                 sender_id: senderId.uuidString,
                 recipient_id: recipientId.uuidString,
-                track_id: track.id,
-                track_name: track.name,
-                artist_name: track.artistName ?? "Unknown Artist",
-                album_art_url: track.albumArtUrl,  // Keep nil if no album art
+                track_id: validatedTrack.spotifyId ?? validatedTrack.id,  // Use validated Spotify ID if available
+                track_name: validatedTrack.name,
+                artist_name: validatedTrack.artistName ?? "Unknown Artist",
+                album_art_url: validatedTrack.albumArtUrl,  // Use validated album art
                 message: message,
                 status: ShareStatus.sent.rawValue
             )
-            print("📤 Creating share for '\(track.name)' with album art: \(track.albumArtUrl ?? "nil")")
+            print("📤 Creating share for '\(validatedTrack.name)' with validated album art: \(validatedTrack.albumArtUrl ?? "nil")")
 
             let insertedShares: [Share] = try await supabase
                 .from("shares")

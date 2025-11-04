@@ -64,7 +64,10 @@ struct InboxView: View {
     @State private var sentShares: [ShareWithRecipient] = []
     @State private var isLoading = true
     @State private var isRefreshing = false
-    @State private var referenceDate = Date() // Stable reference for date calculations
+
+    // IMPORTANT: Initialize reference date once and never change it during the view's lifetime
+    // This ensures consistent date grouping (Today, Yesterday, etc.)
+    private let referenceDate = Date()
 
     enum SharesFilter: String, CaseIterable {
         case received = "Received"
@@ -265,16 +268,40 @@ struct InboxView: View {
         }
     }
 
-    // Get received shares for a section, sorted by most recent first
+    // Get received shares for a section, sorted by most recent first with stable secondary sort
     private func sortedReceivedShares(for section: String) -> [ShareWithSender] {
         guard let shares = groupedReceivedShares[section] else { return [] }
-        return shares.sorted { $0.share.createdAt > $1.share.createdAt }
+        // Sort by created_at DESC (most recent first), then by ID DESC for stability
+        return shares.sorted { share1, share2 in
+            let date1 = share1.share.createdAt
+            let date2 = share2.share.createdAt
+
+            if date1 != date2 {
+                // More recent dates come first
+                return date1 > date2
+            } else {
+                // For identical timestamps, use ID for stable ordering (DESC to match DB behavior)
+                return share1.share.id.uuidString > share2.share.id.uuidString
+            }
+        }
     }
 
-    // Get sent shares for a section, sorted by most recent first
+    // Get sent shares for a section, sorted by most recent first with stable secondary sort
     private func sortedSentShares(for section: String) -> [ShareWithRecipient] {
         guard let shares = groupedSentShares[section] else { return [] }
-        return shares.sorted { $0.share.createdAt > $1.share.createdAt }
+        // Sort by created_at DESC (most recent first), then by ID DESC for stability
+        return shares.sorted { share1, share2 in
+            let date1 = share1.share.createdAt
+            let date2 = share2.share.createdAt
+
+            if date1 != date2 {
+                // More recent dates come first
+                return date1 > date2
+            } else {
+                // For identical timestamps, use ID for stable ordering (DESC to match DB behavior)
+                return share1.share.id.uuidString > share2.share.id.uuidString
+            }
+        }
     }
 
     // Define ordering for section headers (lower number = more recent)
@@ -331,9 +358,9 @@ struct InboxView: View {
             }
 
             await MainActor.run {
+                // Preserve the original order from the database (already sorted by created_at DESC)
                 receivedShares = sharesWithSenders
                 sentShares = sharesWithRecipients
-                referenceDate = Date() // Update reference date when data loads
                 isLoading = false
             }
         } catch {
@@ -433,22 +460,15 @@ struct ShareRowView: View {
                 handleTap()
             } label: {
                 HStack(spacing: 12) {
-                    // Album Art
-                    if let artworkUrl = share.albumArtUrl, let url = URL(string: artworkUrl) {
-                        AsyncImage(url: url) { image in
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        } placeholder: {
-                            Color.gray.opacity(0.2)
-                        }
-                        .frame(width: 60, height: 60)
-                        .cornerRadius(8)
-                    } else {
-                        Color.gray.opacity(0.2)
-                            .frame(width: 60, height: 60)
-                            .cornerRadius(8)
-                    }
+                    // Album Art with automatic fallback for stale URLs
+                    RemoteImage(
+                        url: share.albumArtUrl,
+                        spotifyId: share.trackId,
+                        trackName: share.trackName,
+                        width: 60,
+                        height: 60,
+                        cornerRadius: 8
+                    )
 
                     VStack(alignment: .leading, spacing: 4) {
                         // Track Name
@@ -501,12 +521,15 @@ struct ShareRowView: View {
                         .font(.system(size: 28))
                         .foregroundColor(isCurrentTrack ? .primary : .secondary)
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 12)
                 .background(
                     isCurrentTrack
-                        ? Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.05)
+                        ? Color.primary.opacity(colorScheme == .dark ? 0.2 : 0.06)
                         : Color.clear
                 )
+                .cornerRadius(8)
+                .padding(.horizontal, 4)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -607,22 +630,15 @@ struct SentShareRowView: View {
                 handleTap()
             } label: {
                 HStack(spacing: 12) {
-                    // Album Art
-                    if let artworkUrl = share.albumArtUrl, let url = URL(string: artworkUrl) {
-                        AsyncImage(url: url) { image in
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        } placeholder: {
-                            Color.gray.opacity(0.2)
-                        }
-                        .frame(width: 60, height: 60)
-                        .cornerRadius(8)
-                    } else {
-                        Color.gray.opacity(0.2)
-                            .frame(width: 60, height: 60)
-                            .cornerRadius(8)
-                    }
+                    // Album Art with automatic fallback for stale URLs
+                    RemoteImage(
+                        url: share.albumArtUrl,
+                        spotifyId: share.trackId,
+                        trackName: share.trackName,
+                        width: 60,
+                        height: 60,
+                        cornerRadius: 8
+                    )
 
                     VStack(alignment: .leading, spacing: 4) {
                         // Track Name
@@ -675,12 +691,15 @@ struct SentShareRowView: View {
                         .font(.system(size: 28))
                         .foregroundColor(isCurrentTrack ? .primary : .secondary)
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 12)
                 .background(
                     isCurrentTrack
-                        ? Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.05)
+                        ? Color.primary.opacity(colorScheme == .dark ? 0.2 : 0.06)
                         : Color.clear
                 )
+                .cornerRadius(8)
+                .padding(.horizontal, 4)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

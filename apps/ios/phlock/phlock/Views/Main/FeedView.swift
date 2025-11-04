@@ -20,7 +20,10 @@ struct FeedView: View {
     @State private var networkShares: [NetworkShare] = []
     @State private var isLoading = true
     @State private var isRefreshing = false
-    @State private var referenceDate = Date() // Stable reference for date calculations
+
+    // IMPORTANT: Initialize reference date once and never change it during the view's lifetime
+    // This ensures consistent date grouping (Today, Yesterday, etc.)
+    private let referenceDate = Date()
 
     // Cached grouping to prevent re-sorting on every render
     @State private var cachedGroupedShares: [String: [NetworkShare]] = [:]
@@ -223,10 +226,23 @@ struct FeedView: View {
         }
     }
 
-    // Get shares for a section, sorted by most recent first
+    // Get shares for a section, sorted by most recent first with stable secondary sort
     private func sortedShares(for section: String) -> [NetworkShare] {
         guard let shares = cachedGroupedShares[section] else { return [] }
-        return shares.sorted { $0.share.createdAt > $1.share.createdAt }
+        // Sort by created_at DESC (most recent first), then by ID DESC for stability
+        return shares.sorted { share1, share2 in
+            // Compare timestamps first
+            let date1 = share1.share.createdAt
+            let date2 = share2.share.createdAt
+
+            if date1 != date2 {
+                // More recent dates come first
+                return date1 > date2
+            } else {
+                // For identical timestamps, use ID for stable ordering (DESC to match DB behavior)
+                return share1.share.id.uuidString > share2.share.id.uuidString
+            }
+        }
     }
 
     // Define ordering for section headers (lower number = more recent)
@@ -292,9 +308,15 @@ struct FeedView: View {
             }
 
             await MainActor.run {
-                networkShares = sharesWithUsers
-                referenceDate = Date() // Update reference date when data loads
-                updateCachedGrouping() // Update cached sections
+                // Only update if data actually changed
+                let hasChanged = networkShares.count != sharesWithUsers.count ||
+                    !networkShares.elementsEqual(sharesWithUsers, by: { $0.share.id == $1.share.id })
+
+                if hasChanged {
+                    // Preserve the original order from the database (already sorted by created_at DESC)
+                    networkShares = sharesWithUsers
+                    updateCachedGrouping() // Update cached sections
+                }
                 isLoading = false
             }
 
@@ -420,34 +442,15 @@ struct NetworkShareRowView: View {
 
                 // Track Info
                 HStack(spacing: 12) {
-                    // Album Art
-                    if let artworkUrl = share.albumArtUrl,
-                       !artworkUrl.isEmpty,
-                       let url = URL(string: artworkUrl) {
-                        AsyncImage(url: url) { image in
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        } placeholder: {
-                            Color.gray.opacity(0.2)
-                        }
-                        .frame(width: 60, height: 60)
-                        .cornerRadius(8)
-                    } else {
-                        // Fallback for missing album art
-                        ZStack {
-                            LinearGradient(
-                                colors: [Color.purple.opacity(0.3), Color.blue.opacity(0.3)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                            Image(systemName: "music.note")
-                                .font(.system(size: 24))
-                                .foregroundColor(.white.opacity(0.7))
-                        }
-                        .frame(width: 60, height: 60)
-                        .cornerRadius(8)
-                    }
+                    // Album Art with automatic fallback for stale URLs
+                    RemoteImage(
+                        url: share.albumArtUrl,
+                        spotifyId: share.trackId,
+                        trackName: share.trackName,
+                        width: 60,
+                        height: 60,
+                        cornerRadius: 8
+                    )
 
                     VStack(alignment: .leading, spacing: 4) {
                         // Track Name
@@ -484,7 +487,7 @@ struct NetworkShareRowView: View {
                     }
                     .buttonStyle(.plain)
 
-                    // Play button
+                    // Play button (matching ProfileView style)
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 28))
                         .foregroundColor(isCurrentTrack ? .primary : .secondary)
@@ -501,12 +504,14 @@ struct NetworkShareRowView: View {
                 }
             }
             .padding(.vertical, 12)
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 12)
             .background(
                 isCurrentTrack
-                    ? Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.05)
+                    ? Color.primary.opacity(colorScheme == .dark ? 0.2 : 0.06)
                     : Color.clear
             )
+            .cornerRadius(8)
+            .padding(.horizontal, 4)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

@@ -20,30 +20,16 @@ struct FullScreenPlayerView: View {
                     VStack(spacing: 32) {
                         Spacer()
 
-                        // Album Art
-                        if let albumArtUrl = track.albumArtUrl, let url = URL(string: albumArtUrl) {
-                            AsyncImage(url: url) { image in
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                            } placeholder: {
-                                Rectangle()
-                                    .fill(Color.gray.opacity(0.2))
-                            }
-                            .frame(width: 300, height: 300)
-                            .cornerRadius(12)
-                            .shadow(color: Color.black.opacity(0.2), radius: 20, x: 0, y: 10)
-                        } else {
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(width: 300, height: 300)
-                                .cornerRadius(12)
-                                .overlay(
-                                    Image(systemName: "music.note")
-                                        .font(.system(size: 60))
-                                        .foregroundColor(.gray)
-                                )
-                        }
+                        // Album Art with automatic fallback for stale URLs
+                        RemoteImage(
+                            url: track.albumArtUrl,
+                            spotifyId: track.spotifyId,
+                            trackName: track.name,
+                            width: 300,
+                            height: 300,
+                            cornerRadius: 12
+                        )
+                        .shadow(color: Color.black.opacity(0.2), radius: 20, x: 0, y: 10)
 
                         // Track Info
                         VStack(spacing: 8) {

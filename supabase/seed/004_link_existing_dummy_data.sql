@@ -86,7 +86,7 @@ BEGIN
   INSERT INTO shares (sender_id, recipient_id, track_id, track_name, artist_name, album_art_url, message, status, created_at) VALUES
   (emma_id, my_user_id, '3n3Ppam7vgaVa1iaRUc9Lp', 'Mr. Brightside', 'The Killers', 'https://i.scdn.co/image/ab67616d0000b273ccdddd46119a4ff53eaf1f5d', 'This song never gets old! 🎉', 'sent', NOW() - INTERVAL '2 hours'),
   (marcus_id, my_user_id, '0VjIjW4GlUZAMYd2vXMi3b', 'Blinding Lights', 'The Weeknd', 'https://i.scdn.co/image/ab67616d0000b2738863bc11d2aa12b54f5aeb36', 'Perfect driving song 🚗💨', 'sent', NOW() - INTERVAL '5 hours'),
-  (sofia_id, my_user_id, '6habFhsOp2NvshLv26DqMb', 'Therefore I Am', 'Billie Eilish', 'https://i.scdn.co/image/ab67616d0000b273938eb6769c6c123a3cbebfae', 'Billie is just *chef''s kiss* 💋', 'sent', NOW() - INTERVAL '1 day'),
+  (sofia_id, my_user_id, '20R4HfKloPKgXDqU7UKk3x', 'Therefore I Am', 'Billie Eilish', 'https://i.scdn.co/image/ab67616d00001e022a038d3bf875d23e4aeaa84e', 'Billie is just *chef''s kiss* 💋', 'sent', NOW() - INTERVAL '1 day'),
   (tyler_id, my_user_id, '7qiZfU4dY1lWllzX7mPBI', 'Shape of You', 'Ed Sheeran', 'https://i.scdn.co/image/ab67616d0000b273ba5db46f4b838ef6027e6f96', 'Found this gem 😂', 'played', NOW() - INTERVAL '1 day'),
   (maya_id, my_user_id, '3qiyyUfYe7CRYLucrPmulD', 'Someone Like You', 'Adele', 'https://i.scdn.co/image/ab67616d0000b2732118bf9b198b05a95ded6300', 'Crying to this 😭', 'saved', NOW() - INTERVAL '2 days'),
   (alex_id, my_user_id, '0DiWol3AO6WpXZgp0goxAV', 'One Dance', 'Drake ft. Wizkid', 'https://i.scdn.co/image/ab67616d0000b273f46b9d202509a8f7384b90de', 'Summer vibes ☀️', 'sent', NOW() - INTERVAL '3 days'),
@@ -102,8 +102,8 @@ BEGIN
   -- FRIEND-TO-FRIEND (for feed)
   INSERT INTO shares (sender_id, recipient_id, track_id, track_name, artist_name, album_art_url, message, status, created_at) VALUES
   (emma_id, marcus_id, '4cOdK2wGLETKBW3PvgPWqT', 'Sunflower', 'Post Malone', 'https://i.scdn.co/image/ab67616d0000b273e2e352d89826aef6dbd5ff8f', 'Spider-verse 🕷️', 'sent', NOW() - INTERVAL '8 hours'),
-  (marcus_id, sofia_id, '7ytR5pFWmSjzHJIeQkgog4', 'HUMBLE.', 'Kendrick Lamar', 'https://i.scdn.co/image/ab67616d0000b2738b52c6b9bc4e43d873869699', 'Kendrick 🔥', 'played', NOW() - INTERVAL '12 hours'),
-  (sofia_id, tyler_id, '3WMj8moIAXJhHsyLaqIIHI', 'Peaches', 'Justin Bieber', 'https://i.scdn.co/image/ab67616d0000b273e6ca9cc11596dc34e8ac472d', 'Smooth vibes', 'sent', NOW() - INTERVAL '1 day'),
+  (marcus_id, sofia_id, '7KXjTSCq5nL1LoYtL7XAwS', 'HUMBLE.', 'Kendrick Lamar', 'https://i.scdn.co/image/ab67616d0000b2738b52c6b9bc4e43d873869699', 'Kendrick 🔥', 'played', NOW() - INTERVAL '12 hours'),
+  (sofia_id, tyler_id, '4iJyoBOLtHqaGxP12qzhQI', 'Peaches', 'Justin Bieber', 'https://i.scdn.co/image/ab67616d00001e02e6f407c7f3a0ec98845e4431', 'Smooth vibes', 'sent', NOW() - INTERVAL '1 day'),
   (tyler_id, alex_id, '6DCZcSspjsKoFjzjrWoCdn', 'God''s Plan', 'Drake', 'https://i.scdn.co/image/ab67616d0000b273f907de96b9a4fbc04accc0d5', 'This beat 🔥', 'sent', NOW() - INTERVAL '2 days');
 
   RAISE NOTICE '✅ Successfully linked dummy data to user %', my_user_id;
