@@ -223,6 +223,10 @@ struct FullScreenPlayerView: View {
     }
 
     private func openInSpotify(track: MusicItem) async throws {
+        print("🎵 Opening track in Spotify: '\(track.name)' by \(track.artistName ?? "Unknown")")
+        print("   Track ID: \(track.id)")
+        print("   Spotify ID: \(track.spotifyId ?? "nil")")
+
         // Use the exact Spotify ID if available, otherwise search
         let spotifyId: String
 

@@ -569,6 +569,7 @@ struct ShareRowView: View {
     }
 
     private func createMusicItem() -> MusicItem {
+        // The track_id in shares table stores the Spotify ID
         MusicItem(
             id: share.trackId,
             name: share.trackName,
@@ -577,7 +578,7 @@ struct ShareRowView: View {
             albumArtUrl: share.albumArtUrl,
             isrc: nil,
             playedAt: nil,
-            spotifyId: nil,
+            spotifyId: share.trackId, // Use track_id as Spotify ID
             appleMusicId: nil,
             popularity: nil,
             followerCount: nil
@@ -757,6 +758,7 @@ struct SentShareRowView: View {
     }
 
     private func createMusicItem() -> MusicItem {
+        // The track_id in shares table stores the Spotify ID
         MusicItem(
             id: share.trackId,
             name: share.trackName,
@@ -765,7 +767,7 @@ struct SentShareRowView: View {
             albumArtUrl: share.albumArtUrl,
             isrc: nil,
             playedAt: nil,
-            spotifyId: nil,
+            spotifyId: share.trackId, // Use track_id as Spotify ID
             appleMusicId: nil,
             popularity: nil,
             followerCount: nil
