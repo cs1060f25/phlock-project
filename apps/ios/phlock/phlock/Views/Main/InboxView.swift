@@ -264,7 +264,27 @@ struct InboxView: View {
             ? Array(groupedReceivedShares.keys)
             : Array(groupedSentShares.keys)
         return sections.sorted { section1, section2 in
-            sectionOrder(section1) < sectionOrder(section2)
+            // First compare special sections
+            let order1 = specialSectionOrder(section1)
+            let order2 = specialSectionOrder(section2)
+
+            if order1 != order2 {
+                return order1 < order2
+            }
+
+            // Both are regular date sections (order == 999)
+            // Parse and compare actual dates
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMMM d, yyyy"
+
+            if let date1 = formatter.date(from: section1),
+               let date2 = formatter.date(from: section2) {
+                // More recent dates come first
+                return date1 > date2
+            }
+
+            // Fallback to string comparison (shouldn't happen)
+            return section1 > section2
         }
     }
 
@@ -304,13 +324,13 @@ struct InboxView: View {
         }
     }
 
-    // Define ordering for section headers (lower number = more recent)
-    private func sectionOrder(_ section: String) -> Int {
+    // Define ordering for special section headers (lower number = more recent)
+    private func specialSectionOrder(_ section: String) -> Int {
         switch section {
         case "Today": return 0
         case "Yesterday": return 1
         case "This Week": return 2
-        default: return 3 // For specific dates, they'll be sorted within this group
+        default: return 999 // Regular date sections will be sorted by actual date
         }
     }
 
