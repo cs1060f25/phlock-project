@@ -496,8 +496,13 @@ class AuthServiceV2 {
 
     /// Update Spotify music data for existing user
     private func updateSpotifyMusicData(userId: UUID, accessToken: String) async throws {
+        print("🎵 Fetching fresh Spotify data for user: \(userId)")
+
         let recentlyPlayed = try await SpotifyService.shared.getRecentlyPlayed(accessToken: accessToken)
-        let _ = try await SpotifyService.shared.getTopArtists(accessToken: accessToken) // TODO: Update top artists too
+        let topArtists = try await SpotifyService.shared.getTopArtists(accessToken: accessToken)
+
+        print("📊 Fetched \(recentlyPlayed.items.count) recently played tracks")
+        print("🎤 Fetched \(topArtists.items.count) top artists")
 
         // Fetch existing platform_data
         let users: [User] = try await supabase
@@ -528,6 +533,25 @@ class AuthServiceV2 {
             )
         }
 
+        // Create new top artists list
+        let newTopArtists = topArtists.items.prefix(10).map { artist in
+            MusicItem(
+                id: artist.id,
+                name: artist.name,
+                artistName: nil,
+                previewUrl: nil,
+                albumArtUrl: artist.images?.first?.url,
+                isrc: nil,
+                playedAt: nil,
+                spotifyId: artist.id,
+                appleMusicId: nil,
+                popularity: nil,
+                followerCount: nil
+            )
+        }
+
+        print("🔄 Updating platform_data with \(newTopTracks.count) tracks and \(newTopArtists.count) artists")
+
         let updatedData = PlatformUserData(
             spotifyEmail: platformData.spotifyEmail,
             spotifyDisplayName: platformData.spotifyDisplayName,
@@ -536,7 +560,7 @@ class AuthServiceV2 {
             spotifyProduct: platformData.spotifyProduct,
             appleMusicUserId: platformData.appleMusicUserId,
             appleMusicStorefront: platformData.appleMusicStorefront,
-            topArtists: platformData.topArtists,
+            topArtists: Array(newTopArtists),
             topTracks: Array(newTopTracks),
             recentlyPlayed: Array(newTopTracks),
             playlists: platformData.playlists

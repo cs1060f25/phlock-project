@@ -8,6 +8,7 @@ struct ProfileView: View {
     @Environment(\.colorScheme) var colorScheme
     @State private var showEditProfile = false
     @State private var isRefreshing = false
+    @State private var refreshCount = 0 // Force view refresh
 
     var body: some View {
         ScrollView {
@@ -128,8 +129,15 @@ struct ProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
             // Pull to refresh
+            print("🔄 User initiated pull-to-refresh on ProfileView")
             await authState.refreshMusicData()
+            refreshCount += 1 // Force view to re-render
+            print("✅ Refresh completed. Current tracks count: \(authState.currentUser?.platformData?.topTracks?.count ?? 0)")
+            if let firstTrack = authState.currentUser?.platformData?.topTracks?.first {
+                print("   Latest track: \(firstTrack.name) - played at: \(firstTrack.playedAt?.description ?? "unknown")")
+            }
         }
+        .id(refreshCount) // Force view refresh when refreshCount changes
         .sheet(isPresented: $showEditProfile) {
             EditProfileView()
         }
@@ -190,6 +198,11 @@ struct MusicStatsCard: View {
     private var displayedItems: [MusicItem] {
         // Deduplicate items by ID, keeping only the most recent one
         var uniqueItems: [String: MusicItem] = [:]
+
+        print("🎵 MusicStatsCard rendering with \(items.count) items for \(title)")
+        if let firstItem = items.first {
+            print("   First item: \(firstItem.name) - played at: \(firstItem.playedAt?.description ?? "no timestamp")")
+        }
 
         for item in items {
             // If we haven't seen this item yet, or if this one is more recent, keep it

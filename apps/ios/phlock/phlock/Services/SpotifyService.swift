@@ -205,15 +205,20 @@ class SpotifyService: NSObject {
         return try JSONDecoder().decode(SpotifyPlaylistsResponse.self, from: data)
     }
 
-    func getRecentlyPlayed(accessToken: String, limit: Int = 20) async throws -> SpotifyRecentlyPlayedResponse {
+    func getRecentlyPlayed(accessToken: String, limit: Int = 50) async throws -> SpotifyRecentlyPlayedResponse {
         var components = URLComponents(string: "https://api.spotify.com/v1/me/player/recently-played")!
         components.queryItems = [
-            URLQueryItem(name: "limit", value: "\(limit)"),
+            URLQueryItem(name: "limit", value: "\(limit)"), // Get up to 50 tracks from Spotify
             URLQueryItem(name: "market", value: "from_token") // Use user's market for preview availability
         ]
 
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        // Add cache-busting headers to ensure fresh data
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue("no-cache", forHTTPHeaderField: "Pragma")
 
         let (data, _) = try await URLSession.shared.data(for: request)
         let response = try JSONDecoder().decode(SpotifyRecentlyPlayedResponse.self, from: data)
