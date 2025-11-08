@@ -233,10 +233,12 @@ struct FullScreenPlayerView: View {
 
         // Validate the track ID using the validate-track edge function
         print("   🔍 Validating track ID with Spotify API...")
+        print("   ISRC: \(track.isrc ?? "none")")
         let validatedTrack = try await validateTrack(
             name: track.name,
             artist: track.artistName ?? "Unknown",
-            existingId: track.spotifyId
+            existingId: track.spotifyId,
+            isrc: track.isrc
         )
 
         if let validated = validatedTrack {
@@ -287,11 +289,12 @@ struct FullScreenPlayerView: View {
     }
 
     /// Validate track ID using the validate-track edge function
-    private func validateTrack(name: String, artist: String, existingId: String?) async throws -> String? {
+    private func validateTrack(name: String, artist: String, existingId: String?, isrc: String?) async throws -> String? {
         struct ValidationRequest: Encodable {
             let trackId: String?
             let trackName: String
             let artistName: String
+            let isrc: String?  // For exact version matching
         }
 
         struct ValidationResponse: Decodable {
@@ -310,7 +313,8 @@ struct FullScreenPlayerView: View {
             let request = ValidationRequest(
                 trackId: existingId,
                 trackName: name,
-                artistName: artist
+                artistName: artist,
+                isrc: isrc
             )
 
             let response: ValidationResponse = try await PhlockSupabaseClient.shared.client.functions.invoke(

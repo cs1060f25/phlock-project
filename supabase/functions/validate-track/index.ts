@@ -10,6 +10,7 @@ interface TrackValidationRequest {
   trackId?: string;
   trackName?: string;
   artistName?: string;
+  isrc?: string;  // For exact version matching
 }
 
 interface SpotifyToken {
@@ -73,6 +74,37 @@ async function validateTrackId(trackId: string, accessToken: string): Promise<Sp
 }
 
 /**
+ * Search for a track by ISRC (most precise matching)
+ */
+async function searchByISRC(isrc: string, accessToken: string): Promise<SpotifyTrack | null> {
+  const query = `isrc:${isrc}`;
+  const encodedQuery = encodeURIComponent(query);
+
+  const response = await fetch(
+    `https://api.spotify.com/v1/search?q=${encodedQuery}&type=track&limit=1`,
+    {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    }
+  );
+
+  if (!response.ok) {
+    console.error('Spotify ISRC search failed:', await response.text());
+    return null;
+  }
+
+  const data = await response.json();
+
+  if (data.tracks && data.tracks.items.length > 0) {
+    console.log(`Found track by ISRC ${isrc}: ${data.tracks.items[0].name} by ${data.tracks.items[0].artists[0].name}`);
+    return data.tracks.items[0];
+  }
+
+  return null;
+}
+
+/**
  * Parse artist name to extract all artists (handles "ft.", "feat.", "&", etc.)
  */
 function parseArtists(artistName: string): string[] {
@@ -130,19 +162,42 @@ async function searchTrack(trackName: string, artistName: string, accessToken: s
   const data = await response.json();
 
   if (data.tracks && data.tracks.items.length > 0) {
-    // Find all exact matches (name + all artists)
-    const exactMatches = data.tracks.items.filter((track: SpotifyTrack) => {
-      const nameMatch = track.name.toLowerCase() === trackName.toLowerCase();
+    // Find all tracks that match the name and have all the expected artists
+    const candidateMatches = data.tracks.items.filter((track: SpotifyTrack) => {
+      // Check if track name matches (with or without feat. suffix)
+      const trackNameLower = track.name.toLowerCase();
+      const expectedNameLower = trackName.toLowerCase();
+      const nameMatch = trackNameLower === expectedNameLower ||
+                       trackNameLower.startsWith(expectedNameLower + ' (') ||
+                       trackNameLower.startsWith(expectedNameLower + ' -');
+
       const artistMatch = artistsMatch(track.artists, artistName);
       return nameMatch && artistMatch;
     });
 
-    if (exactMatches.length > 0) {
-      // If multiple exact matches, return the most popular one
-      const sorted = exactMatches.sort((a: SpotifyTrack, b: SpotifyTrack) =>
+    if (candidateMatches.length > 0) {
+      // Prefer tracks with featured artist info in the title when artist name has featured artists
+      const hasFeaturedArtists = /\b(?:ft\.?|feat\.?|featuring)\b/i.test(artistName);
+
+      if (hasFeaturedArtists) {
+        const withFeatInTitle = candidateMatches.filter(track =>
+          /\(feat\.?\s|featuring\s/i.test(track.name)
+        );
+
+        if (withFeatInTitle.length > 0) {
+          const sorted = withFeatInTitle.sort((a: SpotifyTrack, b: SpotifyTrack) =>
+            b.popularity - a.popularity
+          );
+          console.log(`Found ${withFeatInTitle.length} match(es) with feat. in title, returning most popular: ${sorted[0].name} by ${sorted[0].artists.map(a => a.name).join(', ')} (popularity: ${sorted[0].popularity})`);
+          return sorted[0];
+        }
+      }
+
+      // Otherwise return most popular match
+      const sorted = candidateMatches.sort((a: SpotifyTrack, b: SpotifyTrack) =>
         b.popularity - a.popularity
       );
-      console.log(`Found ${exactMatches.length} exact match(es), returning most popular: ${sorted[0].name} by ${sorted[0].artists.map(a => a.name).join(', ')} (popularity: ${sorted[0].popularity})`);
+      console.log(`Found ${candidateMatches.length} match(es), returning most popular: ${sorted[0].name} by ${sorted[0].artists.map(a => a.name).join(', ')} (popularity: ${sorted[0].popularity})`);
       return sorted[0];
     }
 
@@ -176,7 +231,7 @@ serve(async (req) => {
   }
 
   try {
-    const { trackId, trackName, artistName } = await req.json() as TrackValidationRequest;
+    const { trackId, trackName, artistName, isrc } = await req.json() as TrackValidationRequest;
 
     // Get Spotify access token
     const tokenData = await getSpotifyToken();
@@ -200,13 +255,47 @@ serve(async (req) => {
           console.log(`  Found: "${validatedTrack.name}" by ${validatedTrack.artists.map(a => a.name).join(', ')}`);
           console.log(`  Expected: "${trackName}" by ${artistName}`);
           console.log('  Searching for correct track...');
-          // Track ID is valid but doesn't match - search for the correct one
-          const searchResult = await searchTrack(trackName, artistName, accessToken);
-          if (searchResult) {
-            validatedTrack = searchResult;
-            method = 'search_after_mismatch';
+
+          // First try ISRC if available (most precise)
+          if (isrc) {
+            console.log(`  Trying ISRC: ${isrc}`);
+            const isrcResult = await searchByISRC(isrc, accessToken);
+            if (isrcResult) {
+              // Verify the ISRC result matches the expected track
+              const nameMatches = isrcResult.name.toLowerCase() === trackName.toLowerCase();
+              const artistMatches = artistsMatch(isrcResult.artists, artistName);
+
+              if (nameMatches && artistMatches) {
+                validatedTrack = isrcResult;
+                method = 'isrc_after_mismatch';
+                console.log(`  ✓ Found via ISRC: ${isrcResult.name}`);
+              } else {
+                console.log(`  ✗ ISRC mismatch: found "${isrcResult.name}" but expected "${trackName}"`);
+                console.log(`  ✗ ISRC is incorrect, falling back to name/artist search`);
+              }
+            }
+          }
+
+          // Fall back to name/artist search if ISRC didn't work or mismatched
+          if (!validatedTrack || method === 'validation') {
+            const searchResult = await searchTrack(trackName, artistName, accessToken);
+            if (searchResult) {
+              validatedTrack = searchResult;
+              method = 'search_after_mismatch';
+            }
           }
         }
+      }
+    }
+    // If we have ISRC, use that first (most precise)
+    else if (isrc) {
+      validatedTrack = await searchByISRC(isrc, accessToken);
+      method = 'isrc';
+
+      // Fall back to name/artist if ISRC doesn't work
+      if (!validatedTrack && trackName && artistName) {
+        validatedTrack = await searchTrack(trackName, artistName, accessToken);
+        method = 'search_after_isrc_fail';
       }
     }
     // Otherwise, search by name and artist
@@ -216,7 +305,7 @@ serve(async (req) => {
     }
     else {
       return new Response(
-        JSON.stringify({ error: 'Either trackId or both trackName and artistName are required' }),
+        JSON.stringify({ error: 'Either trackId, isrc, or both trackName and artistName are required' }),
         {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
