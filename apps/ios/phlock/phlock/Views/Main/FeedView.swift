@@ -4,6 +4,7 @@ import SwiftUI
 enum FeedDestination: Hashable {
     case profile
     case userProfile(User)
+    case conversation(User)
 }
 
 // MARK: - Feed Tab (Network Activity)
@@ -86,6 +87,10 @@ struct FeedView: View {
                     ProfileView()
                 case .userProfile(let user):
                     UserProfileView(user: user)
+                case .conversation(let user):
+                    ConversationView(otherUser: user)
+                        .environmentObject(authState)
+                        .environmentObject(playbackService)
                 }
             }
         }

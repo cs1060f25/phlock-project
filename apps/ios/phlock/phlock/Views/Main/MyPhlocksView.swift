@@ -4,6 +4,7 @@ import SwiftUI
 enum PhlocksDestination: Hashable {
     case profile
     case phlockDetail(String) // Navigate to detailed phlock view by trackId
+    case conversation(User)
 }
 
 struct MyPhlocksView: View {
@@ -48,6 +49,10 @@ struct MyPhlocksView: View {
                     ProfileView()
                 case .phlockDetail(let trackId):
                     PhlockDetailView(trackId: trackId)
+                        .environmentObject(authState)
+                case .conversation(let user):
+                    ConversationView(otherUser: user)
+                        .environmentObject(authState)
                 }
             }
             .task {

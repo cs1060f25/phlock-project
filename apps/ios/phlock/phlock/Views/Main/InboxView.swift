@@ -3,6 +3,7 @@ import SwiftUI
 // Navigation destination types for Inbox
 enum InboxDestination: Hashable {
     case profile
+    case conversation(User)
 }
 
 struct TheCrateView: View {
@@ -44,6 +45,9 @@ struct TheCrateView: View {
                     switch destination {
                     case .profile:
                         ProfileView()
+                    case .conversation(let user):
+                        ConversationView(otherUser: user)
+                            .environmentObject(authState)
                     }
                 }
         }
