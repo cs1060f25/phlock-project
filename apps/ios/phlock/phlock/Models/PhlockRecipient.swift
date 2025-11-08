@@ -16,7 +16,7 @@ struct PhlockRecipient: Identifiable {
     /// Status icon for display
     var statusIcon: String {
         switch status {
-        case .sent:
+        case .sent, .received:
             return "paperplane"
         case .played:
             return "play.circle.fill"
@@ -24,13 +24,15 @@ struct PhlockRecipient: Identifiable {
             return "bookmark.fill"
         case .dismissed:
             return "xmark.circle"
+        case .forwarded:
+            return "arrow.turn.up.right"
         }
     }
 
     /// Status color for display
     var statusColor: String {
         switch status {
-        case .sent:
+        case .sent, .received:
             return "gray"
         case .played:
             return "green"
@@ -38,13 +40,15 @@ struct PhlockRecipient: Identifiable {
             return "purple"
         case .dismissed:
             return "red"
+        case .forwarded:
+            return "blue"
         }
     }
 
     /// Human-readable status text
     var statusText: String {
         switch status {
-        case .sent:
+        case .sent, .received:
             return "Sent"
         case .played:
             if let playedAt = playedAt {
@@ -58,6 +62,8 @@ struct PhlockRecipient: Identifiable {
             return "Saved"
         case .dismissed:
             return "Dismissed"
+        case .forwarded:
+            return "Forwarded"
         }
     }
 

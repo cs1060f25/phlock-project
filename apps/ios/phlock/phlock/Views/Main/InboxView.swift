@@ -61,7 +61,7 @@ struct InboxView: View {
 
     @State private var selectedFilter: SharesFilter = .received
     @State private var receivedShares: [ShareWithSender] = []
-    @State private var sentShares: [ShareWithRecipient] = []
+    @State private var savedShares: [ShareWithSender] = []
     @State private var isLoading = true
     @State private var isRefreshing = false
 
@@ -71,7 +71,7 @@ struct InboxView: View {
 
     enum SharesFilter: String, CaseIterable {
         case received = "Received"
-        case sent = "Sent"
+        case saved = "Saved"
     }
 
     var body: some View {
@@ -137,7 +137,7 @@ struct InboxView: View {
     }
 
     private var isCurrentViewEmpty: Bool {
-        selectedFilter == .received ? receivedShares.isEmpty : sentShares.isEmpty
+        selectedFilter == .received ? receivedShares.isEmpty : savedShares.isEmpty
     }
 
     // MARK: - Empty State
@@ -147,15 +147,15 @@ struct InboxView: View {
             Spacer()
 
             VStack(spacing: 12) {
-                Text(selectedFilter == .received ? "🎵" : "📤")
+                Text(selectedFilter == .received ? "🎵" : "💜")
                     .font(.system(size: 64))
 
-                Text(selectedFilter == .received ? "no shares yet" : "nothing sent yet")
+                Text(selectedFilter == .received ? "no shares yet" : "no saved songs yet")
                     .font(.nunitoSans(size: 28, weight: .bold))
 
                 Text(selectedFilter == .received
                     ? "when friends share songs with you,\nthey'll appear here"
-                    : "shares you send to friends\nwill appear here")
+                    : "songs you save from shares\nwill appear here")
                     .font(.nunitoSans(size: 15))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -163,6 +163,13 @@ struct InboxView: View {
 
                 if selectedFilter == .received {
                     Text("start by discovering music and\nsharing it with your friends!")
+                        .font(.nunitoSans(size: 13))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 4)
+                        .padding(.horizontal, 24)
+                } else {
+                    Text("swipe right on received shares\nto save them to your collection!")
                         .font(.nunitoSans(size: 13))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -217,10 +224,19 @@ struct InboxView: View {
                                 }
                         }
                     } else {
-                        ForEach(sortedSentShares(for: date), id: \.share.id) { shareWithRecipient in
-                            SentShareRowView(shareWithRecipient: shareWithRecipient)
+                        ForEach(sortedSavedShares(for: date), id: \.share.id) { shareWithSender in
+                            ShareRowView(shareWithSender: shareWithSender)
                                 .environmentObject(playbackService)
                                 .environmentObject(authState)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        Task {
+                                            await handleRemoveFromSaved(shareWithSender.share)
+                                        }
+                                    } label: {
+                                        Label("Remove", systemImage: "xmark")
+                                    }
+                                }
                         }
                     }
                 }
@@ -252,9 +268,10 @@ struct InboxView: View {
         }
     }
 
-    private var groupedSentShares: [String: [ShareWithRecipient]] {
-        Dictionary(grouping: sentShares) { shareWithRecipient in
-            formatDateSection(shareWithRecipient.share.createdAt)
+    private var groupedSavedShares: [String: [ShareWithSender]] {
+        Dictionary(grouping: savedShares) { shareWithSender in
+            // Group by saved_at date instead of created_at for saved shares
+            formatDateSection(shareWithSender.share.savedAt ?? shareWithSender.share.createdAt)
         }
     }
 
@@ -262,7 +279,7 @@ struct InboxView: View {
     private var sortedSections: [String] {
         let sections = selectedFilter == .received
             ? Array(groupedReceivedShares.keys)
-            : Array(groupedSentShares.keys)
+            : Array(groupedSavedShares.keys)
         return sections.sorted { section1, section2 in
             // First compare special sections
             let order1 = specialSectionOrder(section1)
@@ -306,13 +323,13 @@ struct InboxView: View {
         }
     }
 
-    // Get sent shares for a section, sorted by most recent first with stable secondary sort
-    private func sortedSentShares(for section: String) -> [ShareWithRecipient] {
-        guard let shares = groupedSentShares[section] else { return [] }
-        // Sort by created_at DESC (most recent first), then by ID DESC for stability
+    // Get saved shares for a section, sorted by most recent first with stable secondary sort
+    private func sortedSavedShares(for section: String) -> [ShareWithSender] {
+        guard let shares = groupedSavedShares[section] else { return [] }
+        // Sort by saved_at DESC (most recent first), then by ID DESC for stability
         return shares.sorted { share1, share2 in
-            let date1 = share1.share.createdAt
-            let date2 = share2.share.createdAt
+            let date1 = share1.share.savedAt ?? share1.share.createdAt
+            let date2 = share2.share.savedAt ?? share2.share.createdAt
 
             if date1 != date2 {
                 // More recent dates come first
@@ -368,19 +385,19 @@ struct InboxView: View {
                 }
             }
 
-            // Load sent shares
-            let sentSharesData = try await ShareService.shared.getSentShares(userId: currentUser.id)
-            var sharesWithRecipients: [ShareWithRecipient] = []
-            for share in sentSharesData {
-                if let recipient = try? await UserService.shared.getUser(userId: share.recipientId) {
-                    sharesWithRecipients.append(ShareWithRecipient(share: share, recipient: recipient))
+            // Load saved shares
+            let savedSharesData = try await ShareService.shared.getSavedShares(userId: currentUser.id)
+            var savedSharesWithSenders: [ShareWithSender] = []
+            for share in savedSharesData {
+                if let sender = try? await UserService.shared.getUser(userId: share.senderId) {
+                    savedSharesWithSenders.append(ShareWithSender(share: share, sender: sender))
                 }
             }
 
             await MainActor.run {
                 // Preserve the original order from the database (already sorted by created_at DESC)
                 receivedShares = sharesWithSenders
-                sentShares = sharesWithRecipients
+                savedShares = savedSharesWithSenders
                 isLoading = false
             }
         } catch {
@@ -430,6 +447,24 @@ struct InboxView: View {
             print("✅ Dismissed share: \(share.trackName)")
         } catch {
             print("❌ Failed to dismiss share: \(error)")
+        }
+    }
+
+    private func handleRemoveFromSaved(_ share: Share) async {
+        guard let currentUser = authState.currentUser else { return }
+
+        do {
+            // Mark as played to remove from saved collection
+            try await ShareService.shared.markAsPlayed(shareId: share.id, userId: currentUser.id)
+
+            // Remove from local saved state
+            await MainActor.run {
+                savedShares.removeAll { $0.share.id == share.id }
+            }
+
+            print("✅ Removed from saved: \(share.trackName)")
+        } catch {
+            print("❌ Failed to remove from saved: \(error)")
         }
     }
 }

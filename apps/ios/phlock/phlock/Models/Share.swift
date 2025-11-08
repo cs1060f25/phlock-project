@@ -14,6 +14,8 @@ struct Share: Codable, Identifiable {
     var status: ShareStatus
     let createdAt: Date
     let updatedAt: Date?
+    let playedAt: Date?
+    let savedAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -27,6 +29,8 @@ struct Share: Codable, Identifiable {
         case status
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case playedAt = "played_at"
+        case savedAt = "saved_at"
     }
 }
 

@@ -3,7 +3,7 @@ import SwiftUI
 // Navigation destination types for Phlocks
 enum PhlocksDestination: Hashable {
     case profile
-    case phlockDetail(UUID) // Navigate to detailed phlock view
+    case phlockDetail(String) // Navigate to detailed phlock view by trackId
 }
 
 struct MyPhlocksView: View {
@@ -11,7 +11,7 @@ struct MyPhlocksView: View {
     @Environment(\.colorScheme) var colorScheme
     @Binding var navigationPath: NavigationPath
 
-    @State private var phlocks: [PhlockPreview] = []
+    @State private var phlocks: [GroupedPhlock] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
 
@@ -46,8 +46,8 @@ struct MyPhlocksView: View {
                 switch destination {
                 case .profile:
                     ProfileView()
-                case .phlockDetail(let phlockId):
-                    PhlockDetailView(phlockId: phlockId)
+                case .phlockDetail(let trackId):
+                    PhlockDetailView(trackId: trackId)
                 }
             }
             .task {
@@ -73,8 +73,8 @@ struct MyPhlocksView: View {
         print("🔍 DEBUG: User display name: \(authState.currentUser?.displayName ?? "unknown")")
 
         do {
-            phlocks = try await PhlockService.shared.fetchPhlockPreviews(userId: userId)
-            print("✅ DEBUG: Successfully loaded \(phlocks.count) phlocks")
+            phlocks = try await PhlockService.shared.getPhlocksGroupedByTrack(userId: userId)
+            print("✅ DEBUG: Successfully loaded \(phlocks.count) grouped phlocks")
         } catch {
             errorMessage = "Failed to load phlocks: \(error.localizedDescription)"
             print("❌ Error loading phlocks: \(error)")
@@ -87,7 +87,7 @@ struct MyPhlocksView: View {
 // MARK: - Gallery View
 
 struct PhlockGalleryView: View {
-    let phlocks: [PhlockPreview]
+    let phlocks: [GroupedPhlock]
     @Binding var navigationPath: NavigationPath
     @Environment(\.colorScheme) var colorScheme
 
@@ -96,7 +96,7 @@ struct PhlockGalleryView: View {
             LazyVStack(spacing: 16) {
                 // Header info
                 VStack(spacing: 8) {
-                    Text("Your music network visualizations")
+                    Text("Songs you've shared, organized by track")
                         .font(.nunitoSans(size: 15))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -108,7 +108,7 @@ struct PhlockGalleryView: View {
                 ForEach(phlocks) { phlock in
                     PhlockCardView(phlock: phlock)
                         .onTapGesture {
-                            navigationPath.append(PhlocksDestination.phlockDetail(phlock.id))
+                            navigationPath.append(PhlocksDestination.phlockDetail(phlock.trackId))
                         }
                 }
             }
@@ -121,7 +121,7 @@ struct PhlockGalleryView: View {
 // MARK: - Phlock Card
 
 struct PhlockCardView: View {
-    let phlock: PhlockPreview
+    let phlock: GroupedPhlock
     @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
@@ -166,15 +166,15 @@ struct PhlockCardView: View {
                 // Metrics Row
                 HStack(spacing: 16) {
                     MetricBadge(
-                        icon: "person.2.fill",
-                        value: "\(phlock.totalReach)",
-                        label: "reached"
+                        icon: "paperplane.fill",
+                        value: "\(phlock.recipientCount)",
+                        label: phlock.recipientCount == 1 ? "recipient" : "recipients"
                     )
 
                     MetricBadge(
-                        icon: "arrow.triangle.branch",
-                        value: "\(phlock.maxDepth)",
-                        label: phlock.maxDepth == 1 ? "generation" : "generations"
+                        icon: "play.circle.fill",
+                        value: "\(Int(phlock.listenRate * 100))%",
+                        label: "listened"
                     )
 
                     MetricBadge(
@@ -185,7 +185,7 @@ struct PhlockCardView: View {
                 }
 
                 // Timestamp
-                Text(phlock.createdAt.shortRelativeTimeString())
+                Text("Last sent \(phlock.lastSentAt.shortRelativeTimeString())")
                     .font(.nunitoSans(size: 13))
                     .foregroundColor(.secondary)
             }
@@ -237,19 +237,19 @@ struct EmptyPhlocksView: View {
             Spacer()
 
             VStack(spacing: 12) {
-                Text("🎵")
+                Text("📤")
                     .font(.system(size: 64))
 
-                Text("No phlocks yet")
+                Text("No songs shared yet")
                     .font(.nunitoSans(size: 28, weight: .bold))
 
-                Text("track how your sent music propagates through the network")
+                Text("see all the songs you've sent to friends,\ngrouped by track with engagement metrics")
                     .font(.nunitoSans(size: 15))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
 
-                Text("once you start sending music to friends,\nyou'll see the phlock visualizations here")
+                Text("discover music and start sharing\nto see your phlocks here!")
                     .font(.nunitoSans(size: 13))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)

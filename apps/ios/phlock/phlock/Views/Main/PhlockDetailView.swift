@@ -1,251 +1,330 @@
 import SwiftUI
-import WebKit
 
 struct PhlockDetailView: View {
-    let phlockId: UUID
+    let trackId: String
 
-    @State private var visualizationData: PhlockVisualizationData?
+    @EnvironmentObject var authState: AuthenticationState
+    @EnvironmentObject var playbackService: PlaybackService
+    @Environment(\.colorScheme) var colorScheme
+
+    @State private var recipients: [PhlockRecipient] = []
+    @State private var groupedPhlock: GroupedPhlock?
     @State private var isLoading = true
     @State private var errorMessage: String?
-    @State private var isPlaying = false
-    @State private var showShareSheet = false
-    @State private var selectedNodeId: String?
-    @State private var viewType: VisualizationType = .network
-
-    enum VisualizationType: String, CaseIterable {
-        case stats = "Stats"
-        case network = "Network"
-        case timeline = "Timeline"
-
-        var icon: String {
-            switch self {
-            case .stats: return "chart.bar.fill"
-            case .network: return "circle.hexagongrid.fill"
-            case .timeline: return "timeline.selection"
-            }
-        }
-    }
 
     var body: some View {
         ZStack {
             if isLoading {
-                ProgressView("Loading phlock...")
+                ProgressView("Loading recipients...")
+                    .font(.nunitoSans(size: 15))
             } else if let error = errorMessage {
-                ErrorView(message: error) {
-                    Task { await loadVisualization() }
+                PhlockErrorView(message: error) {
+                    Task { await loadRecipients() }
                 }
-            } else if let data = visualizationData {
-                VStack(spacing: 0) {
-                    // View type picker
-                    Picker("View Type", selection: $viewType) {
-                        ForEach(VisualizationType.allCases, id: \.self) { type in
-                            Label(type.rawValue, systemImage: type.icon)
-                                .tag(type)
-                        }
-                    }
-                    .pickerStyle(SegmentedPickerStyle())
-                    .padding(.horizontal)
-                    .padding(.top)
+            } else if let phlock = groupedPhlock {
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // Track Header Section
+                        TrackHeaderView(phlock: phlock)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 16)
 
-                    // Show appropriate visualization
-                    Group {
-                        switch viewType {
-                        case .stats:
-                            PhlockStatsView(
-                                phlock: data.phlock,
-                                metrics: data.metrics,
-                                nodes: data.nodes,
-                                links: data.links
-                            )
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        case .network:
-                            PhlockNetworkView(visualizationData: data)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        case .timeline:
-                            PhlockTimelineView(visualizationData: data)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        // Summary Metrics
+                        SummaryMetricsView(phlock: phlock)
+                            .padding(.horizontal, 16)
+
+                        // Recipients List
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Recipients (\(recipients.count))")
+                                .font(.nunitoSans(size: 20, weight: .bold))
+                                .padding(.horizontal, 16)
+
+                            VStack(spacing: 0) {
+                                ForEach(recipients) { recipient in
+                                    RecipientRowView(recipient: recipient)
+
+                                    if recipient.id != recipients.last?.id {
+                                        Divider()
+                                            .padding(.leading, 76)
+                                    }
+                                }
+                            }
+                            .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.05))
+                            .cornerRadius(16)
+                            .padding(.horizontal, 16)
                         }
                     }
-                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: viewType)
+                    .padding(.bottom, 100) // Space for mini player
                 }
             }
         }
-        .navigationTitle(visualizationData?.phlock.trackName ?? "Phlock")
+        .navigationTitle("Phlock Details")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    showShareSheet = true
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                }
-            }
-        }
         .task {
-            await loadVisualization()
+            await loadRecipients()
         }
-        .sheet(isPresented: $showShareSheet) {
-            if let data = visualizationData {
-                ShareSheet(phlock: data.phlock, metrics: data.metrics)
-            }
+        .refreshable {
+            await loadRecipients()
         }
     }
 
-    private func loadVisualization() async {
+    private func loadRecipients() async {
+        guard let userId = authState.currentUser?.id else {
+            errorMessage = "Not authenticated"
+            isLoading = false
+            return
+        }
+
         isLoading = true
         errorMessage = nil
 
         do {
-            visualizationData = try await PhlockService.shared.fetchPhlockVisualization(phlockId: phlockId)
+            // Load recipients
+            recipients = try await PhlockService.shared.getPhlockRecipients(trackId: trackId, userId: userId)
+
+            // Load grouped phlock data for metrics
+            let allPhlocks = try await PhlockService.shared.getPhlocksGroupedByTrack(userId: userId)
+            groupedPhlock = allPhlocks.first { $0.trackId == trackId }
+
+            print("✅ Loaded \(recipients.count) recipients for track \(trackId)")
         } catch {
-            errorMessage = "Failed to load visualization: \(error.localizedDescription)"
-            print("❌ Error loading phlock visualization: \(error)")
+            errorMessage = "Failed to load recipients: \(error.localizedDescription)"
+            print("❌ Error loading recipients: \(error)")
         }
 
         isLoading = false
     }
 }
 
-// Old WebView code removed - now using native SwiftUI visualization
+// MARK: - Track Header
 
-// MARK: - Metrics Panel
-
-struct PhlockMetricsPanel: View {
-    let metrics: PhlockMetrics
-    var viewType: PhlockDetailView.VisualizationType = .network
+struct TrackHeaderView: View {
+    let phlock: GroupedPhlock
     @Environment(\.colorScheme) var colorScheme
 
-    private var interactionHint: String {
-        switch viewType {
-        case .stats:
-            return "Scroll to explore detailed metrics and insights"
-        case .network:
-            return "Pinch to zoom • Drag to pan • Tap nodes to select"
-        case .timeline:
-            return "Scroll horizontally • Pinch to zoom • Tap events for details"
-        }
-    }
-
     var body: some View {
-        VStack(spacing: 16) {
-            // Interaction hint
-            Text(interactionHint)
-                .font(.nunitoSans(size: 13))
-                .foregroundColor(.secondary)
-
-            // Metrics Dashboard
-            HStack(spacing: 20) {
-                MetricCard(
-                    title: "Reach",
-                    value: "\(metrics.totalReach)",
-                    subtitle: "people"
-                )
-
-                MetricCard(
-                    title: "Generations",
-                    value: "\(metrics.generations)",
-                    subtitle: "levels deep"
-                )
-
-                MetricCard(
-                    title: "Save Rate",
-                    value: "\(Int(metrics.saveRate * 100))%",
-                    subtitle: "saved it"
-                )
+        HStack(spacing: 16) {
+            // Album Art
+            if let albumArtUrl = phlock.albumArtUrl, let url = URL(string: albumArtUrl) {
+                AsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.2))
+                }
+                .frame(width: 80, height: 80)
+                .cornerRadius(12)
+            } else {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(width: 80, height: 80)
+                    .cornerRadius(12)
+                    .overlay(
+                        Image(systemName: "music.note")
+                            .font(.system(size: 32))
+                            .foregroundColor(.gray)
+                    )
             }
-            .padding(.horizontal, 16)
 
-            // Virality Score
-            VStack(spacing: 8) {
-                Text("Virality Score")
+            // Track Info
+            VStack(alignment: .leading, spacing: 6) {
+                Text(phlock.trackName)
+                    .font(.nunitoSans(size: 18, weight: .bold))
+                    .lineLimit(2)
+
+                Text(phlock.artistName)
+                    .font(.nunitoSans(size: 15))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+
+                Text("Last sent \(phlock.lastSentAt.shortRelativeTimeString())")
                     .font(.nunitoSans(size: 13))
                     .foregroundColor(.secondary)
-
-                HStack(spacing: 4) {
-                    ForEach(0..<10, id: \.self) { index in
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(index < Int(metrics.viralityScore) ? Color.green : Color.gray.opacity(0.2))
-                            .frame(height: 6)
-                    }
-                }
-                .padding(.horizontal, 40)
-
-                Text(String(format: "%.1f / 10", metrics.viralityScore))
-                    .font(.nunitoSans(size: 16, weight: .bold))
             }
+
+            Spacer()
         }
-        .padding(20)
-        .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.05))
-        .cornerRadius(20)
-        .padding(.horizontal, 16)
     }
 }
 
-// MARK: - Metric Card
+// MARK: - Summary Metrics
 
-struct MetricCard: View {
-    let title: String
-    let value: String
-    let subtitle: String
-
+struct SummaryMetricsView: View {
+    let phlock: GroupedPhlock
     @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
-        VStack(spacing: 4) {
-            Text(title)
-                .font(.nunitoSans(size: 11))
-                .foregroundColor(.secondary)
+        VStack(spacing: 16) {
+            Text("Engagement Summary")
+                .font(.nunitoSans(size: 16, weight: .semiBold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 16) {
+                MetricBox(
+                    icon: "paperplane.fill",
+                    value: "\(phlock.recipientCount)",
+                    label: "Sent to"
+                )
+
+                MetricBox(
+                    icon: "play.circle.fill",
+                    value: "\(Int(phlock.listenRate * 100))%",
+                    label: "Listened"
+                )
+
+                MetricBox(
+                    icon: "heart.fill",
+                    value: "\(Int(phlock.saveRate * 100))%",
+                    label: "Saved"
+                )
+            }
+        }
+        .padding(16)
+        .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.05))
+        .cornerRadius(16)
+    }
+}
+
+struct MetricBox: View {
+    let icon: String
+    let value: String
+    let label: String
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 20))
+                .foregroundColor(.blue)
 
             Text(value)
-                .font(.nunitoSans(size: 22, weight: .bold))
+                .font(.nunitoSans(size: 20, weight: .bold))
 
-            Text(subtitle)
-                .font(.nunitoSans(size: 10))
+            Text(label)
+                .font(.nunitoSans(size: 12))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
+        .padding(.vertical, 16)
         .background(Color.gray.opacity(colorScheme == .dark ? 0.15 : 0.08))
         .cornerRadius(12)
     }
 }
 
-// MARK: - Share Sheet
+// MARK: - Recipient Row
 
-struct ShareSheet: View {
-    let phlock: PhlockVisualizationData.PhlockBasicInfo
-    let metrics: PhlockMetrics
-    @Environment(\.dismiss) var dismiss
+struct RecipientRowView: View {
+    let recipient: PhlockRecipient
+    @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 24) {
-                Text("Share your phlock")
-                    .font(.nunitoSans(size: 20, weight: .bold))
-                    .padding(.top, 20)
-
-                Text("Coming soon: Export visualization to social media")
-                    .font(.nunitoSans(size: 15))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-
-                Spacer()
+        HStack(spacing: 12) {
+            // Profile Photo
+            if let profilePhotoUrl = recipient.user.profilePhotoUrl,
+               let url = URL(string: profilePhotoUrl) {
+                AsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    Image(systemName: "person.circle.fill")
+                        .resizable()
+                        .foregroundColor(.gray)
+                }
+                .frame(width: 44, height: 44)
+                .clipShape(Circle())
+            } else {
+                Image(systemName: "person.circle.fill")
+                    .resizable()
+                    .foregroundColor(.gray)
+                    .frame(width: 44, height: 44)
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
+
+            // User Info
+            VStack(alignment: .leading, spacing: 4) {
+                Text(recipient.user.displayName)
+                    .font(.nunitoSans(size: 16, weight: .semiBold))
+
+                HStack(spacing: 6) {
+                    Image(systemName: recipient.statusIcon)
+                        .font(.system(size: 12))
+
+                    Text(recipient.statusText)
+                        .font(.nunitoSans(size: 13))
+                }
+                .foregroundColor(statusSwiftUIColor(recipient.statusColor))
+
+                if let message = recipient.message, !message.isEmpty {
+                    Text("\"\(message)\"")
+                        .font(.nunitoSans(size: 13, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                        .padding(.top, 2)
                 }
             }
+
+            Spacer()
+
+            // Status Icon
+            Image(systemName: recipient.statusIcon)
+                .font(.system(size: 24))
+                .foregroundColor(statusSwiftUIColor(recipient.statusColor))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    private func statusSwiftUIColor(_ colorName: String) -> Color {
+        switch colorName {
+        case "green": return .green
+        case "purple": return .purple
+        case "red": return .red
+        case "gray": return .gray
+        default: return .secondary
+        }
+    }
+}
+
+// MARK: - Error View
+
+struct PhlockErrorView: View {
+    let message: String
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 48))
+                .foregroundColor(.orange)
+
+            Text("Error")
+                .font(.nunitoSans(size: 20, weight: .semiBold))
+
+            Text(message)
+                .font(.nunitoSans(size: 15))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+
+            Button("Try Again") {
+                retry()
+            }
+            .font(.nunitoSans(size: 16, weight: .semiBold))
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
+            .background(Color.blue)
+            .foregroundColor(.white)
+            .cornerRadius(12)
         }
     }
 }
 
 #Preview {
     NavigationStack {
-        PhlockDetailView(phlockId: UUID())
+        PhlockDetailView(trackId: "example-track-id")
+            .environmentObject(AuthenticationState())
+            .environmentObject(PlaybackService.shared)
     }
 }
