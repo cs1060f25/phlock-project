@@ -42,10 +42,12 @@ UPDATE shares
 SET album_art_url = 'https://i.scdn.co/image/ab67616d00001e029416ed64daf84936d89e671c'
 WHERE track_name = 'One Dance' AND artist_name LIKE 'Drake%';
 
--- Levitating by Dua Lipa
+-- Levitating by Dua Lipa (feat. DaBaby version)
 UPDATE shares
-SET album_art_url = 'https://i.scdn.co/image/ab67616d00001e024bc66095f8a70bc4e6593f4f'
-WHERE track_name = 'Levitating' AND artist_name = 'Dua Lipa';
+SET track_id = '5nujrmhLynf4yMoMtj8AQF',
+    track_name = 'Levitating (feat. DaBaby)',
+    album_art_url = 'https://i.scdn.co/image/ab67616d00001e022172b607853fa89cefa2beb4'
+WHERE track_name LIKE 'Levitating%' AND artist_name = 'Dua Lipa';
 
 -- Sunflower by Post Malone
 UPDATE shares

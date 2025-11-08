@@ -90,7 +90,7 @@ BEGIN
   (tyler_id, my_user_id, '7qiZfU4dY1lWllzX7mPBI3', 'Shape of You', 'Ed Sheeran', 'https://i.scdn.co/image/ab67616d0000b273ba5db46f4b838ef6027e6f96', 'Found this gem 😂', 'played', NOW() - INTERVAL '1 day'),
   (maya_id, my_user_id, '1zwMYTA5nlNjZxYrvBB2pV', 'Someone Like You', 'Adele', 'https://i.scdn.co/image/ab67616d0000b2732118bf9b198b05a95ded6300', 'Crying to this 😭', 'saved', NOW() - INTERVAL '2 days'),
   (alex_id, my_user_id, '1zi7xx7UVEFkmKfv06H8x0', 'One Dance', 'Drake ft. Wizkid', 'https://i.scdn.co/image/ab67616d0000b273f46b9d202509a8f7384b90de', 'Summer vibes ☀️', 'sent', NOW() - INTERVAL '3 days'),
-  (jordan_id, my_user_id, '2SAqBLGA283SUiwJ3xOUVI', 'Levitating', 'Dua Lipa', 'https://i.scdn.co/image/ab67616d0000b273be841ba4bc24340152e3a79a', 'On repeat! 🔁', 'sent', NOW() - INTERVAL '4 days'),
+  (jordan_id, my_user_id, '5nujrmhLynf4yMoMtj8AQF', 'Levitating (feat. DaBaby)', 'Dua Lipa', 'https://i.scdn.co/image/ab67616d00001e022172b607853fa89cefa2beb4', 'On repeat! 🔁', 'sent', NOW() - INTERVAL '4 days'),
   (taylor_id, my_user_id, '0sf6QqfHFJYhYQDSEYR1cK', 'Watermelon Sugar', 'Harry Styles', 'https://i.scdn.co/image/ab67616d0000b2733c8896f56a1e09b234ce7e96', 'Harry ✨', 'sent', NOW() - INTERVAL '5 days');
 
   -- YOU SENT
