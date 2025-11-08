@@ -409,6 +409,123 @@ class ShareService {
         return shares
     }
 
+    /// Get saved shares for a user
+    /// - Parameter userId: The user's ID
+    /// - Returns: Array of saved shares, ordered by saved date
+    func getSavedShares(userId: UUID) async throws -> [Share] {
+        let shares: [Share] = try await supabase
+            .from("shares")
+            .select("*")
+            .eq("recipient_id", value: userId.uuidString)
+            .eq("status", value: ShareStatus.saved.rawValue)
+            .order("saved_at", ascending: false)
+            .limit(200) // Limit to recent 200 for performance
+            .execute()
+            .value
+
+        print("💾 Fetched \(shares.count) saved shares for user \(userId)")
+        return shares
+    }
+
+    // MARK: - Conversations
+
+    /// Get all shares between two users (conversation view)
+    /// - Parameters:
+    ///   - userId1: First user's ID
+    ///   - userId2: Second user's ID
+    /// - Returns: Array of shares between these users, ordered chronologically
+    func getConversation(userId1: UUID, userId2: UUID) async throws -> [Share] {
+        // Query shares in both directions
+        let shares: [Share] = try await supabase
+            .from("shares")
+            .select("*")
+            .or("and(sender_id.eq.\(userId1.uuidString),recipient_id.eq.\(userId2.uuidString)),and(sender_id.eq.\(userId2.uuidString),recipient_id.eq.\(userId1.uuidString))")
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+
+        print("💬 Fetched \(shares.count) shares in conversation between \(userId1) and \(userId2)")
+        return shares
+    }
+
+    // MARK: - Comments
+
+    /// Add a comment to a share
+    /// - Parameters:
+    ///   - shareId: The share's ID
+    ///   - userId: The commenter's ID
+    ///   - text: Comment text (max 280 characters)
+    ///   - parentCommentId: Optional parent comment for threading
+    /// - Returns: The created comment ID
+    func addComment(shareId: UUID, userId: UUID, text: String, parentCommentId: UUID? = nil) async throws -> UUID {
+        guard text.count <= 280 else {
+            throw ShareServiceError.commentTooLong
+        }
+
+        struct CommentInsert: Encodable {
+            let share_id: String
+            let user_id: String
+            let comment_text: String
+            let parent_comment_id: String?
+        }
+
+        struct CommentResponse: Decodable {
+            let id: UUID
+        }
+
+        let insert = CommentInsert(
+            share_id: shareId.uuidString,
+            user_id: userId.uuidString,
+            comment_text: text,
+            parent_comment_id: parentCommentId?.uuidString
+        )
+
+        let response: [CommentResponse] = try await supabase
+            .from("share_comments")
+            .insert(insert)
+            .select("id")
+            .execute()
+            .value
+
+        guard let commentId = response.first?.id else {
+            throw ShareServiceError.commentCreationFailed
+        }
+
+        print("💬 Created comment on share \(shareId)")
+        return commentId
+    }
+
+    /// Get comments for a share
+    /// - Parameter shareId: The share's ID
+    /// - Returns: Array of comments with user info
+    func getComments(shareId: UUID) async throws -> [ShareComment] {
+        let comments: [ShareComment] = try await supabase
+            .from("share_comments")
+            .select("*")
+            .eq("share_id", value: shareId.uuidString)
+            .order("created_at", ascending: true)
+            .execute()
+            .value
+
+        print("💬 Fetched \(comments.count) comments for share \(shareId)")
+        return comments
+    }
+
+    /// Delete a comment
+    /// - Parameters:
+    ///   - commentId: The comment's ID
+    ///   - userId: The user requesting deletion (must be comment author)
+    func deleteComment(commentId: UUID, userId: UUID) async throws {
+        try await supabase
+            .from("share_comments")
+            .delete()
+            .eq("id", value: commentId.uuidString)
+            .eq("user_id", value: userId.uuidString)
+            .execute()
+
+        print("🗑️ Deleted comment \(commentId)")
+    }
+
     // MARK: - Counts
 
     /// Get count of unplayed shares for a user
@@ -433,6 +550,8 @@ enum ShareServiceError: LocalizedError {
     case shareNotFound
     case invalidTrackData
     case noRecipients
+    case commentTooLong
+    case commentCreationFailed
 
     var errorDescription: String? {
         switch self {
@@ -442,6 +561,10 @@ enum ShareServiceError: LocalizedError {
             return "Invalid track data"
         case .noRecipients:
             return "No recipients specified"
+        case .commentTooLong:
+            return "Comment must be 280 characters or less"
+        case .commentCreationFailed:
+            return "Failed to create comment"
         }
     }
 }
