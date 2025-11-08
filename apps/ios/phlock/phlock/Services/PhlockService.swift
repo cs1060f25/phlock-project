@@ -199,6 +199,114 @@ class PhlockService {
 
         return previews
     }
+
+    // MARK: - Shares-Based Phlocks (New Approach)
+
+    /// Group user's sent shares by track to show songs they've shared
+    /// - Parameter userId: The user's ID
+    /// - Returns: Array of grouped phlocks with aggregated metrics
+    func getPhlocksGroupedByTrack(userId: UUID) async throws -> [GroupedPhlock] {
+        // Fetch all shares sent by this user
+        let shares: [Share] = try await supabase
+            .from("shares")
+            .select("*")
+            .eq("sender_id", value: userId.uuidString)
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+
+        print("📊 Found \(shares.count) total shares sent by user")
+
+        // Group shares by track_id
+        let grouped = Dictionary(grouping: shares) { $0.trackId }
+
+        // Convert to GroupedPhlock objects with metrics
+        var groupedPhlocks: [GroupedPhlock] = []
+
+        for (trackId, trackShares) in grouped {
+            // Use the most recent share for track metadata
+            guard let latestShare = trackShares.first else { continue }
+
+            // Calculate metrics
+            let recipientCount = trackShares.count
+            let playedCount = trackShares.filter { $0.status == .played || $0.status == .saved }.count
+            let savedCount = trackShares.filter { $0.status == .saved }.count
+            let forwardedCount = 0 // TODO: Track forwards in future
+
+            let listenRate = recipientCount > 0 ? Double(playedCount) / Double(recipientCount) : 0.0
+            let saveRate = recipientCount > 0 ? Double(savedCount) / Double(recipientCount) : 0.0
+
+            let groupedPhlock = GroupedPhlock(
+                trackId: trackId,
+                trackName: latestShare.trackName,
+                artistName: latestShare.artistName,
+                albumArtUrl: latestShare.albumArtUrl,
+                recipientCount: recipientCount,
+                totalReach: recipientCount, // Base reach, viral spread not yet implemented
+                generations: 1, // Placeholder for viral depth
+                playedCount: playedCount,
+                savedCount: savedCount,
+                forwardedCount: forwardedCount,
+                listenRate: listenRate,
+                saveRate: saveRate,
+                lastSentAt: latestShare.createdAt,
+                shares: trackShares
+            )
+
+            groupedPhlocks.append(groupedPhlock)
+        }
+
+        // Sort by most recent send date
+        groupedPhlocks.sort { $0.lastSentAt > $1.lastSentAt }
+
+        print("🎵 Grouped into \(groupedPhlocks.count) unique tracks")
+        return groupedPhlocks
+    }
+
+    /// Get all recipients for a specific track a user has sent
+    /// - Parameters:
+    ///   - trackId: The Spotify/Apple Music track ID
+    ///   - userId: The user who sent the shares
+    /// - Returns: Array of recipients with share metadata
+    func getPhlockRecipients(trackId: String, userId: UUID) async throws -> [PhlockRecipient] {
+        // Get all shares for this track sent by this user
+        let shares: [Share] = try await supabase
+            .from("shares")
+            .select("*")
+            .eq("sender_id", value: userId.uuidString)
+            .eq("track_id", value: trackId)
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+
+        print("📨 Found \(shares.count) shares of track \(trackId)")
+
+        // Fetch recipient user data
+        let recipientIds = shares.map { $0.recipientId }
+        let recipients = try await fetchUsers(userIds: recipientIds)
+        let recipientDict = Dictionary(uniqueKeysWithValues: recipients.map { ($0.id, $0) })
+
+        // Create PhlockRecipient objects with share status
+        var phlockRecipients: [PhlockRecipient] = []
+
+        for share in shares {
+            guard let user = recipientDict[share.recipientId] else { continue }
+
+            let recipient = PhlockRecipient(
+                user: user,
+                shareId: share.id,
+                status: share.status,
+                sentAt: share.createdAt,
+                playedAt: share.playedAt,
+                savedAt: share.savedAt,
+                message: share.message
+            )
+
+            phlockRecipients.append(recipient)
+        }
+
+        return phlockRecipients
+    }
 }
 
 // MARK: - Errors
