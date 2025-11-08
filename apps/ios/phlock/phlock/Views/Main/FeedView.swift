@@ -338,6 +338,21 @@ struct FeedView: View {
         do {
             let shares = try await ShareService.shared.getNetworkActivity(userId: currentUser.id)
 
+            // Debug: Log Levitating shares
+            for share in shares where share.trackName.lowercased().contains("levitating") {
+                print("🔍 [DEBUG] Levitating share from database:")
+                print("   Track ID: \(share.trackId)")
+                print("   Track Name: \(share.trackName)")
+                print("   Album Art: \(share.albumArtUrl ?? "nil")")
+                if let albumArt = share.albumArtUrl {
+                    if albumArt.contains("be841ba4bc24340152e3a79a") {
+                        print("   ⚠️  ❌ WRONG ARTWORK (Doja Cat Planet Her)")
+                    } else if albumArt.contains("2172b607853fa89cefa2beb4") {
+                        print("   ✅ CORRECT ARTWORK (Dua Lipa)")
+                    }
+                }
+            }
+
             // Fetch sender and recipient info for each share
             var sharesWithUsers: [NetworkShare] = []
             for share in shares {
