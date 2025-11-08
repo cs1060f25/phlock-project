@@ -9,6 +9,7 @@ struct MainView: View {
     @State private var feedNavigationPath = NavigationPath()
     @State private var discoverNavigationPath = NavigationPath()
     @State private var inboxNavigationPath = NavigationPath()
+    @State private var phlocksNavigationPath = NavigationPath()
     @State private var clearDiscoverSearchTrigger = 0
     @State private var refreshFeedTrigger = 0
     @State private var refreshInboxTrigger = 0
@@ -23,6 +24,7 @@ struct MainView: View {
                 feedNavigationPath: $feedNavigationPath,
                 discoverNavigationPath: $discoverNavigationPath,
                 inboxNavigationPath: $inboxNavigationPath,
+                phlocksNavigationPath: $phlocksNavigationPath,
                 clearDiscoverSearchTrigger: $clearDiscoverSearchTrigger,
                 refreshFeedTrigger: $refreshFeedTrigger,
                 refreshInboxTrigger: $refreshInboxTrigger,
@@ -44,6 +46,11 @@ struct MainView: View {
                         .environmentObject(authState)
                         .environmentObject(playbackService)
                         .environment(\.colorScheme, colorScheme)
+                ),
+                phlocksView: AnyView(
+                    MyPhlocksView(navigationPath: $phlocksNavigationPath)
+                        .environmentObject(authState)
+                        .environmentObject(playbackService)
                 )
             )
             .ignoresSafeArea(.keyboard)

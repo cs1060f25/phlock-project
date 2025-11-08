@@ -7,6 +7,7 @@ class TabBarCoordinator: NSObject, UITabBarControllerDelegate {
     var onFeedTabReselected: ((Int) -> Void)?  // Pass tap count
     var onDiscoverTabReselected: ((Int) -> Void)?  // Pass tap count
     var onInboxTabReselected: ((Int) -> Void)?  // Pass tap count
+    var onPhlocksTabReselected: ((Int) -> Void)?  // Pass tap count
     var onTabSelected: ((Int) -> Void)?
 
     // Track consecutive taps for each tab
@@ -46,6 +47,8 @@ class TabBarCoordinator: NSObject, UITabBarControllerDelegate {
                 self.onDiscoverTabReselected?(tapCount)
             case 2:
                 self.onInboxTabReselected?(tapCount)
+            case 3:
+                self.onPhlocksTabReselected?(tapCount)
             default:
                 break
             }
@@ -72,6 +75,7 @@ struct CustomTabBarView: UIViewControllerRepresentable {
     @Binding var feedNavigationPath: NavigationPath
     @Binding var discoverNavigationPath: NavigationPath
     @Binding var inboxNavigationPath: NavigationPath
+    @Binding var phlocksNavigationPath: NavigationPath
     @Binding var clearDiscoverSearchTrigger: Int
     @Binding var refreshFeedTrigger: Int
     @Binding var refreshInboxTrigger: Int
@@ -82,6 +86,7 @@ struct CustomTabBarView: UIViewControllerRepresentable {
     let feedView: AnyView
     let discoverView: AnyView
     let inboxView: AnyView
+    let phlocksView: AnyView
 
     func makeCoordinator() -> TabBarCoordinator {
         let coordinator = TabBarCoordinator()
@@ -143,6 +148,16 @@ struct CustomTabBarView: UIViewControllerRepresentable {
                 }
             }
         }
+        coordinator.onPhlocksTabReselected = { tapCount in
+            print("🔄 Phlocks tab reselected - tap #\(tapCount)")
+            DispatchQueue.main.async {
+                if self.phlocksNavigationPath.count > 0 {
+                    // Pop to root if in nested view
+                    self.phlocksNavigationPath = NavigationPath()
+                    print("✅ Phlocks navigation path reset")
+                }
+            }
+        }
         coordinator.onTabSelected = { index in
             DispatchQueue.main.async {
                 self.selectedTab = index
@@ -195,7 +210,14 @@ struct CustomTabBarView: UIViewControllerRepresentable {
             selectedImage: UIImage(systemName: "tray.fill")
         )
 
-        tabBarController.viewControllers = [feedVC, discoverVC, inboxVC]
+        let phlocksVC = UIHostingController(rootView: phlocksView)
+        phlocksVC.tabBarItem = UITabBarItem(
+            title: "phlocks",
+            image: UIImage(systemName: "chart.line.uptrend.xyaxis"),
+            selectedImage: UIImage(systemName: "chart.line.uptrend.xyaxis")
+        )
+
+        tabBarController.viewControllers = [feedVC, discoverVC, inboxVC, phlocksVC]
         tabBarController.selectedIndex = selectedTab
 
         return tabBarController
