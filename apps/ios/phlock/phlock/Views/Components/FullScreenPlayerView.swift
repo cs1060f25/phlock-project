@@ -1,4 +1,5 @@
 import SwiftUI
+import Supabase
 
 struct FullScreenPlayerView: View {
     @ObservedObject var playbackService: PlaybackService
@@ -227,16 +228,23 @@ struct FullScreenPlayerView: View {
         print("   Track ID: \(track.id)")
         print("   Spotify ID: \(track.spotifyId ?? "nil")")
 
-        // Use the exact Spotify ID if available, otherwise search
+        // ALWAYS validate track ID to ensure we open the correct track
         let spotifyId: String
 
-        if let existingSpotifyId = track.spotifyId, !existingSpotifyId.isEmpty {
-            // Use the exact track ID that was originally shared
-            print("   ✅ Using exact Spotify ID: \(existingSpotifyId)")
-            spotifyId = existingSpotifyId
+        // Validate the track ID using the validate-track edge function
+        print("   🔍 Validating track ID with Spotify API...")
+        let validatedTrack = try await validateTrack(
+            name: track.name,
+            artist: track.artistName ?? "Unknown",
+            existingId: track.spotifyId
+        )
+
+        if let validated = validatedTrack {
+            spotifyId = validated
+            print("   ✅ Using validated Spotify ID: \(spotifyId)")
         } else {
             // Fallback: Search for the track
-            print("   🔍 No Spotify ID available, searching: \(track.name) - \(track.artistName ?? "")")
+            print("   🔍 Validation failed, searching: \(track.name) - \(track.artistName ?? "")")
 
             let results = try await SearchService.shared.search(
                 query: "\(track.name) \(track.artistName ?? "")",
@@ -263,6 +271,7 @@ struct FullScreenPlayerView: View {
             spotifyId = foundTrack.spotifyId ?? foundTrack.id
             print("   ✅ Found match: \(foundTrack.name) (ID: \(spotifyId))")
         }
+
         let spotifyURL = URL(string: "spotify:track:\(spotifyId)")
         let webURL = URL(string: "https://open.spotify.com/track/\(spotifyId)")
 
@@ -274,6 +283,50 @@ struct FullScreenPlayerView: View {
                 print("   ✅ Opening in Spotify web player")
                 UIApplication.shared.open(webURL)
             }
+        }
+    }
+
+    /// Validate track ID using the validate-track edge function
+    private func validateTrack(name: String, artist: String, existingId: String?) async throws -> String? {
+        struct ValidationRequest: Encodable {
+            let trackId: String?
+            let trackName: String
+            let artistName: String
+        }
+
+        struct ValidationResponse: Decodable {
+            let success: Bool
+            let method: String?
+            let track: ValidatedTrack?
+
+            struct ValidatedTrack: Decodable {
+                let id: String
+                let name: String
+                let artistName: String
+            }
+        }
+
+        do {
+            let request = ValidationRequest(
+                trackId: existingId,
+                trackName: name,
+                artistName: artist
+            )
+
+            let response: ValidationResponse = try await PhlockSupabaseClient.shared.client.functions.invoke(
+                "validate-track",
+                options: FunctionInvokeOptions(body: request)
+            )
+
+            if response.success, let track = response.track {
+                print("   ✅ Track validated via \(response.method ?? "unknown"): \(track.id)")
+                return track.id
+            }
+
+            return nil
+        } catch {
+            print("   ⚠️ Track validation failed: \(error.localizedDescription)")
+            return nil
         }
     }
 
