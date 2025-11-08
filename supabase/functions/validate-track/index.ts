@@ -73,15 +73,48 @@ async function validateTrackId(trackId: string, accessToken: string): Promise<Sp
 }
 
 /**
+ * Parse artist name to extract all artists (handles "ft.", "feat.", "&", etc.)
+ */
+function parseArtists(artistName: string): string[] {
+  // Split on common delimiters for featured artists
+  const delimiters = /\s+(?:ft\.?|feat\.?|featuring|&|,|\|)\s+/gi;
+  const artists = artistName.split(delimiters).map(a => a.trim().toLowerCase());
+  return artists;
+}
+
+/**
+ * Check if track artists match the expected artist name (handles featured artists)
+ */
+function artistsMatch(trackArtists: Array<{name: string}>, expectedArtistName: string): boolean {
+  const expectedArtists = parseArtists(expectedArtistName);
+  const trackArtistNames = trackArtists.map(a => a.name.toLowerCase());
+
+  // Check if all expected artists are present in the track's artists
+  // This handles cases like "Dua Lipa ft. DaBaby" matching ["Dua Lipa", "DaBaby"]
+  const allArtistsPresent = expectedArtists.every(expectedArtist =>
+    trackArtistNames.some(trackArtist =>
+      trackArtist.includes(expectedArtist) || expectedArtist.includes(trackArtist)
+    )
+  );
+
+  return allArtistsPresent;
+}
+
+/**
  * Search for a track on Spotify
  */
 async function searchTrack(trackName: string, artistName: string, accessToken: string): Promise<SpotifyTrack | null> {
-  // Build search query
-  const query = `track:"${trackName}" artist:"${artistName}"`;
+  // Parse all artists from the artist name
+  const allArtists = parseArtists(artistName);
+
+  // Build search query with all artists for precise matching
+  // For "Dua Lipa ft. DaBaby", this creates: track:"Levitating" artist:"dua lipa" artist:"dababy"
+  const artistQueries = allArtists.map(artist => `artist:"${artist}"`).join(' ');
+  const query = `track:"${trackName}" ${artistQueries}`;
   const encodedQuery = encodeURIComponent(query);
 
   const response = await fetch(
-    `https://api.spotify.com/v1/search?q=${encodedQuery}&type=track&limit=10`,
+    `https://api.spotify.com/v1/search?q=${encodedQuery}&type=track&limit=20`,
     {
       headers: {
         'Authorization': `Bearer ${accessToken}`
@@ -97,21 +130,36 @@ async function searchTrack(trackName: string, artistName: string, accessToken: s
   const data = await response.json();
 
   if (data.tracks && data.tracks.items.length > 0) {
-    // Try to find exact match
-    const exactMatch = data.tracks.items.find((track: SpotifyTrack) => {
+    // Find all exact matches (name + all artists)
+    const exactMatches = data.tracks.items.filter((track: SpotifyTrack) => {
       const nameMatch = track.name.toLowerCase() === trackName.toLowerCase();
-      const artistMatch = track.artists.some(artist =>
-        artist.name.toLowerCase() === artistName.toLowerCase() ||
-        artistName.toLowerCase().includes(artist.name.toLowerCase())
-      );
+      const artistMatch = artistsMatch(track.artists, artistName);
       return nameMatch && artistMatch;
     });
 
-    if (exactMatch) {
-      return exactMatch;
+    if (exactMatches.length > 0) {
+      // If multiple exact matches, return the most popular one
+      const sorted = exactMatches.sort((a: SpotifyTrack, b: SpotifyTrack) =>
+        b.popularity - a.popularity
+      );
+      console.log(`Found ${exactMatches.length} exact match(es), returning most popular: ${sorted[0].name} by ${sorted[0].artists.map(a => a.name).join(', ')} (popularity: ${sorted[0].popularity})`);
+      return sorted[0];
     }
 
-    // Return most popular result if no exact match
+    // Fallback: Return most popular result with matching name
+    const nameMatches = data.tracks.items.filter((track: SpotifyTrack) =>
+      track.name.toLowerCase() === trackName.toLowerCase()
+    );
+
+    if (nameMatches.length > 0) {
+      const sorted = nameMatches.sort((a: SpotifyTrack, b: SpotifyTrack) =>
+        b.popularity - a.popularity
+      );
+      console.log(`No exact match, using most popular: ${sorted[0].name} by ${sorted[0].artists.map(a => a.name).join(', ')}`);
+      return sorted[0];
+    }
+
+    // Last resort: Return most popular overall
     const sorted = data.tracks.items.sort((a: SpotifyTrack, b: SpotifyTrack) =>
       b.popularity - a.popularity
     );
@@ -145,12 +193,13 @@ serve(async (req) => {
       // Check if the validated track matches the expected name/artist
       if (validatedTrack && trackName && artistName) {
         const nameMatches = validatedTrack.name.toLowerCase() === trackName.toLowerCase();
-        const artistMatches = validatedTrack.artists.some(artist =>
-          artistName.toLowerCase().includes(artist.name.toLowerCase())
-        );
+        const artistMatches = artistsMatch(validatedTrack.artists, artistName);
 
         if (!nameMatches || !artistMatches) {
-          console.log('Track ID valid but metadata mismatch, searching for correct track...');
+          console.log(`Track ID valid but metadata mismatch:`);
+          console.log(`  Found: "${validatedTrack.name}" by ${validatedTrack.artists.map(a => a.name).join(', ')}`);
+          console.log(`  Expected: "${trackName}" by ${artistName}`);
+          console.log('  Searching for correct track...');
           // Track ID is valid but doesn't match - search for the correct one
           const searchResult = await searchTrack(trackName, artistName, accessToken);
           if (searchResult) {
