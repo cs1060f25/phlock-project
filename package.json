@@ -38,6 +38,7 @@
   "author": "woon-1",
   "license": "MIT",
   "dependencies": {
+    "@supabase/supabase-js": "^2.78.0",
     "jsonwebtoken": "^9.0.2"
   }
 }

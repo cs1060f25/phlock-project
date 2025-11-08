@@ -15,69 +15,69 @@ class ShareService {
     /// - Parameter track: The music item to validate
     /// - Returns: Validated music item with fresh metadata
     private func validateTrackMetadata(_ track: MusicItem) async throws -> MusicItem {
-        // Only validate if we have a Spotify ID
-        guard let spotifyId = track.spotifyId, !spotifyId.isEmpty else {
-            print("⚠️ No Spotify ID for '\(track.name)', skipping validation")
-            return track
-        }
+        print("🔍 Validating track: '\(track.name)' by \(track.artistName ?? "Unknown")")
 
         do {
-            struct TrackRequest: Encodable {
-                let trackId: String
+            struct ValidationRequest: Encodable {
+                let trackId: String?
+                let trackName: String
+                let artistName: String
             }
 
-            struct SpotifyTrackResponse: Decodable {
-                let id: String
-                let name: String
-                let artists: [Artist]
-                let album: Album
-                let external_ids: ExternalIds?
+            struct ValidationResponse: Decodable {
+                let success: Bool
+                let method: String?
+                let track: ValidatedTrack?
+                let error: String?
 
-                struct Artist: Decodable {
+                struct ValidatedTrack: Decodable {
+                    let id: String
                     let name: String
-                }
-
-                struct Album: Decodable {
-                    let images: [Image]
-
-                    struct Image: Decodable {
-                        let url: String
-                        let height: Int?
-                        let width: Int?
-                    }
-                }
-
-                struct ExternalIds: Decodable {
+                    let artistName: String
+                    let artists: [String]
+                    let albumArtUrl: String?
+                    let previewUrl: String?
                     let isrc: String?
+                    let popularity: Int?
+                    let spotifyUrl: String
                 }
             }
 
-            let request = TrackRequest(trackId: spotifyId)
-            let response: SpotifyTrackResponse = try await supabase.functions.invoke(
-                "get-spotify-track",
+            // Use the new validate-track edge function
+            let request = ValidationRequest(
+                trackId: track.spotifyId,
+                trackName: track.name,
+                artistName: track.artistName ?? "Unknown"
+            )
+
+            let response: ValidationResponse = try await supabase.functions.invoke(
+                "validate-track",
                 options: FunctionInvokeOptions(body: request)
             )
 
-            // Get medium-sized image (usually index 1) or fallback to first available
-            let freshAlbumArtUrl: String? = response.album.images.count > 1
-                ? response.album.images[1].url
-                : response.album.images.first?.url
+            guard response.success, let validatedTrack = response.track else {
+                print("⚠️ Could not validate track: \(response.error ?? "Unknown error")")
+                print("   Using original track data")
+                return track
+            }
 
-            print("✅ Validated track '\(response.name)' (ID: \(response.id))")
-            print("   Fresh album art: \(freshAlbumArtUrl ?? "nil")")
+            print("✅ Track validated via \(response.method ?? "unknown method")")
+            print("   Correct ID: \(validatedTrack.id)")
+            print("   Correct name: \(validatedTrack.name)")
+            print("   Album art: \(validatedTrack.albumArtUrl ?? "nil")")
 
-            // Return validated track with fresh metadata
+            // Return validated track with corrected metadata
             return MusicItem(
-                id: track.id,
-                name: response.name,  // Use validated name
-                artistName: response.artists.first?.name,  // Use validated artist
-                previewUrl: track.previewUrl,  // Keep original preview URL
-                albumArtUrl: freshAlbumArtUrl,  // Use fresh album art
-                isrc: response.external_ids?.isrc ?? track.isrc,
+                id: validatedTrack.id,  // Use corrected ID as primary ID
+                name: validatedTrack.name,  // Use validated name
+                artistName: validatedTrack.artistName,  // Use validated artist
+                previewUrl: validatedTrack.previewUrl ?? track.previewUrl,
+                albumArtUrl: validatedTrack.albumArtUrl,  // Use fresh album art
+                isrc: validatedTrack.isrc ?? track.isrc,
                 playedAt: track.playedAt,
-                spotifyId: response.id,  // Use validated Spotify ID
+                spotifyId: validatedTrack.id,  // Use validated Spotify ID
                 appleMusicId: track.appleMusicId,
-                popularity: track.popularity,
+                popularity: validatedTrack.popularity ?? track.popularity,
                 followerCount: track.followerCount
             )
         } catch {
