@@ -21,6 +21,13 @@ struct FeedView: View {
     @State private var networkShares: [NetworkShare] = []
     @State private var isLoading = true
     @State private var isRefreshing = false
+    // Commented out waveform-related state for potential future use
+    // @State private var pullProgress: CGFloat = 0
+    // @State private var isSimulatedPull = false
+    @State private var showQuickSendBar = false
+    @State private var trackToShare: MusicItem? = nil
+
+    // private let waveformReservedHeight: CGFloat = 26
 
     // IMPORTANT: Initialize reference date once and never change it during the view's lifetime
     // This ensures consistent date grouping (Today, Yesterday, etc.)
@@ -46,8 +53,14 @@ struct FeedView: View {
                 // Content
                 Group {
                     if isLoading {
-                        ProgressView("Loading feed...")
-                            .font(.nunitoSans(size: 15))
+                        VStack(spacing: 12) {
+                            ProgressView()
+                                .scaleEffect(1.5)
+                            Text("Loading feed...")
+                                .font(.nunitoSans(size: 15))
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxHeight: .infinity)
                     } else if networkShares.isEmpty {
                         emptyState
                     } else {
@@ -94,18 +107,54 @@ struct FeedView: View {
                 }
             }
         }
+        .overlay(
+            ZStack {
+                if showQuickSendBar, let track = trackToShare {
+                    QuickSendBar(
+                        track: track,
+                        onDismiss: {
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                showQuickSendBar = false
+                                trackToShare = nil
+                            }
+                        },
+                        onSendComplete: { sentToFriends in
+                            // Show toast if shares were sent
+                            if !sentToFriends.isEmpty {
+                                // Note: We can't show toast from here, need to pass it to child view
+                                print("✅ Sent to \(sentToFriends.count) friend\(sentToFriends.count == 1 ? "" : "s")")
+                            }
+                        },
+                        additionalBottomInset: QuickSendBar.Layout.overlayInset
+                    )
+                    .environmentObject(authState)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(999) // Ensure it's above everything
+                }
+            }
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showQuickSendBar)
+        )
         .task {
             await loadNetworkActivity()
         }
-        .refreshable {
-            await refreshNetworkActivity()
-        }
         .onChange(of: refreshTrigger) { oldValue, newValue in
             Task {
-                await refreshNetworkActivity()
+                // Scroll to top when refresh is triggered
+                withAnimation {
+                    scrollToTopTrigger += 1
+                }
+                await loadNetworkActivity()
             }
         }
     }
+
+    // Commented out waveform animation code for potential future use
+    // private func animatePullDown() async {
+    //     withAnimation(.easeOut(duration: 0.4)) {
+    //         pullProgress = 1.0
+    //     }
+    //     try? await Task.sleep(nanoseconds: 400_000_000)
+    // }
 
     // MARK: - Filter Tabs
 
@@ -172,37 +221,101 @@ struct FeedView: View {
     private var feedList: some View {
         ScrollViewReader { scrollProxy in
             List {
-                // Top anchor for scrolling
+                // Top anchor for scroll-to-top functionality
+                // Commented out waveform spacer for potential future use
+                // Color.clear
+                //     .frame(height: refreshSpacerHeight)
+                //     .animation(.easeOut(duration: 0.4), value: pullProgress)
+                //     .animation(.easeOut(duration: 0.4), value: isRefreshing)
+                //     .listRowSeparator(.hidden)
+                //     .listRowInsets(EdgeInsets())
+                //     .id("feedTop")
                 Color.clear
                     .frame(height: 1)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
                     .id("feedTop")
 
-                ForEach(cachedSortedSections, id: \.self) { date in
-                    Section(header: sectionHeader(for: date)) {
+                ForEach(Array(cachedSortedSections.enumerated()), id: \.element) { index, date in
+                    Section(header: sectionHeader(for: date, isFirst: index == 0)) {
                         ForEach(sortedShares(for: date), id: \.share.id) { networkShare in
-                            NetworkShareRowView(networkShare: networkShare, navigationPath: $navigationPath)
-                                .environmentObject(playbackService)
-                                .environmentObject(authState)
+                            NetworkShareRowView(
+                                networkShare: networkShare,
+                                navigationPath: $navigationPath,
+                                showQuickSendBar: $showQuickSendBar,
+                                trackToShare: $trackToShare
+                            )
+                            .environmentObject(playbackService)
+                            .environmentObject(authState)
                         }
                     }
                 }
             }
             .listStyle(.plain)
+            .environment(\.defaultMinListRowHeight, 0)
+            .scrollDismissesKeyboard(.interactively)
+            // Commented out waveform refresh for potential future use
+            // .hideRefreshControl()
+            // .pullToRefreshWithWaveform(
+            //     isRefreshing: $isRefreshing,
+            //     pullProgress: $pullProgress,
+            //     colorScheme: colorScheme,
+            //     overlayCompensation: simulatedPullOffset
+            // ) {
+            //     isRefreshing = true
+            //     await loadNetworkActivity()
+            //     try? await Task.sleep(nanoseconds: 1_300_000_000)
+            //     isRefreshing = false
+            // }
+            .refreshable {
+                isRefreshing = true
+                await loadNetworkActivity()
+                isRefreshing = false
+            }
+            .overlay(alignment: .top) {
+                if isRefreshing {
+                    VStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("Refreshing...")
+                            .font(.nunitoSans(size: 13))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 100)
+                    .background(
+                        Color(UIColor.systemBackground)
+                            .opacity(0.9)
+                            .cornerRadius(12)
+                            .padding(-12)
+                    )
+                }
+            }
             .onChange(of: scrollToTopTrigger) { _, _ in
                 withAnimation {
                     scrollProxy.scrollTo("feedTop", anchor: .top)
                 }
             }
+            // .offset(y: simulatedPullOffset)
         }
     }
 
+    // Commented out waveform-related computed properties for potential future use
+    // private var refreshSpacerHeight: CGFloat {
+    //     max(0, min(1, pullProgress)) * waveformReservedHeight
+    // }
+
+    // private var simulatedPullOffset: CGFloat {
+    //     isSimulatedPull ? waveformReservedHeight : 0
+    // }
+
     // MARK: - Section Header
 
-    private func sectionHeader(for date: String) -> some View {
+    private func sectionHeader(for date: String, isFirst: Bool) -> some View {
         Text(date)
             .font(.nunitoSans(size: 13, weight: .bold))
             .foregroundColor(.secondary)
             .textCase(.uppercase)
+            .padding(.top, isFirst ? 0 : 4)
     }
 
     // MARK: - Grouped Shares
@@ -343,21 +456,6 @@ struct FeedView: View {
         do {
             let shares = try await ShareService.shared.getNetworkActivity(userId: currentUser.id)
 
-            // Debug: Log Levitating shares
-            for share in shares where share.trackName.lowercased().contains("levitating") {
-                print("🔍 [DEBUG] Levitating share from database:")
-                print("   Track ID: \(share.trackId)")
-                print("   Track Name: \(share.trackName)")
-                print("   Album Art: \(share.albumArtUrl ?? "nil")")
-                if let albumArt = share.albumArtUrl {
-                    if albumArt.contains("be841ba4bc24340152e3a79a") {
-                        print("   ⚠️  ❌ WRONG ARTWORK (Doja Cat Planet Her)")
-                    } else if albumArt.contains("2172b607853fa89cefa2beb4") {
-                        print("   ✅ CORRECT ARTWORK (Dua Lipa)")
-                    }
-                }
-            }
-
             // Fetch sender and recipient info for each share
             var sharesWithUsers: [NetworkShare] = []
             for share in shares {
@@ -403,12 +501,6 @@ struct FeedView: View {
             }
         }
     }
-
-    private func refreshNetworkActivity() async {
-        isRefreshing = true
-        await loadNetworkActivity()
-        isRefreshing = false
-    }
 }
 
 // MARK: - Network Share Model
@@ -426,14 +518,14 @@ struct NetworkShare: Identifiable {
 struct NetworkShareRowView: View {
     let networkShare: NetworkShare
     @Binding var navigationPath: NavigationPath
+    @Binding var showQuickSendBar: Bool
+    @Binding var trackToShare: MusicItem?
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
     @Environment(\.colorScheme) var colorScheme
 
-    @State private var showShareSheet = false
     @State private var showToast = false
     @State private var toastMessage = ""
-    @State private var showConfetti = false
 
     private var share: Share { networkShare.share }
     private var sender: User { networkShare.sender }
@@ -449,12 +541,9 @@ struct NetworkShareRowView: View {
     }
 
     var body: some View {
-        Button {
-            handleTap()
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                // User Activity Header
-                HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
+            // User Activity Header
+            HStack(spacing: 8) {
                     // Sender Avatar
                     if let photoUrl = sender.profilePhotoUrl, let url = URL(string: photoUrl) {
                         AsyncImage(url: url) { image in
@@ -479,17 +568,27 @@ struct NetworkShareRowView: View {
 
                     // Activity Text
                     HStack(spacing: 4) {
-                        Text(sender.displayName)
-                            .font(.nunitoSans(size: 14, weight: .semiBold))
-                            .foregroundColor(.primary)
+                        Button {
+                            navigationPath.append(FeedDestination.conversation(sender))
+                        } label: {
+                            Text(sender.displayName)
+                                .font(.nunitoSans(size: 14, weight: .semiBold))
+                                .foregroundColor(.primary)
+                        }
+                        .buttonStyle(.plain)
 
                         Text("→")
                             .font(.nunitoSans(size: 13))
                             .foregroundColor(.secondary)
 
-                        Text(recipient.displayName)
-                            .font(.nunitoSans(size: 14, weight: .semiBold))
-                            .foregroundColor(.primary)
+                        Button {
+                            navigationPath.append(FeedDestination.conversation(recipient))
+                        } label: {
+                            Text(recipient.displayName)
+                                .font(.nunitoSans(size: 14, weight: .semiBold))
+                                .foregroundColor(.primary)
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     Spacer()
@@ -501,82 +600,68 @@ struct NetworkShareRowView: View {
                 }
 
                 // Track Info
-                HStack(spacing: 12) {
-                    // Album Art with automatic fallback for stale URLs
-                    RemoteImage(
-                        url: share.albumArtUrl,
-                        spotifyId: share.trackId,
-                        trackName: share.trackName,
-                        width: 60,
-                        height: 60,
-                        cornerRadius: 8
-                    )
+                Button {
+                    handleTap()
+                } label: {
+                    HStack(spacing: 12) {
+                        // Album Art with automatic fallback for stale URLs
+                        RemoteImage(
+                            url: share.albumArtUrl,
+                            spotifyId: share.trackId,
+                            trackName: share.trackName,
+                            width: 60,
+                            height: 60,
+                            cornerRadius: 8
+                        )
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        // Track Name
-                        Text(share.trackName)
-                            .font(.nunitoSans(size: 15, weight: isCurrentTrack ? .bold : .regular))
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
+                        VStack(alignment: .leading, spacing: 4) {
+                            // Track Name
+                            Text(share.trackName)
+                                .font(.nunitoSans(size: 15, weight: isCurrentTrack ? .bold : .regular))
+                                .foregroundColor(.primary)
+                                .lineLimit(1)
 
-                        // Artist Name
-                        Text(share.artistName)
-                            .font(.nunitoSans(size: 13))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-
-                        // Message if exists
-                        if let message = share.message, !message.isEmpty {
-                            Text("\"\(message)\"")
-                                .font(.nunitoSans(size: 12, weight: .medium))
+                            // Artist Name
+                            Text(share.artistName)
+                                .font(.nunitoSans(size: 13))
                                 .foregroundColor(.secondary)
-                                .lineLimit(2)
-                                .padding(.top, 2)
+                                .lineLimit(1)
                         }
+
+                        Spacer()
+
+                        // Share Button
+                        Button {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                trackToShare = createMusicItem()
+                                showQuickSendBar = true
+                            }
+                        } label: {
+                            Image(systemName: "paperplane")
+                                .font(.system(size: 20))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+
+                        // Play button (matching ProfileView style)
+                        Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(isCurrentTrack ? .primary : .secondary)
                     }
-
-                    Spacer()
-
-                    // Share Button
-                    Button {
-                        showShareSheet.toggle()
-                    } label: {
-                        Image(systemName: showShareSheet ? "paperplane.fill" : "paperplane")
-                            .font(.system(size: 20))
-                            .foregroundColor(showShareSheet ? .primary : .secondary)
-                    }
-                    .buttonStyle(.plain)
-
-                    // Play button (matching ProfileView style)
-                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 28))
-                        .foregroundColor(isCurrentTrack ? .primary : .secondary)
+                    .contentShape(Rectangle())
                 }
-
-                // QuickSendBar appears below track when sharing
-                if showShareSheet {
-                    QuickSendBar(track: createMusicItem()) { sentToFriends in
-                        handleShareComplete(sentToFriends: sentToFriends)
-                    }
-                    .environmentObject(authState)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .padding(.top, 8)
-                }
+                .buttonStyle(.plain)
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 12)
-            .background(
-                isCurrentTrack
-                    ? Color.primary.opacity(colorScheme == .dark ? 0.2 : 0.06)
-                    : Color.clear
-            )
-            .cornerRadius(8)
-            .padding(.horizontal, 4)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 12)
+        .background(
+            isCurrentTrack
+                ? Color.primary.opacity(colorScheme == .dark ? 0.2 : 0.06)
+                : Color.clear
+        )
+        .cornerRadius(8)
+        .padding(.horizontal, 4)
         .toast(isPresented: $showToast, message: toastMessage, type: .success, duration: 3.0)
-        .confetti(trigger: $showConfetti)
     }
 
     private func createMusicItem() -> MusicItem {
@@ -613,22 +698,6 @@ struct NetworkShareRowView: View {
         }
     }
 
-    private func handleShareComplete(sentToFriends: [User]) {
-        showShareSheet = false
-
-        // Show success feedback
-        let friendNames = sentToFriends.map { $0.displayName }.joined(separator: ", ")
-        toastMessage = sentToFriends.count == 1
-            ? "Sent to \(friendNames)"
-            : "Sent to \(sentToFriends.count) friends"
-
-        showToast = true
-        showConfetti = true
-
-        // Haptic feedback
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
-    }
 
     private func timeAgo(from date: Date) -> String {
         let now = Date()

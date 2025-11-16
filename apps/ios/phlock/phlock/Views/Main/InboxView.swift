@@ -14,7 +14,7 @@ struct TheCrateView: View {
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            InboxView(refreshTrigger: $refreshTrigger, scrollToTopTrigger: $scrollToTopTrigger)
+            InboxView(navigationPath: $navigationPath, refreshTrigger: $refreshTrigger, scrollToTopTrigger: $scrollToTopTrigger)
                 .navigationTitle("shares")
                 .navigationBarTitleDisplayMode(.large)
                 .toolbar {
@@ -59,6 +59,7 @@ struct TheCrateView: View {
 struct InboxView: View {
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var playbackService: PlaybackService
+    @Binding var navigationPath: NavigationPath
     @Binding var refreshTrigger: Int
     @Binding var scrollToTopTrigger: Int
     @Environment(\.colorScheme) var colorScheme
@@ -68,6 +69,13 @@ struct InboxView: View {
     @State private var savedShares: [ShareWithSender] = []
     @State private var isLoading = true
     @State private var isRefreshing = false
+    // Commented out waveform-related state for potential future use
+    // @State private var pullProgress: CGFloat = 0
+    // @State private var isSimulatedPull = false
+    @State private var showQuickSendBar = false
+    @State private var trackToShare: MusicItem? = nil
+
+    // private let waveformReservedHeight: CGFloat = 26
 
     // IMPORTANT: Initialize reference date once and never change it during the view's lifetime
     // This ensures consistent date grouping (Today, Yesterday, etc.)
@@ -88,27 +96,72 @@ struct InboxView: View {
             // Content
             Group {
                 if isLoading {
-                    ProgressView("Loading shares...")
-                        .font(.nunitoSans(size: 15))
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("Loading shares...")
+                            .font(.nunitoSans(size: 15))
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxHeight: .infinity)
                 } else if isCurrentViewEmpty {
                     emptyState
                 } else {
                     sharesList
                 }
             }
+            .refreshable {
+                isRefreshing = true
+                await loadShares()
+                isRefreshing = false
+            }
         }
+        .overlay(
+            ZStack {
+                if showQuickSendBar, let track = trackToShare {
+                    QuickSendBar(
+                        track: track,
+                        onDismiss: {
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                showQuickSendBar = false
+                                trackToShare = nil
+                            }
+                        },
+                        onSendComplete: { sentToFriends in
+                            if !sentToFriends.isEmpty {
+                                print("✅ Sent to \(sentToFriends.count) friend\(sentToFriends.count == 1 ? "" : "s")")
+                            }
+                        },
+                        additionalBottomInset: QuickSendBar.Layout.overlayInset
+                    )
+                    .environmentObject(authState)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(999)
+                }
+            }
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showQuickSendBar)
+        )
         .task {
             await loadShares()
         }
-        .refreshable {
-            await refreshShares()
-        }
         .onChange(of: refreshTrigger) { oldValue, newValue in
             Task {
-                await refreshShares()
+                // Scroll to top when refresh is triggered
+                withAnimation {
+                    scrollToTopTrigger += 1
+                }
+                await loadShares()
             }
         }
     }
+
+    // Commented out waveform animation code for potential future use
+    // private func animatePullDown() async {
+    //     withAnimation(.easeOut(duration: 0.4)) {
+    //         pullProgress = 1.0
+    //     }
+    //     try? await Task.sleep(nanoseconds: 400_000_000)
+    // }
 
     // MARK: - Filter Tabs
 
@@ -195,73 +248,137 @@ struct InboxView: View {
     private var sharesList: some View {
         ScrollViewReader { scrollProxy in
             List {
-                // Top anchor for scrolling
+                // Top anchor for scroll-to-top functionality
+                // Commented out waveform spacer for potential future use
+                // Color.clear
+                //     .frame(height: refreshSpacerHeight)
+                //     .animation(.easeOut(duration: 0.4), value: pullProgress)
+                //     .animation(.easeOut(duration: 0.4), value: isRefreshing)
+                //     .listRowSeparator(.hidden)
+                //     .listRowInsets(EdgeInsets())
+                //     .id("inboxTop")
                 Color.clear
                     .frame(height: 1)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
                     .id("inboxTop")
 
-                ForEach(sortedSections, id: \.self) { date in
-                Section(header: sectionHeader(for: date)) {
-                    if selectedFilter == .received {
-                        ForEach(sortedReceivedShares(for: date), id: \.share.id) { shareWithSender in
-                            ShareRowView(shareWithSender: shareWithSender)
+                ForEach(Array(sortedSections.enumerated()), id: \.element) { index, date in
+                    Section(header: sectionHeader(for: date, isFirst: index == 0)) {
+                        if selectedFilter == .received {
+                            ForEach(sortedReceivedShares(for: date), id: \.share.id) { shareWithSender in
+                                ShareRowView(
+                                    shareWithSender: shareWithSender,
+                                    navigationPath: $navigationPath,
+                                    showQuickSendBar: $showQuickSendBar,
+                                    trackToShare: $trackToShare
+                                )
                                 .environmentObject(playbackService)
                                 .environmentObject(authState)
-                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                    Button {
-                                        Task {
-                                            await handleSave(shareWithSender.share)
+                                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                        Button {
+                                            Task {
+                                                await handleSave(shareWithSender.share)
+                                            }
+                                        } label: {
+                                            Label("Save", systemImage: "heart.fill")
                                         }
-                                    } label: {
-                                        Label("Save", systemImage: "heart.fill")
+                                        .tint(.green)
                                     }
-                                    .tint(.green)
-                                }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
-                                        Task {
-                                            await handleDismiss(shareWithSender.share)
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button(role: .destructive) {
+                                            Task {
+                                                await handleDismiss(shareWithSender.share)
+                                            }
+                                        } label: {
+                                            Label("Dismiss", systemImage: "xmark")
                                         }
-                                    } label: {
-                                        Label("Dismiss", systemImage: "xmark")
                                     }
-                                }
-                        }
-                    } else {
-                        ForEach(sortedSavedShares(for: date), id: \.share.id) { shareWithSender in
-                            ShareRowView(shareWithSender: shareWithSender)
+                            }
+                        } else {
+                            ForEach(sortedSavedShares(for: date), id: \.share.id) { shareWithSender in
+                                ShareRowView(
+                                    shareWithSender: shareWithSender,
+                                    navigationPath: $navigationPath,
+                                    showQuickSendBar: $showQuickSendBar,
+                                    trackToShare: $trackToShare
+                                )
                                 .environmentObject(playbackService)
                                 .environmentObject(authState)
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
-                                        Task {
-                                            await handleRemoveFromSaved(shareWithSender.share)
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button(role: .destructive) {
+                                            Task {
+                                                await handleRemoveFromSaved(shareWithSender.share)
+                                            }
+                                        } label: {
+                                            Label("Remove", systemImage: "xmark")
                                         }
-                                    } label: {
-                                        Label("Remove", systemImage: "xmark")
                                     }
-                                }
+                            }
                         }
                     }
                 }
             }
-            }
             .listStyle(.plain)
+            .environment(\.defaultMinListRowHeight, 0)
+            .scrollDismissesKeyboard(.interactively)
+            // Commented out waveform refresh for potential future use
+            // .hideRefreshControl()
+            // .pullToRefreshWithWaveform(
+            //     isRefreshing: $isRefreshing,
+            //     pullProgress: $pullProgress,
+            //     colorScheme: colorScheme,
+            //     overlayCompensation: simulatedPullOffset
+            // ) {
+            //     isRefreshing = true
+            //     await loadShares()
+            //     try? await Task.sleep(nanoseconds: 1_300_000_000)
+            //     isRefreshing = false
+            // }
+            .overlay(alignment: .top) {
+                if isRefreshing {
+                    VStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("Refreshing...")
+                            .font(.nunitoSans(size: 13))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 100)
+                    .background(
+                        Color(UIColor.systemBackground)
+                            .opacity(0.9)
+                            .cornerRadius(12)
+                            .padding(-12)
+                    )
+                }
+            }
             .onChange(of: scrollToTopTrigger) { _, _ in
                 withAnimation {
                     scrollProxy.scrollTo("inboxTop", anchor: .top)
                 }
             }
+            // .offset(y: simulatedPullOffset)
         }
     }
 
+    // Commented out waveform-related computed properties for potential future use
+    // private var refreshSpacerHeight: CGFloat {
+    //     max(0, min(1, pullProgress)) * waveformReservedHeight
+    // }
+
+    // private var simulatedPullOffset: CGFloat {
+    //     isSimulatedPull ? waveformReservedHeight : 0
+    // }
+
     // MARK: - Section Header
 
-    private func sectionHeader(for date: String) -> some View {
+    private func sectionHeader(for date: String, isFirst: Bool) -> some View {
         Text(date)
             .font(.nunitoSans(size: 13, weight: .bold))
             .foregroundColor(.secondary)
             .textCase(.uppercase)
+            .padding(.top, isFirst ? 0 : 4)
     }
 
     // MARK: - Grouped Shares
@@ -412,12 +529,6 @@ struct InboxView: View {
         }
     }
 
-    private func refreshShares() async {
-        isRefreshing = true
-        await loadShares()
-        isRefreshing = false
-    }
-
     private func handleSave(_ share: Share) async {
         guard let currentUser = authState.currentUser else { return }
 
@@ -493,14 +604,15 @@ struct ShareWithRecipient: Identifiable {
 
 struct ShareRowView: View {
     let shareWithSender: ShareWithSender
+    @Binding var navigationPath: NavigationPath
+    @Binding var showQuickSendBar: Bool
+    @Binding var trackToShare: MusicItem?
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
     @Environment(\.colorScheme) var colorScheme
 
-    @State private var showShareSheet = false
     @State private var showToast = false
     @State private var toastMessage = ""
-    @State private var showConfetti = false
 
     private var share: Share { shareWithSender.share }
     private var sender: User { shareWithSender.sender }
@@ -515,96 +627,110 @@ struct ShareRowView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Button {
-                handleTap()
-            } label: {
-                HStack(spacing: 12) {
-                    // Album Art with automatic fallback for stale URLs
-                    RemoteImage(
-                        url: share.albumArtUrl,
-                        spotifyId: share.trackId,
-                        trackName: share.trackName,
-                        width: 60,
-                        height: 60,
-                        cornerRadius: 8
-                    )
+            HStack(spacing: 12) {
+                // Album Art with automatic fallback for stale URLs
+                RemoteImage(
+                    url: share.albumArtUrl,
+                    spotifyId: share.trackId,
+                    trackName: share.trackName,
+                    width: 60,
+                    height: 60,
+                    cornerRadius: 8
+                )
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        // Track Name
-                        Text(share.trackName)
-                            .font(.nunitoSans(size: 15, weight: isCurrentTrack ? .bold : .regular))
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
+                VStack(alignment: .leading, spacing: 6) {
+                    // Track Name
+                    Text(share.trackName)
+                        .font(.nunitoSans(size: 15, weight: isCurrentTrack ? .bold : .regular))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
 
-                        // Artist Name
-                        Text(share.artistName)
-                            .font(.nunitoSans(size: 13))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
+                    // Artist Name
+                    Text(share.artistName)
+                        .font(.nunitoSans(size: 13))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
 
-                        // Sender Info
-                        HStack(spacing: 4) {
-                            Text("from")
-                                .font(.nunitoSans(size: 12))
-                                .foregroundColor(.secondary)
+                    // Sender Profile Pic (clickable to conversation)
+                    Button {
+                        navigationPath.append(InboxDestination.conversation(sender))
+                    } label: {
+                        HStack(spacing: 6) {
+                            // Profile picture
+                            if let profilePhotoUrl = sender.profilePhotoUrl,
+                               let url = URL(string: profilePhotoUrl) {
+                                AsyncImage(url: url) { image in
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                } placeholder: {
+                                    Image(systemName: "person.circle.fill")
+                                        .resizable()
+                                        .foregroundColor(.gray)
+                                }
+                                .frame(width: 20, height: 20)
+                                .clipShape(Circle())
+                            } else {
+                                Image(systemName: "person.circle.fill")
+                                    .resizable()
+                                    .foregroundColor(.gray)
+                                    .frame(width: 20, height: 20)
+                            }
 
                             Text(sender.displayName)
                                 .font(.nunitoSans(size: 12, weight: .semiBold))
                                 .foregroundColor(.blue)
-
-                            if let message = share.message, !message.isEmpty {
-                                Text("·")
-                                    .foregroundColor(.secondary)
-                                Text("\"\(message)\"")
-                                    .font(.nunitoSans(size: 12, weight: .medium))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                            }
                         }
-                    }
-
-                    Spacer()
-
-                    // Share Button
-                    Button {
-                        showShareSheet.toggle()
-                    } label: {
-                        Image(systemName: "paperplane")
-                            .font(.system(size: 20))
-                            .foregroundColor(.secondary)
                     }
                     .buttonStyle(.plain)
 
-                    // Play button
+                    // Message on new line
+                    if let message = share.message, !message.isEmpty {
+                        Text(message)
+                            .font(.nunitoSans(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .padding(.top, 2)
+                    }
+                }
+
+                Spacer()
+
+                // Share Button
+                Button {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        trackToShare = createMusicItem()
+                        showQuickSendBar = true
+                    }
+                } label: {
+                    Image(systemName: "paperplane")
+                        .font(.system(size: 20))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+
+                // Play button
+                Button {
+                    handlePlayTap()
+                } label: {
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 28))
                         .foregroundColor(isCurrentTrack ? .primary : .secondary)
                 }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 12)
-                .background(
-                    isCurrentTrack
-                        ? Color.primary.opacity(colorScheme == .dark ? 0.2 : 0.06)
-                        : Color.clear
-                )
-                .cornerRadius(8)
-                .padding(.horizontal, 4)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-
-            // QuickSendBar appears below track when sharing
-            if showShareSheet {
-                QuickSendBar(track: createMusicItem()) { sentToFriends in
-                    handleShareComplete(sentToFriends: sentToFriends)
-                }
-                .environmentObject(authState)
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .padding(.top, 8)
-            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 12)
+            .background(
+                isCurrentTrack
+                    ? Color.primary.opacity(colorScheme == .dark ? 0.2 : 0.06)
+                    : Color.clear
+            )
+            .cornerRadius(8)
+            .padding(.horizontal, 4)
         }
         .toast(isPresented: $showToast, message: toastMessage, type: .success, duration: 3.0)
-        .confetti(trigger: $showConfetti)
     }
 
     private func createMusicItem() -> MusicItem {
@@ -624,7 +750,7 @@ struct ShareRowView: View {
         )
     }
 
-    private func handleTap() {
+    private func handlePlayTap() {
         let track = createMusicItem()
 
         if isPlaying {
@@ -642,22 +768,6 @@ struct ShareRowView: View {
         }
     }
 
-    private func handleShareComplete(sentToFriends: [User]) {
-        showShareSheet = false
-
-        // Show success feedback
-        let friendNames = sentToFriends.map { $0.displayName }.joined(separator: ", ")
-        toastMessage = sentToFriends.count == 1
-            ? "Sent to \(friendNames)"
-            : "Sent to \(sentToFriends.count) friends"
-
-        showToast = true
-        showConfetti = true
-
-        // Haptic feedback
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
-    }
 }
 
 // MARK: - Sent Share Row View
@@ -671,7 +781,6 @@ struct SentShareRowView: View {
     @State private var showShareSheet = false
     @State private var showToast = false
     @State private var toastMessage = ""
-    @State private var showConfetti = false
 
     private var share: Share { shareWithRecipient.share }
     private var recipient: User { shareWithRecipient.recipient }
@@ -740,9 +849,9 @@ struct SentShareRowView: View {
                     Button {
                         showShareSheet.toggle()
                     } label: {
-                        Image(systemName: "paperplane")
+                        Image(systemName: showShareSheet ? "paperplane.fill" : "paperplane")
                             .font(.system(size: 20))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(showShareSheet ? .primary : .secondary)
                     }
                     .buttonStyle(.plain)
 
@@ -751,6 +860,7 @@ struct SentShareRowView: View {
                         .font(.system(size: 28))
                         .foregroundColor(isCurrentTrack ? .primary : .secondary)
                 }
+                .contentShape(Rectangle())
                 .padding(.vertical, 12)
                 .padding(.horizontal, 12)
                 .background(
@@ -760,22 +870,31 @@ struct SentShareRowView: View {
                 )
                 .cornerRadius(8)
                 .padding(.horizontal, 4)
-                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             // QuickSendBar appears below track when sharing
             if showShareSheet {
-                QuickSendBar(track: createMusicItem()) { sentToFriends in
-                    handleShareComplete(sentToFriends: sentToFriends)
-                }
+                QuickSendBar(
+                    track: createMusicItem(),
+                    onDismiss: {
+                        withAnimation {
+                            showShareSheet = false
+                        }
+                    },
+                    onSendComplete: { sentToFriends in
+                        if !sentToFriends.isEmpty {
+                            print("✅ Sent to \(sentToFriends.count) friend\(sentToFriends.count == 1 ? "" : "s")")
+                        }
+                    },
+                    additionalBottomInset: QuickSendBar.Layout.embeddedInset
+                )
                 .environmentObject(authState)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .padding(.top, 8)
             }
         }
         .toast(isPresented: $showToast, message: toastMessage, type: .success, duration: 3.0)
-        .confetti(trigger: $showConfetti)
     }
 
     private var statusText: String {
@@ -825,22 +944,6 @@ struct SentShareRowView: View {
         }
     }
 
-    private func handleShareComplete(sentToFriends: [User]) {
-        showShareSheet = false
-
-        // Show success feedback
-        let friendNames = sentToFriends.map { $0.displayName }.joined(separator: ", ")
-        toastMessage = sentToFriends.count == 1
-            ? "Sent to \(friendNames)"
-            : "Sent to \(sentToFriends.count) friends"
-
-        showToast = true
-        showConfetti = true
-
-        // Haptic feedback
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
-    }
 }
 
 #Preview {

@@ -3,7 +3,7 @@ import SwiftUI
 // Navigation destination types for Phlocks
 enum PhlocksDestination: Hashable {
     case profile
-    case phlockDetail(String) // Navigate to detailed phlock view by trackId
+    case phlockDetail(GroupedPhlock) // Navigate to detailed phlock view
     case conversation(User)
 }
 
@@ -11,17 +11,27 @@ struct MyPhlocksView: View {
     @EnvironmentObject var authState: AuthenticationState
     @Environment(\.colorScheme) var colorScheme
     @Binding var navigationPath: NavigationPath
+    @Binding var refreshTrigger: Int
+    @Binding var scrollToTopTrigger: Int
 
     @State private var phlocks: [GroupedPhlock] = []
     @State private var isLoading = true
+    @State private var isRefreshing = false
     @State private var errorMessage: String?
+    @State private var hasLoadedOnce = false
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
             Group {
                 if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("Loading phlocks...")
+                            .font(.nunitoSans(size: 15))
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let error = errorMessage {
                     ErrorStateView(message: error) {
                         Task { await loadPhlocks() }
@@ -29,8 +39,35 @@ struct MyPhlocksView: View {
                 } else if phlocks.isEmpty {
                     EmptyPhlocksView()
                 } else {
-                    PhlockGalleryView(phlocks: phlocks, navigationPath: $navigationPath)
+                    PhlockGalleryView(
+                        phlocks: phlocks,
+                        navigationPath: $navigationPath,
+                        scrollToTopTrigger: $scrollToTopTrigger
+                    )
                 }
+            }
+            .overlay(alignment: .top) {
+                if isRefreshing && hasLoadedOnce {
+                    VStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("Refreshing...")
+                            .font(.nunitoSans(size: 13))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 100)
+                    .background(
+                        Color(UIColor.systemBackground)
+                            .opacity(0.9)
+                            .cornerRadius(12)
+                            .padding(-12)
+                    )
+                }
+            }
+            .refreshable {
+                isRefreshing = true
+                await loadPhlocks(forceRefresh: true)
+                isRefreshing = false
             }
             .navigationTitle("phlocks")
             .navigationBarTitleDisplayMode(.large)
@@ -47,8 +84,8 @@ struct MyPhlocksView: View {
                 switch destination {
                 case .profile:
                     ProfileView()
-                case .phlockDetail(let trackId):
-                    PhlockDetailView(trackId: trackId)
+                case .phlockDetail(let phlock):
+                    PhlockDetailView(phlock: phlock, navigationPath: $navigationPath)
                         .environmentObject(authState)
                 case .conversation(let user):
                     ConversationView(otherUser: user)
@@ -58,34 +95,55 @@ struct MyPhlocksView: View {
             .task {
                 await loadPhlocks()
             }
-            .refreshable {
-                await loadPhlocks()
+            .onChange(of: refreshTrigger) { _, _ in
+                Task {
+                    // Scroll to top when refresh is triggered
+                    withAnimation {
+                        scrollToTopTrigger += 1
+                    }
+                    isRefreshing = true
+                    await loadPhlocks(forceRefresh: true)
+                    isRefreshing = false
+                }
             }
         }
     }
 
-    private func loadPhlocks() async {
+    private func loadPhlocks(forceRefresh: Bool = false) async {
         guard let userId = authState.currentUser?.id else {
-            errorMessage = "Not authenticated"
-            isLoading = false
+            await MainActor.run {
+                errorMessage = "Not authenticated"
+                isLoading = false
+            }
             return
         }
 
-        isLoading = true
-        errorMessage = nil
+        await MainActor.run {
+            if !hasLoadedOnce {
+                isLoading = true
+            }
+            errorMessage = nil
+        }
 
-        print("🔍 DEBUG: Loading phlocks for user ID: \(userId)")
+        print("🔍 DEBUG: Loading phlocks for user ID: \(userId) (forceRefresh: \(forceRefresh))")
         print("🔍 DEBUG: User display name: \(authState.currentUser?.displayName ?? "unknown")")
 
         do {
-            phlocks = try await PhlockService.shared.getPhlocksGroupedByTrack(userId: userId)
-            print("✅ DEBUG: Successfully loaded \(phlocks.count) grouped phlocks")
+            let result = try await PhlockService.shared.getPhlocksGroupedByTrack(userId: userId, forceRefresh: forceRefresh)
+            print("✅ DEBUG: Successfully loaded \(result.count) grouped phlocks")
+            await MainActor.run {
+                phlocks = result
+                isLoading = false
+                errorMessage = nil
+                hasLoadedOnce = true
+            }
         } catch {
-            errorMessage = "Failed to load phlocks: \(error.localizedDescription)"
             print("❌ Error loading phlocks: \(error)")
+            await MainActor.run {
+                errorMessage = "Failed to load phlocks: \(error.localizedDescription)"
+                isLoading = false
+            }
         }
-
-        isLoading = false
     }
 }
 
@@ -94,31 +152,53 @@ struct MyPhlocksView: View {
 struct PhlockGalleryView: View {
     let phlocks: [GroupedPhlock]
     @Binding var navigationPath: NavigationPath
-    @Environment(\.colorScheme) var colorScheme
+    @Binding var scrollToTopTrigger: Int
+
+    @State private var isNavigating = false
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 16) {
-                // Header info
-                VStack(spacing: 8) {
-                    Text("Songs you've shared, organized by track")
-                        .font(.nunitoSans(size: 15))
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 8)
-                }
+        ScrollViewReader { scrollProxy in
+            ScrollView {
+                LazyVStack(spacing: 16) {
+                    Color.clear
+                        .frame(height: 1)
+                        .id("phlocksTop")
 
-                // Phlock cards
-                ForEach(phlocks) { phlock in
-                    PhlockCardView(phlock: phlock)
-                        .onTapGesture {
-                            navigationPath.append(PhlocksDestination.phlockDetail(phlock.trackId))
+                    VStack(spacing: 8) {
+                        Text("Songs you've shared, organized by track")
+                            .font(.nunitoSans(size: 15))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                            .padding(.top, 8)
+                    }
+
+                    ForEach(phlocks) { phlock in
+                        Button {
+                            guard !isNavigating else { return }
+                            isNavigating = true
+                            navigationPath.append(PhlocksDestination.phlockDetail(phlock))
+                            // Reset after a short delay
+                            Task {
+                                try? await Task.sleep(nanoseconds: 500_000_000)
+                                isNavigating = false
+                            }
+                        } label: {
+                            PhlockCardView(phlock: phlock)
                         }
+                        .buttonStyle(.plain)
+                        .disabled(isNavigating)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 100)
+            }
+            .scrollIndicators(.visible)
+            .onChange(of: scrollToTopTrigger) { _, _ in
+                withAnimation {
+                    scrollProxy.scrollTo("phlocksTop", anchor: .top)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 100) // Space for mini player
         }
     }
 }
@@ -306,6 +386,6 @@ struct ErrorStateView: View {
 }
 
 #Preview {
-    MyPhlocksView(navigationPath: .constant(NavigationPath()))
+    MyPhlocksView(navigationPath: .constant(NavigationPath()), refreshTrigger: .constant(0), scrollToTopTrigger: .constant(0))
         .environmentObject(AuthenticationState())
 }

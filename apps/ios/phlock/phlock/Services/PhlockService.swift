@@ -2,10 +2,36 @@ import Foundation
 import Supabase
 
 /// Service for phlock-related operations (fetching, building visualizations, etc.)
+private struct GroupedPhlockResponse: Decodable {
+    let trackId: String
+    let trackName: String?
+    let artistName: String?
+    let albumArtUrl: String?
+    let recipientCount: Int
+    let playedCount: Int
+    let savedCount: Int
+    let lastSentAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case trackId = "track_id"
+        case trackName = "track_name"
+        case artistName = "artist_name"
+        case albumArtUrl = "album_art_url"
+        case recipientCount = "recipient_count"
+        case playedCount = "played_count"
+        case savedCount = "saved_count"
+        case lastSentAt = "last_sent_at"
+    }
+}
+
 class PhlockService {
     static let shared = PhlockService()
 
     private let supabase = PhlockSupabaseClient.shared.client
+
+    // Cache for grouped phlocks to prevent slow repeated loads
+    private var phlocksCache: [UUID: (data: [GroupedPhlock], timestamp: Date)] = [:]
+    private let cacheExpirationSeconds: TimeInterval = 30 // Cache expires after 30 seconds
 
     private init() {}
 
@@ -43,26 +69,30 @@ class PhlockService {
     // MARK: - Fetch Phlock Nodes
 
     /// Fetch all nodes for a specific phlock with user information
+    /// Optimized to use a single query with joins instead of N+1 queries
     func fetchPhlockNodes(phlockId: UUID) async throws -> [PhlockNode] {
-        // Fetch nodes
+        // Try to fetch nodes with user data in a single query using Supabase foreign key joins
+        // This avoids the N+1 query problem where we fetch nodes then fetch users separately
         var nodes: [PhlockNode] = try await supabase
             .from("phlock_nodes")
-            .select("*")
+            .select("*, users(*)")  // Join with users table
             .eq("phlock_id", value: phlockId.uuidString)
             .order("depth", ascending: true)
             .execute()
             .value
 
-        // Fetch user data for all nodes
-        let userIds = nodes.map { $0.userId }
-        let users: [User] = try await fetchUsers(userIds: userIds)
+        // If the join didn't populate user data (backward compatibility), fallback to separate fetch
+        if nodes.contains(where: { $0.user == nil }) {
+            let userIds = nodes.map { $0.userId }
+            let users: [User] = try await fetchUsers(userIds: userIds)
 
-        // Create user dictionary for quick lookup
-        let userDict = Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
+            // Create user dictionary for quick lookup
+            let userDict = Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
 
-        // Attach user info to nodes
-        for i in 0..<nodes.count {
-            nodes[i].user = userDict[nodes[i].userId]
+            // Attach user info to nodes
+            for i in 0..<nodes.count {
+                nodes[i].user = userDict[nodes[i].userId]
+            }
         }
 
         return nodes
@@ -204,63 +234,88 @@ class PhlockService {
 
     /// Group user's sent shares by track to show songs they've shared
     /// - Parameter userId: The user's ID
+    /// - Parameter forceRefresh: If true, bypasses cache and fetches fresh data
     /// - Returns: Array of grouped phlocks with aggregated metrics
-    func getPhlocksGroupedByTrack(userId: UUID) async throws -> [GroupedPhlock] {
-        // Fetch all shares sent by this user
-        let shares: [Share] = try await supabase
-            .from("shares")
-            .select("*")
-            .eq("sender_id", value: userId.uuidString)
-            .order("created_at", ascending: false)
-            .execute()
-            .value
-
-        print("📊 Found \(shares.count) total shares sent by user")
-
-        // Group shares by track_id
-        let grouped = Dictionary(grouping: shares) { $0.trackId }
-
-        // Convert to GroupedPhlock objects with metrics
-        var groupedPhlocks: [GroupedPhlock] = []
-
-        for (trackId, trackShares) in grouped {
-            // Use the most recent share for track metadata
-            guard let latestShare = trackShares.first else { continue }
-
-            // Calculate metrics
-            let recipientCount = trackShares.count
-            let playedCount = trackShares.filter { $0.status == .played || $0.status == .saved }.count
-            let savedCount = trackShares.filter { $0.status == .saved }.count
-            let forwardedCount = 0 // TODO: Track forwards in future
-
-            let listenRate = recipientCount > 0 ? Double(playedCount) / Double(recipientCount) : 0.0
-            let saveRate = recipientCount > 0 ? Double(savedCount) / Double(recipientCount) : 0.0
-
-            let groupedPhlock = GroupedPhlock(
-                trackId: trackId,
-                trackName: latestShare.trackName,
-                artistName: latestShare.artistName,
-                albumArtUrl: latestShare.albumArtUrl,
-                recipientCount: recipientCount,
-                totalReach: recipientCount, // Base reach, viral spread not yet implemented
-                generations: 1, // Placeholder for viral depth
-                playedCount: playedCount,
-                savedCount: savedCount,
-                forwardedCount: forwardedCount,
-                listenRate: listenRate,
-                saveRate: saveRate,
-                lastSentAt: latestShare.createdAt,
-                shares: trackShares
-            )
-
-            groupedPhlocks.append(groupedPhlock)
+    func getPhlocksGroupedByTrack(userId: UUID, forceRefresh: Bool = false) async throws -> [GroupedPhlock] {
+        // Check cache first (unless force refresh)
+        if !forceRefresh, let cached = phlocksCache[userId] {
+            let age = Date().timeIntervalSince(cached.timestamp)
+            if age < cacheExpirationSeconds {
+                print("✅ Using cached phlocks (\(Int(age))s old)")
+                return cached.data
+            } else {
+                print("⏰ Cache expired (\(Int(age))s old), fetching fresh data")
+            }
         }
 
-        // Sort by most recent send date
-        groupedPhlocks.sort { $0.lastSentAt > $1.lastSentAt }
+        let startTime = Date()
+        print("🔍 Fetching phlocks for user \(userId) (forceRefresh: \(forceRefresh))")
 
-        print("🎵 Grouped into \(groupedPhlocks.count) unique tracks")
-        return groupedPhlocks
+        let params = ["p_user_id": userId.uuidString]
+
+        // Use the faster function without auth check for better performance
+        // The auth check is already done at the Swift level via authState
+        let queryTask = Task {
+            try await supabase
+                .rpc("get_user_phlocks_grouped_fast", params: params)
+                .execute()
+                .value as [GroupedPhlockResponse]
+        }
+
+        let summaries: [GroupedPhlockResponse]
+        do {
+            summaries = try await queryTask.value
+        } catch {
+            print("❌ Database query failed: \(error)")
+            // If we have cached data, return it instead of failing
+            if let cached = phlocksCache[userId] {
+                print("⚠️ Using stale cache due to query error (age: \(Int(Date().timeIntervalSince(cached.timestamp)))s)")
+                return cached.data
+            } else {
+                throw error
+            }
+        }
+
+        let duration = Date().timeIntervalSince(startTime)
+        print("🎵 Grouped into \(summaries.count) unique tracks (took \(String(format: "%.2f", duration))s)")
+
+        let result = summaries.map { summary in
+            let recipientCount = summary.recipientCount
+            let listenRate = recipientCount > 0 ? Double(summary.playedCount) / Double(recipientCount) : 0.0
+            let saveRate = recipientCount > 0 ? Double(summary.savedCount) / Double(recipientCount) : 0.0
+
+            return GroupedPhlock(
+                trackId: summary.trackId,
+                trackName: summary.trackName ?? "Unknown Track",
+                artistName: summary.artistName ?? "Unknown Artist",
+                albumArtUrl: summary.albumArtUrl,
+                recipientCount: recipientCount,
+                totalReach: recipientCount,
+                generations: 1,
+                playedCount: summary.playedCount,
+                savedCount: summary.savedCount,
+                forwardedCount: 0,
+                listenRate: listenRate,
+                saveRate: saveRate,
+                lastSentAt: summary.lastSentAt
+            )
+        }
+
+        // Cache the result
+        phlocksCache[userId] = (data: result, timestamp: Date())
+
+        return result
+    }
+
+    /// Clear the phlocks cache for a specific user or all users
+    func clearCache(userId: UUID? = nil) {
+        if let userId = userId {
+            phlocksCache.removeValue(forKey: userId)
+            print("🗑️ Cleared phlocks cache for user \(userId)")
+        } else {
+            phlocksCache.removeAll()
+            print("🗑️ Cleared all phlocks cache")
+        }
     }
 
     /// Get all recipients for a specific track a user has sent
