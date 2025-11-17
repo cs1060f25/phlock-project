@@ -19,6 +19,13 @@ struct DiscoverView: View {
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
     @FocusState private var isSearchFieldFocused: Bool
+    @State private var showQuickSendBar = false
+    @State private var trackToShare: MusicItem? = nil
+
+    // Recently played tracks state
+    @State private var recentlyPlayedTracks: [MusicItem] = []
+    @State private var isLoadingRecentTracks = false
+    @State private var recentTracksError: String?
 
     enum SearchFilter: String, CaseIterable {
         case all = "All"
@@ -48,6 +55,9 @@ struct DiscoverView: View {
                         .focused($isSearchFieldFocused)
                         .onChange(of: searchText) { oldValue, newValue in
                             performDebouncedSearch()
+                        }
+                        .onSubmit {
+                            isSearchFieldFocused = false
                         }
 
                     if !searchText.isEmpty {
@@ -100,16 +110,48 @@ struct DiscoverView: View {
                         performSearch()
                     }
                 } else if searchText.isEmpty && searchResults == nil {
-                    EmptySearchView(isSearchFieldFocused: $isSearchFieldFocused)
+                    // Show recently played grid when no search
+                    if isLoadingRecentTracks {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if let error = recentTracksError {
+                        ErrorView(message: error) {
+                            loadRecentlyPlayedTracks()
+                        }
+                    } else if recentlyPlayedTracks.isEmpty {
+                        EmptySearchView(isSearchFieldFocused: $isSearchFieldFocused)
+                    } else {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("recently played")
+                                .font(.nunitoSans(size: 20, weight: .bold))
+                                .padding(.horizontal, 16)
+                                .padding(.top, 8)
+
+                            RecentlyPlayedGridView(
+                                tracks: recentlyPlayedTracks,
+                                platformType: authState.currentUser?.platformType ?? .spotify,
+                                showQuickSendBar: $showQuickSendBar,
+                                trackToShare: $trackToShare
+                            )
+                            .environmentObject(PlaybackService.shared)
+                        }
+                    }
                 } else if let results = searchResults {
                     SearchResultsList(
                         results: results,
                         filter: selectedFilter,
                         platformType: authState.currentUser?.platformType ?? .spotify,
                         searchQuery: searchText,
-                        navigationPath: $navigationPath
+                        navigationPath: $navigationPath,
+                        showQuickSendBar: $showQuickSendBar,
+                        trackToShare: $trackToShare
                     )
                 }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                // Dismiss keyboard when tapping anywhere
+                isSearchFieldFocused = false
             }
             .navigationTitle("discover")
             .navigationBarTitleDisplayMode(.large)
@@ -136,7 +178,42 @@ struct DiscoverView: View {
                 searchResults = nil
                 isSearchFieldFocused = true
             }
+            .onChange(of: showQuickSendBar) { oldValue, newValue in
+                // Dismiss keyboard when QuickSendBar appears
+                if newValue {
+                    isSearchFieldFocused = false
+                }
+            }
+            .task {
+                // Load recently played tracks on view appear
+                loadRecentlyPlayedTracks()
+            }
         }
+        .overlay(
+            ZStack {
+                if showQuickSendBar, let track = trackToShare {
+                    QuickSendBar(
+                        track: track,
+                        onDismiss: {
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                showQuickSendBar = false
+                                trackToShare = nil
+                            }
+                        },
+                        onSendComplete: { sentToFriends in
+                            if !sentToFriends.isEmpty {
+                                print("✅ Sent to \(sentToFriends.count) friend\(sentToFriends.count == 1 ? "" : "s")")
+                            }
+                        },
+                        additionalBottomInset: QuickSendBar.Layout.overlayInset
+                    )
+                    .environmentObject(authState)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(999)
+                }
+            }
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showQuickSendBar)
+        )
     }
 
     private func performDebouncedSearch() {
@@ -196,6 +273,31 @@ struct DiscoverView: View {
             }
 
             isSearching = false
+        }
+    }
+
+    private func loadRecentlyPlayedTracks() {
+        guard let user = authState.currentUser,
+              let platformType = user.platformType else {
+            return
+        }
+
+        Task {
+            isLoadingRecentTracks = true
+            recentTracksError = nil
+
+            do {
+                recentlyPlayedTracks = try await SearchService.shared.getRecentlyPlayed(
+                    userId: user.id,
+                    platformType: platformType
+                )
+                print("✅ Loaded \(recentlyPlayedTracks.count) recently played tracks")
+            } catch {
+                recentTracksError = "Failed to load recently played tracks"
+                print("❌ Error loading recently played: \(error)")
+            }
+
+            isLoadingRecentTracks = false
         }
     }
 }

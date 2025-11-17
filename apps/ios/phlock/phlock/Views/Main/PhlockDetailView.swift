@@ -1,14 +1,14 @@
 import SwiftUI
 
 struct PhlockDetailView: View {
-    let trackId: String
+    let phlock: GroupedPhlock
+    @Binding var navigationPath: NavigationPath
 
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var playbackService: PlaybackService
     @Environment(\.colorScheme) var colorScheme
 
     @State private var recipients: [PhlockRecipient] = []
-    @State private var groupedPhlock: GroupedPhlock?
     @State private var isLoading = true
     @State private var errorMessage: String?
 
@@ -21,19 +21,16 @@ struct PhlockDetailView: View {
                 PhlockErrorView(message: error) {
                     Task { await loadRecipients() }
                 }
-            } else if let phlock = groupedPhlock {
+            } else {
                 ScrollView {
                     VStack(spacing: 20) {
-                        // Track Header Section
                         TrackHeaderView(phlock: phlock)
                             .padding(.horizontal, 16)
                             .padding(.top, 16)
 
-                        // Summary Metrics
                         SummaryMetricsView(phlock: phlock)
                             .padding(.horizontal, 16)
 
-                        // Recipients List
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Recipients (\(recipients.count))")
                                 .font(.nunitoSans(size: 20, weight: .bold))
@@ -41,7 +38,7 @@ struct PhlockDetailView: View {
 
                             VStack(spacing: 0) {
                                 ForEach(recipients) { recipient in
-                                    RecipientRowView(recipient: recipient)
+                                    RecipientRowView(recipient: recipient, navigationPath: $navigationPath)
 
                                     if recipient.id != recipients.last?.id {
                                         Divider()
@@ -80,13 +77,9 @@ struct PhlockDetailView: View {
 
         do {
             // Load recipients
-            recipients = try await PhlockService.shared.getPhlockRecipients(trackId: trackId, userId: userId)
+            recipients = try await PhlockService.shared.getPhlockRecipients(trackId: phlock.trackId, userId: userId)
 
-            // Load grouped phlock data for metrics
-            let allPhlocks = try await PhlockService.shared.getPhlocksGroupedByTrack(userId: userId)
-            groupedPhlock = allPhlocks.first { $0.trackId == trackId }
-
-            print("✅ Loaded \(recipients.count) recipients for track \(trackId)")
+            print("✅ Loaded \(recipients.count) recipients for track \(phlock.trackId)")
         } catch {
             errorMessage = "Failed to load recipients: \(error.localizedDescription)"
             print("❌ Error loading recipients: \(error)")
@@ -217,6 +210,7 @@ struct MetricBox: View {
 
 struct RecipientRowView: View {
     let recipient: PhlockRecipient
+    @Binding var navigationPath: NavigationPath
     @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
@@ -244,8 +238,14 @@ struct RecipientRowView: View {
 
             // User Info
             VStack(alignment: .leading, spacing: 4) {
-                Text(recipient.user.displayName)
-                    .font(.nunitoSans(size: 16, weight: .semiBold))
+                Button {
+                    navigationPath.append(PhlocksDestination.conversation(recipient.user))
+                } label: {
+                    Text(recipient.user.displayName)
+                        .font(.nunitoSans(size: 16, weight: .semiBold))
+                        .foregroundColor(.primary)
+                }
+                .buttonStyle(.plain)
 
                 HStack(spacing: 6) {
                     Image(systemName: recipient.statusIcon)
@@ -321,10 +321,4 @@ struct PhlockErrorView: View {
     }
 }
 
-#Preview {
-    NavigationStack {
-        PhlockDetailView(trackId: "example-track-id")
-            .environmentObject(AuthenticationState())
-            .environmentObject(PlaybackService.shared)
-    }
-}
+// Preview removed due to complex navigationPath binding requirement

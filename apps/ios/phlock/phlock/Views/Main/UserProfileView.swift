@@ -277,16 +277,21 @@ struct UserProfileView: View {
 }
 
 #Preview {
-    let sampleUser = try! JSONDecoder().decode(User.self, from: """
+    // Create sample user using JSON decoding
+    let sampleUserData = """
     {
         "id": "123e4567-e89b-12d3-a456-426614174000",
         "display_name": "Test User",
         "bio": "Love discovering new music!",
         "platform_type": "spotify",
         "platform_user_id": "test123",
-        "privacy_who_can_send": "friends"
+        "privacy_who_can_send": "friends",
+        "auth_user_id": "223e4567-e89b-12d3-a456-426614174000",
+        "music_platform": "spotify"
     }
-    """.data(using: .utf8)!)
+    """.data(using: .utf8)!
+
+    let sampleUser = try! JSONDecoder().decode(User.self, from: sampleUserData)
 
     return NavigationStack {
         UserProfileView(user: sampleUser)

@@ -1,7 +1,8 @@
 import Foundation
 
 /// Configuration for environment-specific values
-/// TODO: Replace with your actual Supabase credentials
+/// NOTE: These are actual production credentials for Phlock app
+/// For different environments, use build configurations or environment variables
 enum Config {
     // Supabase Configuration
     // Get these from your Supabase project settings

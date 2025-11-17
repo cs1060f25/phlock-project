@@ -220,6 +220,227 @@ class SearchService {
         return SearchResult(tracks: tracks, artists: artists)
     }
 
+    // MARK: - Recently Played Tracks
+
+    /// Fetch recently played tracks for the current user
+    func getRecentlyPlayed(userId: UUID, platformType: PlatformType) async throws -> [MusicItem] {
+        switch platformType {
+        case .spotify:
+            // Get access token from database
+            let tokens: [PlatformToken] = try await supabase
+                .from("platform_tokens")
+                .select("*")
+                .eq("user_id", value: userId.uuidString)
+                .execute()
+                .value
+
+            guard let token = tokens.first else {
+                print("❌ No platform token found for user: \(userId)")
+                throw NSError(domain: "SearchService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No platform token found"])
+            }
+
+            print("🎵 Fetching recently played from Spotify for user: \(userId)")
+
+            // Fetch from Spotify API (with automatic token refresh on 401)
+            do {
+                let response = try await spotifyService.getRecentlyPlayed(accessToken: token.accessToken)
+                print("✅ Got \(response.items.count) recently played tracks from Spotify")
+
+                // Convert to MusicItems first
+                let allTracks = response.items.enumerated().map { (index, item) -> MusicItem in
+                    // Get medium-sized image
+                    let albumArtUrl: String? = {
+                        guard !item.track.album.images.isEmpty else { return nil }
+                        return item.track.album.images.count > 1 ? item.track.album.images[1].url : item.track.album.images.first?.url
+                    }()
+
+                    // Convert ISO 8601 string to Date
+                    let playedDate: Date? = {
+                        let formatter = ISO8601DateFormatter()
+                        return formatter.date(from: item.playedAt)
+                    }()
+
+                    // Use played_at timestamp + index to ensure unique IDs for duplicate tracks
+                    let uniqueId = "\(item.track.id)_\(item.playedAt)_\(index)"
+
+                    return MusicItem(
+                        id: uniqueId,
+                        name: item.track.name,
+                        artistName: item.track.artists.first?.name,
+                        previewUrl: item.track.previewUrl,
+                        albumArtUrl: albumArtUrl,
+                        isrc: item.track.externalIds?.isrc,
+                        playedAt: playedDate,
+                        spotifyId: item.track.id,
+                        appleMusicId: nil,
+                        popularity: nil
+                    )
+                }
+
+                // Remove duplicates by track ID (keep most recent play)
+                // Sort by playedAt descending (most recent first)
+                var seenTrackIds = Set<String>()
+                let uniqueTracks = allTracks
+                    .sorted { ($0.playedAt ?? Date.distantPast) > ($1.playedAt ?? Date.distantPast) }
+                    .filter { track in
+                        guard let spotifyId = track.spotifyId else { return true }
+                        if seenTrackIds.contains(spotifyId) {
+                            return false
+                        }
+                        seenTrackIds.insert(spotifyId)
+                        return true
+                    }
+
+                print("✅ Removed \(allTracks.count - uniqueTracks.count) duplicate tracks")
+
+                // Debug: Log the first 5 tracks with their played_at timestamps
+                if uniqueTracks.count > 0 {
+                    let dateFormatter = DateFormatter()
+                    dateFormatter.dateStyle = .short
+                    dateFormatter.timeStyle = .medium
+
+                    print("📅 Recently played tracks order (first 5):")
+                    for (index, track) in uniqueTracks.prefix(5).enumerated() {
+                        let timeStr = track.playedAt.map { dateFormatter.string(from: $0) } ?? "unknown"
+                        print("   \(index + 1). \(track.name) - played at: \(timeStr)")
+                    }
+                }
+
+                return uniqueTracks
+            } catch {
+                print("❌ Spotify API error: \(error)")
+                if let decodingError = error as? DecodingError {
+                    print("❌ Decoding error details: \(decodingError)")
+                }
+
+                // Check if token expired - try to refresh
+                guard let refreshToken = token.refreshToken else {
+                    print("❌ No refresh token available")
+                    throw error
+                }
+
+                print("🔄 Token might be expired, attempting refresh...")
+
+                do {
+                    // Refresh the token
+                    let newAuth = try await spotifyService.refreshAccessToken(refreshToken: refreshToken)
+
+                    // Update token in database
+                    let now = Date()
+                    let expiresAt = now.addingTimeInterval(TimeInterval(newAuth.expiresIn))
+
+                    struct TokenUpdate: Encodable {
+                        let access_token: String
+                        let refresh_token: String
+                        let token_expires_at: String
+                        let updated_at: String
+                    }
+
+                    let updatePayload = TokenUpdate(
+                        access_token: newAuth.accessToken,
+                        refresh_token: newAuth.refreshToken ?? refreshToken,
+                        token_expires_at: ISO8601DateFormatter().string(from: expiresAt),
+                        updated_at: ISO8601DateFormatter().string(from: now)
+                    )
+
+                    try await supabase
+                        .from("platform_tokens")
+                        .update(updatePayload)
+                        .eq("id", value: token.id.uuidString)
+                        .execute()
+
+                    print("✅ Token refreshed and updated in database")
+
+                    // Retry with new token
+                    let response = try await spotifyService.getRecentlyPlayed(accessToken: newAuth.accessToken)
+                    print("✅ Got \(response.items.count) recently played tracks from Spotify (after refresh)")
+
+                    // Convert to MusicItems first
+                    let allTracks = response.items.enumerated().map { (index, item) -> MusicItem in
+                        let albumArtUrl: String? = {
+                            guard !item.track.album.images.isEmpty else { return nil }
+                            return item.track.album.images.count > 1 ? item.track.album.images[1].url : item.track.album.images.first?.url
+                        }()
+
+                        let playedDate: Date? = {
+                            let formatter = ISO8601DateFormatter()
+                            return formatter.date(from: item.playedAt)
+                        }()
+
+                        // Use played_at timestamp + index to ensure unique IDs for duplicate tracks
+                        let uniqueId = "\(item.track.id)_\(item.playedAt)_\(index)"
+
+                        return MusicItem(
+                            id: uniqueId,
+                            name: item.track.name,
+                            artistName: item.track.artists.first?.name,
+                            previewUrl: item.track.previewUrl,
+                            albumArtUrl: albumArtUrl,
+                            isrc: item.track.externalIds?.isrc,
+                            playedAt: playedDate,
+                            spotifyId: item.track.id,
+                            appleMusicId: nil,
+                            popularity: nil
+                        )
+                    }
+
+                    // Remove duplicates by track ID (keep most recent play)
+                    // Sort by playedAt descending (most recent first)
+                    var seenTrackIds = Set<String>()
+                    let uniqueTracks = allTracks
+                        .sorted { ($0.playedAt ?? Date.distantPast) > ($1.playedAt ?? Date.distantPast) }
+                        .filter { track in
+                            guard let spotifyId = track.spotifyId else { return true }
+                            if seenTrackIds.contains(spotifyId) {
+                                return false
+                            }
+                            seenTrackIds.insert(spotifyId)
+                            return true
+                        }
+
+                    print("✅ Removed \(allTracks.count - uniqueTracks.count) duplicate tracks")
+
+                    // Debug: Log the first 5 tracks with their played_at timestamps
+                    if uniqueTracks.count > 0 {
+                        let dateFormatter = DateFormatter()
+                        dateFormatter.dateStyle = .short
+                        dateFormatter.timeStyle = .medium
+
+                        print("📅 Recently played tracks order (first 5 - after refresh):")
+                        for (index, track) in uniqueTracks.prefix(5).enumerated() {
+                            let timeStr = track.playedAt.map { dateFormatter.string(from: $0) } ?? "unknown"
+                            print("   \(index + 1). \(track.name) - played at: \(timeStr)")
+                        }
+                    }
+
+                    return uniqueTracks
+                } catch {
+                    print("❌ Failed to refresh token or retry: \(error)")
+                    throw error
+                }
+            }
+
+        case .appleMusic:
+            // Fetch from Apple Music API (no token needed for MusicKit)
+            let recentTracksWithArtists = try await appleMusicService.getRecentlyPlayed()
+            return recentTracksWithArtists.map { item in
+                MusicItem(
+                    id: item.track.id,
+                    name: item.track.title,
+                    artistName: item.track.artistName,
+                    previewUrl: item.track.previewURL,
+                    albumArtUrl: item.track.artworkURL,
+                    isrc: nil,
+                    playedAt: nil,
+                    spotifyId: nil,
+                    appleMusicId: item.track.id,
+                    popularity: nil,
+                    followerCount: nil
+                )
+            }
+        }
+    }
+
     // MARK: - Artist Top Tracks
 
     /// Fetch top tracks for a specific artist

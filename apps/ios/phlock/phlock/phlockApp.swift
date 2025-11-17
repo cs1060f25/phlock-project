@@ -12,6 +12,12 @@ import Supabase
 struct phlockApp: App {
     @StateObject private var authState = AuthenticationState()
 
+    init() {
+        // Hide the default refresh control spinner globally
+        UIRefreshControl.appearance().tintColor = .clear
+        UIRefreshControl.appearance().backgroundColor = .clear
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

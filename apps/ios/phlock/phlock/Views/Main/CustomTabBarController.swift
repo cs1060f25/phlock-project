@@ -79,8 +79,10 @@ struct CustomTabBarView: UIViewControllerRepresentable {
     @Binding var clearDiscoverSearchTrigger: Int
     @Binding var refreshFeedTrigger: Int
     @Binding var refreshInboxTrigger: Int
+    @Binding var refreshPhlocksTrigger: Int
     @Binding var scrollFeedToTopTrigger: Int
     @Binding var scrollInboxToTopTrigger: Int
+    @Binding var scrollPhlocksToTopTrigger: Int
     @Environment(\.colorScheme) var colorScheme
 
     let feedView: AnyView
@@ -152,9 +154,21 @@ struct CustomTabBarView: UIViewControllerRepresentable {
             print("🔄 Phlocks tab reselected - tap #\(tapCount)")
             DispatchQueue.main.async {
                 if self.phlocksNavigationPath.count > 0 {
-                    // Pop to root if in nested view
+                    // Always pop to root first if in nested view
                     self.phlocksNavigationPath = NavigationPath()
                     print("✅ Phlocks navigation path reset")
+                } else {
+                    // Already at root - handle based on tap count
+                    switch tapCount {
+                    case 1:
+                        // First tap when at root - scroll to top
+                        self.scrollPhlocksToTopTrigger += 1
+                        print("⬆️ Scrolling phlocks to top")
+                    default:
+                        // Second+ tap - refresh phlocks (reload data)
+                        self.refreshPhlocksTrigger += 1
+                        print("🔄 Refreshing phlocks - trigger: \(self.refreshPhlocksTrigger)")
+                    }
                 }
             }
         }

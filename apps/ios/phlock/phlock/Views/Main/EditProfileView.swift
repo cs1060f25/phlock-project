@@ -287,7 +287,9 @@ class CircularCropViewController: UIViewController {
     }
 
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+        // This initializer is required by UIViewController but not used in SwiftUI
+        // Return nil instead of crashing
+        return nil
     }
 
     override func viewDidLoad() {
@@ -452,7 +454,9 @@ class CircularCropOverlay: UIView {
     }
 
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+        // This initializer is required by UIViewController but not used in SwiftUI
+        // Return nil instead of crashing
+        return nil
     }
 
     override func draw(_ rect: CGRect) {

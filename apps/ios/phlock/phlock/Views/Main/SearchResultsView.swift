@@ -8,6 +8,8 @@ struct SearchResultsList: View {
     let platformType: PlatformType
     let searchQuery: String
     @Binding var navigationPath: NavigationPath
+    @Binding var showQuickSendBar: Bool
+    @Binding var trackToShare: MusicItem?
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
 
@@ -101,11 +103,14 @@ struct SearchResultsList: View {
                 // All tab - show combined results
                 ForEach(Array(allResults.enumerated()), id: \.offset) { index, result in
                     if result.type == "Track" {
-                        TrackResultRow(track: result.item, platformType: platformType, showType: true)
-                            .environmentObject(authState)
-                            .onTapGesture {
-                                playTrack(result.item)
-                            }
+                        TrackResultRow(
+                            track: result.item,
+                            platformType: platformType,
+                            showType: true,
+                            showQuickSendBar: $showQuickSendBar,
+                            trackToShare: $trackToShare
+                        )
+                        .environmentObject(authState)
                     } else {
                         Button {
                             navigationPath.append(DiscoverDestination.artist(result.item, platformType))
@@ -119,11 +124,14 @@ struct SearchResultsList: View {
                 // Tracks Section
                 if !displayedTracks.isEmpty {
                     ForEach(displayedTracks, id: \.id) { track in
-                        TrackResultRow(track: track, platformType: platformType, showType: false)
-                            .environmentObject(authState)
-                            .onTapGesture {
-                                playTrack(track)
-                            }
+                        TrackResultRow(
+                            track: track,
+                            platformType: platformType,
+                            showType: false,
+                            showQuickSendBar: $showQuickSendBar,
+                            trackToShare: $trackToShare
+                        )
+                        .environmentObject(authState)
                     }
                 }
 
@@ -158,14 +166,14 @@ struct TrackResultRow: View {
     let track: MusicItem
     let platformType: PlatformType
     let showType: Bool
+    @Binding var showQuickSendBar: Bool
+    @Binding var trackToShare: MusicItem?
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
     @Environment(\.colorScheme) var colorScheme
 
-    @State private var showShareSheet = false
     @State private var showToast = false
     @State private var toastMessage = ""
-    @State private var showConfetti = false
 
     var isCurrentTrack: Bool {
         playbackService.currentTrack?.id == track.id
@@ -229,7 +237,10 @@ struct TrackResultRow: View {
 
             // Share Button
             Button {
-                showShareSheet = true
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    trackToShare = track
+                    showQuickSendBar = true
+                }
             } label: {
                 Image(systemName: "paperplane")
                     .font(.system(size: 20))
@@ -238,9 +249,18 @@ struct TrackResultRow: View {
             .buttonStyle(.plain)
 
             // Play Button
-            Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                .font(.system(size: 28))
-                .foregroundColor(isCurrentTrack ? .primary : .secondary)
+            Button {
+                if isPlaying {
+                    playbackService.pause()
+                } else {
+                    playbackService.play(track: track)
+                }
+            } label: {
+                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 28))
+                    .foregroundColor(isCurrentTrack ? .primary : .secondary)
+            }
+            .buttonStyle(.plain)
         }
         .padding(.vertical, 8)
         .padding(.horizontal, isCurrentTrack ? 8 : 12)
@@ -250,39 +270,8 @@ struct TrackResultRow: View {
                 : Color.clear
         )
         .cornerRadius(8)
-
-            // QuickSendBar appears below track when sharing
-            if showShareSheet {
-                QuickSendBar(track: track) { sentToFriends in
-                    handleShareComplete(sentToFriends: sentToFriends)
-                }
-                .environmentObject(authState)
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .padding(.top, 8)
-            }
-        }
-        .sheet(isPresented: $showShareSheet) {
-            // Alternative: Full screen share sheet (disabled for now, using inline QuickSendBar)
         }
         .toast(isPresented: $showToast, message: toastMessage, type: .success, duration: 3.0)
-        .confetti(trigger: $showConfetti)
-    }
-
-    private func handleShareComplete(sentToFriends: [User]) {
-        showShareSheet = false
-
-        // Show success feedback
-        let friendNames = sentToFriends.map { $0.displayName }.joined(separator: ", ")
-        toastMessage = sentToFriends.count == 1
-            ? "Sent to \(friendNames)"
-            : "Sent to \(sentToFriends.count) friends"
-
-        showToast = true
-        showConfetti = true
-
-        // Haptic feedback
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
     }
 }
 
@@ -402,5 +391,153 @@ struct ErrorView: View {
             .cornerRadius(8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Recently Played Grid
+
+struct RecentlyPlayedGridView: View {
+    let tracks: [MusicItem]
+    let platformType: PlatformType
+    @Binding var showQuickSendBar: Bool
+    @Binding var trackToShare: MusicItem?
+    @EnvironmentObject var playbackService: PlaybackService
+    @Environment(\.colorScheme) var colorScheme
+
+    // 3 columns grid
+    let columns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12)
+    ]
+
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: columns, spacing: 12, pinnedViews: []) {
+                ForEach(tracks, id: \.id) { track in
+                    RecentTrackCard(
+                        track: track,
+                        showQuickSendBar: $showQuickSendBar,
+                        trackToShare: $trackToShare
+                    )
+                    .environmentObject(playbackService)
+                    .id(track.id) // Ensure stable view identity
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+        .scrollIndicators(.visible)
+    }
+}
+
+struct RecentTrackCard: View {
+    let track: MusicItem
+    @Binding var showQuickSendBar: Bool
+    @Binding var trackToShare: MusicItem?
+    @EnvironmentObject var playbackService: PlaybackService
+    @Environment(\.colorScheme) var colorScheme
+
+    var isCurrentTrack: Bool {
+        playbackService.currentTrack?.id == track.id
+    }
+
+    var isPlaying: Bool {
+        isCurrentTrack && playbackService.isPlaying
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Album Art with Play Overlay and Send Button
+            ZStack {
+                if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        case .failure(_):
+                            Color.gray.opacity(0.2)
+                        case .empty:
+                            Color.gray.opacity(0.2)
+                        @unknown default:
+                            Color.gray.opacity(0.2)
+                        }
+                    }
+                    .aspectRatio(1.0, contentMode: .fill)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else {
+                    Color.gray.opacity(0.2)
+                        .aspectRatio(1.0, contentMode: .fill)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+
+                // Send button (top-right corner)
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                trackToShare = track
+                                showQuickSendBar = true
+                            }
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.black.opacity(0.65))
+                                    .frame(width: 26, height: 26)
+
+                                Image(systemName: "paperplane.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 4)
+                        .padding(.top, 4)
+                    }
+                    Spacer()
+                }
+
+                // Play button overlay (center)
+                Button {
+                    if isPlaying {
+                        playbackService.pause()
+                    } else {
+                        playbackService.play(track: track)
+                    }
+                } label: {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 32, weight: .bold))
+                        .foregroundColor(.white)
+                        .shadow(color: Color.black.opacity(0.5), radius: 8, x: 0, y: 3)
+                        .padding(20)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+            }
+
+            // Track Info
+            VStack(alignment: .leading, spacing: 4) {
+                Text(track.name)
+                    .font(.nunitoSans(size: 13, weight: .semiBold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let artist = track.artistName {
+                    Text(artist)
+                        .font(.nunitoSans(size: 11))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(.top, 6)
+        }
     }
 }

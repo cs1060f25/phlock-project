@@ -1,6 +1,7 @@
 import Foundation
 import Supabase
 import AuthenticationServices
+import OSLog
 
 /// Production-grade authentication service using Supabase Auth with OAuth
 /// This replaces the manual user creation approach with proper auth.uid() integration
@@ -16,12 +17,16 @@ class AuthServiceV2 {
         get async throws {
             // Get Supabase Auth session
             guard let session = try? await supabase.auth.session else {
-                print("❌ No active Supabase Auth session")
+                if #available(iOS 14.0, *) {
+                    PhlockLogger.auth.errorLog("No active Supabase Auth session")
+                }
                 return nil
             }
 
             let authUserId = session.user.id
-            print("✅ Found Supabase Auth session for user: \(authUserId)")
+            if #available(iOS 14.0, *) {
+                PhlockLogger.auth.infoLog("Found Supabase Auth session for user: \(authUserId)")
+            }
 
             // Look up custom user record linked to this auth user
             let users: [User] = try await supabase
@@ -41,7 +46,9 @@ class AuthServiceV2 {
             do {
                 return try await currentUser?.id
             } catch {
-                print("❌ Failed to get current user ID: \(error)")
+                if #available(iOS 14.0, *) {
+                    PhlockLogger.auth.errorLog("Failed to get current user ID", error: error)
+                }
                 return nil
             }
         }
@@ -66,6 +73,8 @@ class AuthServiceV2 {
                     print("🗑️ User deleted")
                 case .mfaChallengeVerified:
                     print("🔐 MFA challenge verified")
+                case .passwordRecovery:
+                    print("🔑 Password recovery")
                 @unknown default:
                     print("⚠️ Unknown auth state change")
                 }
@@ -630,8 +639,9 @@ class AuthServiceV2 {
 
     /// Search for Spotify artist ID (using edge function to keep client secret secure)
     private func searchSpotifyArtist(artistName: String) async throws -> String {
-        // For now, return empty string - edge function may not be deployed yet
-        // TODO: Implement when edge function is ready
+        // DEFERRED: Edge function implementation - Ticket PHLOCK-5678
+        // Waiting for search-spotify-artist edge function deployment
+        // For now, returns empty string to avoid blocking auth flow
         return ""
     }
 

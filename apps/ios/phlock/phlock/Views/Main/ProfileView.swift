@@ -96,6 +96,7 @@ struct ProfileView: View {
                                         itemType: .track
                                     )
                                     .environmentObject(playbackService)
+                                    .environmentObject(authState)
                                 }
 
                                 // Top Artists
@@ -141,14 +142,6 @@ struct ProfileView: View {
         .sheet(isPresented: $showEditProfile) {
             EditProfileView()
         }
-        .task {
-            // Refresh music data when profile loads
-            if !isRefreshing {
-                isRefreshing = true
-                await authState.refreshMusicData()
-                isRefreshing = false
-            }
-        }
     }
 
     private func getPlatformType(from user: User) -> PlatformType? {
@@ -186,9 +179,12 @@ struct MusicStatsCard: View {
     let itemType: MusicItemType
     @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject var playbackService: PlaybackService
+    @EnvironmentObject var authState: AuthenticationState
     @State private var isExpanded = false
     @State private var showPlatformSheet = false
     @State private var selectedArtist: MusicItem?
+    @State private var showQuickSendBar = false
+    @State private var trackToShare: MusicItem?
 
     enum MusicItemType {
         case track
@@ -227,10 +223,11 @@ struct MusicStatsCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.nunitoSans(size: 17, weight: .semiBold))
-                .padding(.horizontal, 24)
+        ZStack {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(title)
+                    .font(.nunitoSans(size: 17, weight: .semiBold))
+                    .padding(.horizontal, 24)
 
             VStack(spacing: 0) {
                 ForEach(Array(displayedItems.enumerated()), id: \.offset) { index, item in
@@ -299,6 +296,17 @@ struct MusicStatsCard: View {
 
                             // Different icons based on action type
                             if itemType == .track {
+                                // Send button
+                                Button {
+                                    trackToShare = item
+                                    showQuickSendBar = true
+                                } label: {
+                                    Image(systemName: "paperplane")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(.secondary)
+                                }
+                                .buttonStyle(.plain)
+
                                 // Show pause icon if playing, play icon if not
                                 Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                                     .font(.system(size: 22))
@@ -321,6 +329,12 @@ struct MusicStatsCard: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .simultaneousGesture(
+                        TapGesture()
+                            .onEnded { _ in
+                                // Prevent row tap when tapping send button
+                            }
+                    )
 
                     if index < displayedItems.count - 1 {
                         Divider()
@@ -354,26 +368,48 @@ struct MusicStatsCard: View {
                     }
                     .buttonStyle(.plain)
                 }
+                }
+                .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.05))
+                .cornerRadius(12)
+                .padding(.horizontal, 24)
+                .confirmationDialog(
+                    "Open artist in",
+                    isPresented: $showPlatformSheet,
+                    titleVisibility: .visible
+                ) {
+                    Button("Spotify") {
+                        if let artist = selectedArtist {
+                            openArtistInPlatform(item: artist, platform: .spotify)
+                        }
+                    }
+                    Button("Apple Music") {
+                        if let artist = selectedArtist {
+                            openArtistInPlatform(item: artist, platform: .appleMusic)
+                        }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                }
             }
-            .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.05))
-            .cornerRadius(12)
-            .padding(.horizontal, 24)
-            .confirmationDialog(
-                "Open artist in",
-                isPresented: $showPlatformSheet,
-                titleVisibility: .visible
-            ) {
-                Button("Spotify") {
-                    if let artist = selectedArtist {
-                        openArtistInPlatform(item: artist, platform: .spotify)
+
+            // QuickSendBar overlay
+            if showQuickSendBar, let track = trackToShare {
+                QuickSendBar(
+                    track: track,
+                    onDismiss: {
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            showQuickSendBar = false
+                            trackToShare = nil
+                        }
+                    },
+                    onSendComplete: { sentToFriends in
+                        showQuickSendBar = false
+                        trackToShare = nil
                     }
-                }
-                Button("Apple Music") {
-                    if let artist = selectedArtist {
-                        openArtistInPlatform(item: artist, platform: .appleMusic)
-                    }
-                }
-                Button("Cancel", role: .cancel) {}
+                )
+                .environmentObject(authState)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(1000)
+                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showQuickSendBar)
             }
         }
     }

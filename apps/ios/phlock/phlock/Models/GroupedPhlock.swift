@@ -2,7 +2,7 @@ import Foundation
 
 /// Represents a song (track) that a user has sent to multiple people
 /// Groups individual Share objects by track_id to show aggregated metrics
-struct GroupedPhlock: Identifiable {
+struct GroupedPhlock: Identifiable, Hashable {
     let trackId: String
     let trackName: String
     let artistName: String
@@ -22,9 +22,6 @@ struct GroupedPhlock: Identifiable {
 
     // Timing
     let lastSentAt: Date  // Most recent send
-
-    // Underlying shares
-    let shares: [Share]
 
     var id: String { trackId }
 

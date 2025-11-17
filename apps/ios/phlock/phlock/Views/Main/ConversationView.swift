@@ -1,5 +1,27 @@
 import SwiftUI
 
+// Storage for selected tracks per conversation
+class ConversationSelectionStore {
+    static let shared = ConversationSelectionStore()
+    private var selections: [UUID: (track: MusicItem, message: String)] = [:]
+
+    func store(track: MusicItem?, message: String, for userId: UUID) {
+        if let track = track {
+            selections[userId] = (track, message)
+        } else {
+            selections.removeValue(forKey: userId)
+        }
+    }
+
+    func retrieve(for userId: UUID) -> (track: MusicItem, message: String)? {
+        return selections[userId]
+    }
+
+    func clear(for userId: UUID) {
+        selections.removeValue(forKey: userId)
+    }
+}
+
 struct ConversationView: View {
     let otherUser: User
 
@@ -14,40 +36,104 @@ struct ConversationView: View {
     @State private var commentText: String = ""
     @State private var isAddingComment = false
 
+    // Search and send functionality
+    @State private var searchQuery: String = ""
+    @State private var searchResults: [MusicItem] = []
+    @State private var selectedTrack: MusicItem?
+    @State private var messageText: String = ""
+    @State private var isSearching = false
+    @State private var isSending = false
+
     var body: some View {
         VStack(spacing: 0) {
+            // Conversation messages
             if isLoading {
-                ProgressView("Loading conversation...")
-                    .font(.nunitoSans(size: 15))
+                VStack(spacing: 12) {
+                    WaveformLoadingView(barCount: 5, color: .blue)
+                    Text("Loading conversation...")
+                        .font(.nunitoSans(size: 15))
+                }
+                .frame(maxHeight: .infinity)
             } else if let error = errorMessage {
                 ConversationErrorView(message: error) {
                     Task { await loadConversation() }
                 }
-            } else if shares.isEmpty {
-                EmptyConversationView(otherUserName: otherUser.displayName)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 16) {
-                        ForEach(shares) { share in
-                            ConversationShareCard(
-                                share: share,
-                                otherUser: otherUser,
-                                isExpanded: expandedShareId == share.id,
-                                onToggleExpand: {
-                                    withAnimation {
-                                        expandedShareId = expandedShareId == share.id ? nil : share.id
+                        if shares.isEmpty {
+                            VStack(spacing: 12) {
+                                Text("No messages yet")
+                                    .font(.nunitoSans(size: 18, weight: .semiBold))
+                                Text("Search for a song below to start the conversation!")
+                                    .font(.nunitoSans(size: 14))
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .padding(.top, 100)
+                        } else {
+                            ForEach(shares) { share in
+                                HStack {
+                                    // Left align for received messages
+                                    if share.senderId != authState.currentUser?.id {
+                                        ConversationShareCard(
+                                            share: share,
+                                            otherUser: otherUser,
+                                            isExpanded: expandedShareId == share.id,
+                                            onToggleExpand: {
+                                                withAnimation {
+                                                    expandedShareId = expandedShareId == share.id ? nil : share.id
+                                                }
+                                            }
+                                        )
+                                        .environmentObject(authState)
+                                        .environmentObject(playbackService)
+                                        .frame(maxWidth: UIScreen.main.bounds.width * 0.8)
+
+                                        Spacer(minLength: 0)
+                                    } else {
+                                        // Right align for sent messages
+                                        Spacer(minLength: 0)
+
+                                        ConversationShareCard(
+                                            share: share,
+                                            otherUser: otherUser,
+                                            isExpanded: expandedShareId == share.id,
+                                            onToggleExpand: {
+                                                withAnimation {
+                                                    expandedShareId = expandedShareId == share.id ? nil : share.id
+                                                }
+                                            }
+                                        )
+                                        .environmentObject(authState)
+                                        .environmentObject(playbackService)
+                                        .frame(maxWidth: UIScreen.main.bounds.width * 0.8)
                                     }
                                 }
-                            )
-                            .environmentObject(authState)
-                            .environmentObject(playbackService)
+                                .padding(.horizontal, 8)
+                            }
                         }
                     }
-                    .padding(.horizontal, 16)
                     .padding(.vertical, 16)
                     .padding(.bottom, 100) // Space for mini player
                 }
             }
+
+            // Search and send bar at bottom
+            ConversationSearchBar(
+                searchQuery: $searchQuery,
+                searchResults: $searchResults,
+                selectedTrack: $selectedTrack,
+                messageText: $messageText,
+                isSearching: $isSearching,
+                isSending: $isSending,
+                otherUser: otherUser,
+                onSend: { track, message in
+                    await sendTrack(track: track, message: message)
+                }
+            )
+            .environmentObject(authState)
+            .environmentObject(playbackService)
         }
         .navigationTitle(otherUser.displayName)
         .navigationBarTitleDisplayMode(.inline)
@@ -56,6 +142,26 @@ struct ConversationView: View {
         }
         .refreshable {
             await loadConversation()
+        }
+        .onAppear {
+            // Restore any saved selection for this conversation
+            if let saved = ConversationSelectionStore.shared.retrieve(for: otherUser.id) {
+                selectedTrack = saved.track
+                messageText = saved.message
+            }
+        }
+        .onDisappear {
+            // Only pause preview tracks (not sent tracks with mini player)
+            if !playbackService.shouldShowMiniPlayer && playbackService.isPlaying {
+                playbackService.pause()
+            }
+
+            // Save current selection for when user returns
+            ConversationSelectionStore.shared.store(
+                track: selectedTrack,
+                message: messageText,
+                for: otherUser.id
+            )
         }
     }
 
@@ -81,6 +187,288 @@ struct ConversationView: View {
         }
 
         isLoading = false
+    }
+
+    private func sendTrack(track: MusicItem, message: String?) async {
+        guard let currentUserId = authState.currentUser?.id else { return }
+
+        isSending = true
+
+        // Stop any playing preview
+        await MainActor.run {
+            playbackService.stopPlayback()
+        }
+
+        do {
+            _ = try await ShareService.shared.createShare(
+                track: track,
+                recipients: [otherUser.id],
+                message: message?.isEmpty == false ? message : nil,
+                senderId: currentUserId
+            )
+
+            // Reload conversation to show the new message
+            await loadConversation()
+
+            // Clear the search state
+            await MainActor.run {
+                selectedTrack = nil
+                messageText = ""
+                searchQuery = ""
+                searchResults = []
+            }
+
+            // Clear saved selection since we've sent it
+            ConversationSelectionStore.shared.clear(for: otherUser.id)
+
+            print("✅ Sent track to \(otherUser.displayName)")
+        } catch {
+            print("❌ Error sending track: \(error)")
+        }
+
+        isSending = false
+    }
+}
+
+// MARK: - Conversation Search Bar
+
+struct ConversationSearchBar: View {
+    @Binding var searchQuery: String
+    @Binding var searchResults: [MusicItem]
+    @Binding var selectedTrack: MusicItem?
+    @Binding var messageText: String
+    @Binding var isSearching: Bool
+    @Binding var isSending: Bool
+    let otherUser: User
+    let onSend: (MusicItem, String?) async -> Void
+
+    @EnvironmentObject var authState: AuthenticationState
+    @EnvironmentObject var playbackService: PlaybackService
+    @Environment(\.colorScheme) var colorScheme
+    @FocusState private var isSearchFocused: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Search results dropdown
+            if !searchResults.isEmpty && searchQuery.count >= 2 && selectedTrack == nil {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(searchResults.prefix(5)), id: \.id) { track in
+                            HStack(spacing: 12) {
+                                // Album art
+                                if let albumArtUrl = track.albumArtUrl, let url = URL(string: albumArtUrl) {
+                                    AsyncImage(url: url) { image in
+                                        image.resizable().scaledToFill()
+                                    } placeholder: {
+                                        Color.gray.opacity(0.2)
+                                    }
+                                    .frame(width: 40, height: 40)
+                                    .cornerRadius(4)
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(track.name)
+                                        .font(.nunitoSans(size: 14, weight: .semiBold))
+                                        .foregroundColor(.primary)
+                                        .lineLimit(1)
+                                    Text(track.artistName ?? "Unknown")
+                                        .font(.nunitoSans(size: 12))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+
+                                Spacer()
+
+                                // Play button
+                                Button {
+                                    handlePlayPreview(track: track)
+                                } label: {
+                                    Image(systemName: isTrackPlaying(track) ? "pause.circle.fill" : "play.circle.fill")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(isTrackPlaying(track) ? .blue : .secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.gray.opacity(colorScheme == .dark ? 0.1 : 0.05))
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                // Stop any playing preview
+                                playbackService.stopPlayback()
+                                selectedTrack = track
+                                searchQuery = ""
+                                searchResults = []
+                                isSearchFocused = false
+                            }
+
+                            if track.id != searchResults.prefix(5).last?.id {
+                                Divider()
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 200)
+                .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
+            }
+
+            Divider()
+
+            // Selected track preview (if any)
+            if let track = selectedTrack {
+                HStack(spacing: 12) {
+                    // Album art
+                    if let albumArtUrl = track.albumArtUrl, let url = URL(string: albumArtUrl) {
+                        AsyncImage(url: url) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            Color.gray.opacity(0.2)
+                        }
+                        .frame(width: 50, height: 50)
+                        .cornerRadius(6)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(track.name)
+                            .font(.nunitoSans(size: 14, weight: .semiBold))
+                            .lineLimit(1)
+                        Text(track.artistName ?? "Unknown")
+                            .font(.nunitoSans(size: 12))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+
+                    // Play/Pause button
+                    Button {
+                        handlePlayPreview(track: track)
+                    } label: {
+                        Image(systemName: isTrackPlaying(track) ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(isTrackPlaying(track) ? .blue : .secondary)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        selectedTrack = nil
+                        messageText = ""
+                        // Clear saved selection when user cancels
+                        ConversationSelectionStore.shared.clear(for: otherUser.id)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.blue.opacity(0.1))
+
+                Divider()
+            }
+
+            // Search / Message input bar
+            HStack(spacing: 12) {
+                if selectedTrack == nil {
+                    // Search mode
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.secondary)
+                            .font(.system(size: 16))
+
+                        TextField("search for music...", text: $searchQuery)
+                            .font(.nunitoSans(size: 15))
+                            .focused($isSearchFocused)
+                            .onChange(of: searchQuery) { _, newValue in
+                                if newValue.count >= 2 {
+                                    Task { await performSearch(query: newValue) }
+                                } else {
+                                    searchResults = []
+                                }
+                            }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
+                    .cornerRadius(20)
+
+                    // Greyed out send button when no track
+                    Image(systemName: "paperplane")
+                        .foregroundColor(.gray.opacity(0.3))
+                        .font(.system(size: 20))
+                } else {
+                    // Message mode (track selected)
+                    TextField("add a message (optional)...", text: $messageText, axis: .vertical)
+                        .font(.nunitoSans(size: 15))
+                        .lineLimit(1...3)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
+                        .cornerRadius(20)
+
+                    // Active send button
+                    Button {
+                        Task {
+                            await onSend(selectedTrack!, messageText.isEmpty ? nil : messageText)
+                        }
+                    } label: {
+                        if isSending {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "paperplane.fill")
+                                .foregroundColor(.blue)
+                                .font(.system(size: 20))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSending)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color(UIColor.systemBackground))
+        }
+    }
+
+    private func performSearch(query: String) async {
+        guard query.count >= 2 else { return }
+        guard let platformType = authState.currentUser?.platformType else { return }
+
+        isSearching = true
+
+        do {
+            let result = try await SearchService.shared.search(query: query, type: .tracks, platformType: platformType)
+            await MainActor.run {
+                searchResults = result.tracks
+            }
+        } catch {
+            print("❌ Search error: \(error)")
+        }
+
+        isSearching = false
+    }
+
+    private func isTrackPlaying(_ track: MusicItem) -> Bool {
+        return playbackService.currentTrack?.id == track.id && playbackService.isPlaying
+    }
+
+    private func handlePlayPreview(track: MusicItem) {
+        // Check if this is the same track that's currently loaded
+        let isSameTrack = playbackService.currentTrack?.id == track.id
+
+        if isSameTrack && playbackService.isPlaying {
+            // Same track is playing -> pause it
+            playbackService.pause()
+        } else if isSameTrack && !playbackService.isPlaying {
+            // Same track is paused -> ensure mini player stays hidden and resume
+            playbackService.shouldShowMiniPlayer = false
+            playbackService.resume()
+        } else {
+            // Different track or no track loaded -> play fresh
+            playbackService.play(track: track, showMiniPlayer: false)
+        }
     }
 }
 
@@ -147,14 +535,10 @@ struct ConversationShareCard: View {
                         .foregroundColor(.secondary)
                         .lineLimit(1)
 
-                    // Direction indicator
-                    HStack(spacing: 4) {
-                        Image(systemName: isSentByCurrentUser ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
-                            .font(.system(size: 12))
-                        Text(isSentByCurrentUser ? "You sent" : "You received")
-                            .font(.nunitoSans(size: 12))
-                    }
-                    .foregroundColor(isSentByCurrentUser ? .blue : .green)
+                    // Timestamp
+                    Text(timeAgo(from: share.createdAt))
+                        .font(.nunitoSans(size: 11))
+                        .foregroundColor(.secondary)
                 }
 
                 Spacer()
@@ -173,7 +557,7 @@ struct ConversationShareCard: View {
 
             // Message if present
             if let message = share.message, !message.isEmpty {
-                Text("\"\(message)\"")
+                Text(message)
                     .font(.nunitoSans(size: 14))
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 12)
@@ -257,11 +641,20 @@ struct ConversationShareCard: View {
                 }
             }
         }
-        .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.05))
+        .background(
+            isSentByCurrentUser
+                ? Color.blue.opacity(colorScheme == .dark ? 0.3 : 0.15)
+                : Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.05)
+        )
         .cornerRadius(16)
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                .stroke(
+                    isSentByCurrentUser
+                        ? Color.blue.opacity(0.3)
+                        : Color.gray.opacity(0.2),
+                    lineWidth: 1
+                )
         )
     }
 
@@ -280,10 +673,17 @@ struct ConversationShareCard: View {
             followerCount: nil
         )
 
-        if isPlaying {
+        let isSameTrack = playbackService.currentTrack?.id == track.id
+
+        if isSameTrack && playbackService.isPlaying {
             playbackService.pause()
+        } else if isSameTrack && !playbackService.isPlaying {
+            // Same track is paused -> show mini player on resume for sent tracks
+            playbackService.shouldShowMiniPlayer = true
+            playbackService.resume()
         } else {
-            playbackService.play(track: track)
+            // Playing sent tracks should show the mini player
+            playbackService.play(track: track, showMiniPlayer: true)
         }
     }
 
@@ -328,6 +728,27 @@ struct ConversationShareCard: View {
         }
 
         isAddingComment = false
+    }
+
+    private func timeAgo(from date: Date) -> String {
+        let seconds = Date().timeIntervalSince(date)
+        let minutes = seconds / 60
+        let hours = minutes / 60
+        let days = hours / 24
+
+        if seconds < 60 {
+            return "now"
+        } else if minutes < 60 {
+            return "\(Int(minutes))m ago"
+        } else if hours < 24 {
+            return "\(Int(hours))h ago"
+        } else if days < 7 {
+            return "\(Int(days))d ago"
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d"
+            return formatter.string(from: date)
+        }
     }
 }
 

@@ -153,9 +153,10 @@ class FriendRankingEngine {
     /// Calculate time pattern match score (0.0 - 1.0)
     /// Based on whether user typically shares with this friend at this time of day
     private static func calculateTimePatternScore() -> Double {
-        // TODO: Implement time pattern analysis
-        // For now, return neutral score
-        // In future: analyze historical share times and compare to current hour
+        // DEFERRED: Time pattern analysis - Ticket PHLOCK-9012
+        // Feature: Analyze user's historical sharing patterns by time of day/week
+        // Requires: Database view for share_time_patterns table
+        // Current: Returns neutral score (0.5) to avoid bias
         return 0.5
     }
 

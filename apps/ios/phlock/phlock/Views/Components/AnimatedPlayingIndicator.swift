@@ -34,7 +34,7 @@ struct AnimatedPlayingIndicator: View {
                 startAnimation()
             }
         }
-        .onChange(of: isPlaying) { newValue in
+        .onChange(of: isPlaying) { oldValue, newValue in
             if newValue {
                 startAnimation()
             } else {
@@ -93,7 +93,7 @@ struct WaveformPlayingIndicator: View {
                     animationScale = 1.1
                 }
             }
-            .onChange(of: isPlaying) { newValue in
+            .onChange(of: isPlaying) { oldValue, newValue in
                 animationScale = newValue ? 1.1 : 1.0
             }
     }
@@ -128,7 +128,7 @@ struct PulsingDotsIndicator: View {
                 startAnimation()
             }
         }
-        .onChange(of: isPlaying) { newValue in
+        .onChange(of: isPlaying) { oldValue, newValue in
             if newValue {
                 startAnimation()
             } else {

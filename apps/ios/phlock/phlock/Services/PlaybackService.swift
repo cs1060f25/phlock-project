@@ -2,30 +2,63 @@ import Foundation
 import AVFoundation
 import Combine
 import Supabase
+import OSLog
 
 /// Service for managing music playback
+@MainActor
 class PlaybackService: ObservableObject {
     static let shared = PlaybackService()
 
     private var player: AVPlayer?
     private var timeObserver: Any?
 
-    // Cache for ISRC and preview URL lookups
-    private var isrcCache: [String: String] = [:] // spotifyId -> ISRC
-    private var previewUrlCache: [String: String] = [:] // ISRC -> previewUrl
+    // Thread-safe cache for ISRC and preview URL lookups
+    private let cacheQueue = DispatchQueue(label: "com.phlock.playback.cache", attributes: .concurrent)
+    private nonisolated(unsafe) var _isrcCache: [String: String] = [:] // spotifyId -> ISRC
+    private nonisolated(unsafe) var _previewUrlCache: [String: String] = [:] // ISRC -> previewUrl
+
+    // Thread-safe cache accessors
+    private func getCachedISRC(for spotifyId: String) -> String? {
+        cacheQueue.sync { _isrcCache[spotifyId] }
+    }
+
+    private func setCachedISRC(_ isrc: String, for spotifyId: String) {
+        cacheQueue.async(flags: .barrier) {
+            self._isrcCache[spotifyId] = isrc
+        }
+    }
+
+    private func getCachedPreviewUrl(for isrc: String) -> String? {
+        cacheQueue.sync { _previewUrlCache[isrc] }
+    }
+
+    private func setCachedPreviewUrl(_ url: String, for isrc: String) {
+        cacheQueue.async(flags: .barrier) {
+            self._previewUrlCache[isrc] = url
+        }
+    }
 
     @Published var currentTrack: MusicItem?
     @Published var currentSourceId: String? // Track which specific share/source is playing
     @Published var isPlaying = false
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
+    @Published var shouldShowMiniPlayer = true // Controls whether mini player appears
 
-    private init() {
-        setupAudioSession()
+    nonisolated private init() {
+        Task { @MainActor in
+            setupAudioSession()
+        }
     }
 
     deinit {
-        stopPlayback()
+        // Clean up synchronously in deinit
+        player?.pause()
+        if let timeObserver = timeObserver {
+            player?.removeTimeObserver(timeObserver)
+        }
+        player = nil
+        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
     }
 
     // MARK: - Audio Session Setup
@@ -49,7 +82,7 @@ class PlaybackService: ObservableObject {
                 // Skip if already has preview URL or already cached
                 if track.previewUrl != nil { continue }
                 guard let spotifyId = track.spotifyId else { continue }
-                if previewUrlCache.values.contains(where: { _ in true }) && isrcCache[spotifyId] != nil {
+                if getCachedISRC(for: spotifyId) != nil {
                     continue // Already cached
                 }
 
@@ -57,17 +90,17 @@ class PlaybackService: ObservableObject {
                 do {
                     // Get ISRC if not cached
                     let isrc: String
-                    if let cachedIsrc = isrcCache[spotifyId] {
+                    if let cachedIsrc = getCachedISRC(for: spotifyId) {
                         isrc = cachedIsrc
                     } else if let fetchedIsrc = try await fetchSpotifyISRC(spotifyId: spotifyId) {
-                        isrcCache[spotifyId] = fetchedIsrc
+                        setCachedISRC(fetchedIsrc, for: spotifyId)
                         isrc = fetchedIsrc
                     } else {
                         continue
                     }
 
                     // Skip if preview URL already cached
-                    if previewUrlCache[isrc] != nil { continue }
+                    if getCachedPreviewUrl(for: isrc) != nil { continue }
 
                     // Fetch Apple Music preview
                     guard let artistName = track.artistName else { continue }
@@ -76,8 +109,7 @@ class PlaybackService: ObservableObject {
                         artist: artistName,
                         isrc: isrc
                     ), let previewUrl = appleMusicTrack.previewURL, !previewUrl.isEmpty {
-                        previewUrlCache[isrc] = previewUrl
-                        print("⚡️ Pre-fetched preview for: \(track.name)")
+                        setCachedPreviewUrl(previewUrl, for: isrc)
                     }
                 } catch {
                     // Silently fail for background pre-fetching
@@ -89,14 +121,16 @@ class PlaybackService: ObservableObject {
     // MARK: - Playback Control
 
     /// Play a track by its preview URL
-    func play(track: MusicItem, sourceId: String? = nil) {
-        print("🎵 Attempting to play track: \(track.name)")
-        print("   Source ID: \(sourceId ?? "nil")")
-        print("   Current Source ID: \(currentSourceId ?? "nil")")
-        print("   Preview URL: \(track.previewUrl ?? "nil")")
-        print("   Album Art URL: \(track.albumArtUrl ?? "nil")")
-        print("   Spotify ID: \(track.spotifyId ?? "nil")")
-        print("   ISRC: \(track.isrc ?? "nil")")
+    func play(track: MusicItem, sourceId: String? = nil, showMiniPlayer: Bool = true) {
+        // Set whether mini player should be shown
+        shouldShowMiniPlayer = showMiniPlayer
+
+        if #available(iOS 14.0, *) {
+            PhlockLogger.playback.infoLog("Attempting to play track: \(track.name)")
+            PhlockLogger.playback.debugLog("Source ID: \(sourceId ?? "nil"), Current: \(self.currentSourceId ?? "nil")")
+            PhlockLogger.playback.debugLog("Preview URL: \(track.previewUrl ?? "nil")")
+            PhlockLogger.playback.debugLog("Show Mini Player: \(showMiniPlayer)")
+        }
 
         // Check if this is the exact same instance already playing
         if let sourceId = sourceId,
@@ -107,6 +141,7 @@ class PlaybackService: ObservableObject {
             if isPlaying {
                 pause()
             } else {
+                shouldShowMiniPlayer = showMiniPlayer  // Ensure flag is updated even on resume
                 resume()
             }
             return
@@ -128,12 +163,12 @@ class PlaybackService: ObservableObject {
                 do {
                     // Step 1: Get ISRC from Spotify (check cache first)
                     let isrc: String
-                    if let cachedIsrc = isrcCache[spotifyId] {
+                    if let cachedIsrc = getCachedISRC(for: spotifyId) {
                         print("⚡️ Using cached ISRC: \(cachedIsrc)")
                         isrc = cachedIsrc
                     } else if let fetchedIsrc = try await fetchSpotifyISRC(spotifyId: spotifyId) {
                         print("✅ Got ISRC from Spotify: \(fetchedIsrc)")
-                        isrcCache[spotifyId] = fetchedIsrc
+                        setCachedISRC(fetchedIsrc, for: spotifyId)
                         isrc = fetchedIsrc
                     } else {
                         print("⚠️ No ISRC available from Spotify")
@@ -144,7 +179,7 @@ class PlaybackService: ObservableObject {
                     let applePreviewUrl: String
                     var appleMusicTrack: AppleMusicTrack? = nil
 
-                    if let cachedUrl = previewUrlCache[isrc] {
+                    if let cachedUrl = getCachedPreviewUrl(for: isrc) {
                         print("⚡️ Using cached preview URL")
                         applePreviewUrl = cachedUrl
                     } else {
@@ -163,7 +198,7 @@ class PlaybackService: ObservableObject {
                             appleMusicTrack = fetchedTrack
                             if let url = fetchedTrack.previewURL, !url.isEmpty {
                                 print("✅ Found exact match on Apple Music with preview URL")
-                                previewUrlCache[isrc] = url
+                                setCachedPreviewUrl(url, for: isrc)
                                 applePreviewUrl = url
                             } else {
                                 print("❌ Apple Music match found but no preview URL available")
@@ -309,9 +344,15 @@ class PlaybackService: ObservableObject {
             return
         }
 
+        // Preserve the shouldShowMiniPlayer flag before stopPlayback resets it
+        let preserveShowMiniPlayer = shouldShowMiniPlayer
+
         // Always stop and start fresh when playing from URL
         // The decision to reuse or restart should be made at higher level (play method)
         stopPlayback()
+
+        // Restore the flag after stopPlayback
+        shouldShowMiniPlayer = preserveShowMiniPlayer
 
         // Create new player
         let playerItem = AVPlayerItem(url: url)
@@ -362,13 +403,17 @@ class PlaybackService: ObservableObject {
 
     /// Stop playback and clear current track
     func stopPlayback() {
+        // First pause playback
         player?.pause()
-        player = nil
 
+        // Remove time observer BEFORE setting player to nil (fix memory leak)
         if let timeObserver = timeObserver {
             player?.removeTimeObserver(timeObserver)
             self.timeObserver = nil
         }
+
+        // Now we can safely clear the player
+        player = nil
 
         NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
 
@@ -377,8 +422,11 @@ class PlaybackService: ObservableObject {
         isPlaying = false
         currentTime = 0
         duration = 0
+        shouldShowMiniPlayer = true // Reset to default
 
-        print("⏹️ Stopped")
+        if #available(iOS 14.0, *) {
+            PhlockLogger.playback.debugLog("Playback stopped")
+        }
     }
 
     /// Seek to specific time
@@ -392,15 +440,22 @@ class PlaybackService: ObservableObject {
 
     private func setupTimeObserver() {
         let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
-        timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            self?.currentTime = CMTimeGetSeconds(time)
+        timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
+            // Use MainActor.assumeIsolated since we know we're on main queue
+            MainActor.assumeIsolated { [weak self] in
+                self?.currentTime = CMTimeGetSeconds(time)
+            }
         }
     }
 
     @objc private func playerDidFinishPlaying() {
-        // Just stop playback (don't auto-advance)
+        // Pause at end but keep track info (don't clear currentTrack)
         DispatchQueue.main.async {
-            self.stopPlayback()
+            self.isPlaying = false
+            self.player?.pause()
+            // Reset to beginning
+            self.player?.seek(to: .zero)
+            self.currentTime = 0
         }
     }
 }

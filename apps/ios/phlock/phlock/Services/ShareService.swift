@@ -232,7 +232,6 @@ class ShareService {
             .execute()
             .value
 
-        print("🌐 Fetched \(shares.count) network activity shares for user \(userId)")
         return shares
     }
 
@@ -433,14 +432,14 @@ class ShareService {
     /// - Parameters:
     ///   - userId1: First user's ID
     ///   - userId2: Second user's ID
-    /// - Returns: Array of shares between these users, ordered chronologically
+    /// - Returns: Array of shares between these users, ordered chronologically (oldest first)
     func getConversation(userId1: UUID, userId2: UUID) async throws -> [Share] {
         // Query shares in both directions
         let shares: [Share] = try await supabase
             .from("shares")
             .select("*")
             .or("and(sender_id.eq.\(userId1.uuidString),recipient_id.eq.\(userId2.uuidString)),and(sender_id.eq.\(userId2.uuidString),recipient_id.eq.\(userId1.uuidString))")
-            .order("created_at", ascending: false)
+            .order("created_at", ascending: true)
             .execute()
             .value
 
@@ -541,6 +540,36 @@ class ShareService {
             .value
 
         return shares.count
+    }
+
+    // MARK: - Library Saves
+
+    /// Track when a user saves a track to their native library
+    /// This is separate from share saves - it tracks general library additions
+    /// - Parameters:
+    ///   - trackId: The track ID (Spotify or Apple Music)
+    ///   - userId: The user who saved the track
+    ///   - platformType: The platform where it was saved
+    func trackLibrarySave(trackId: String, userId: UUID, platformType: PlatformType) async throws {
+        // Note: This requires a 'library_saves' table in the database
+        // For now, we'll log this action
+        print("📚 Tracked library save: track=\(trackId), user=\(userId), platform=\(platformType.rawValue)")
+
+        // If there's a related share, update it to saved status
+        let shares: [Share] = try await supabase
+            .from("shares")
+            .select("*")
+            .eq("recipient_id", value: userId.uuidString)
+            .eq("track_id", value: trackId)
+            .order("created_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+
+        if let latestShare = shares.first {
+            try await markAsSaved(shareId: latestShare.id, userId: userId)
+            print("✅ Updated related share \(latestShare.id) to saved status")
+        }
     }
 }
 

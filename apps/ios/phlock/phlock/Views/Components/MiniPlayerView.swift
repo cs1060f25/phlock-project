@@ -3,8 +3,9 @@ import SwiftUI
 struct MiniPlayerView: View {
     @ObservedObject var playbackService: PlaybackService
     @Binding var showFullPlayer: Bool
+    @Binding var showShareSheet: Bool
+    @Binding var trackToShare: MusicItem?
     @EnvironmentObject var authState: AuthenticationState
-    @State private var showShareSheet = false
     @State private var showToast = false
     @State private var toastMessage = ""
     @State private var showConfetti = false
@@ -87,6 +88,7 @@ struct MiniPlayerView: View {
 
                         // Share Button
                         Button {
+                            trackToShare = track
                             showShareSheet = true
                         } label: {
                             Image(systemName: "paperplane")
@@ -135,87 +137,14 @@ struct MiniPlayerView: View {
             )
             .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: -5)
             .padding(.horizontal, 8)
-            .sheet(isPresented: $showShareSheet) {
-                if let track = playbackService.currentTrack {
-                    NavigationStack {
-                        VStack(spacing: 0) {
-                            // Track preview at top
-                            HStack(spacing: 12) {
-                                if let albumArtUrl = track.albumArtUrl,
-                                   !albumArtUrl.isEmpty,
-                                   let url = URL(string: albumArtUrl) {
-                                    AsyncImage(url: url) { image in
-                                        image
-                                            .resizable()
-                                            .scaledToFill()
-                                    } placeholder: {
-                                        Color.gray.opacity(0.2)
-                                    }
-                                    .frame(width: 60, height: 60)
-                                    .cornerRadius(8)
-                                } else {
-                                    // Fallback for missing album art
-                                    ZStack {
-                                        LinearGradient(
-                                            colors: [Color.purple.opacity(0.3), Color.blue.opacity(0.3)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                        Image(systemName: "music.note")
-                                            .font(.system(size: 22))
-                                            .foregroundColor(.white.opacity(0.7))
-                                    }
-                                    .frame(width: 60, height: 60)
-                                    .cornerRadius(8)
-                                }
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(track.name)
-                                        .font(.nunitoSans(size: 16, weight: .bold))
-                                        .lineLimit(1)
-
-                                    if let artistName = track.artistName {
-                                        Text(artistName)
-                                            .font(.nunitoSans(size: 14))
-                                            .foregroundColor(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                }
-
-                                Spacer()
-                            }
-                            .padding(16)
-
-                            Divider()
-
-                            // QuickSendBar
-                            QuickSendBar(track: track) { sentToFriends in
-                                handleShareComplete(sentToFriends: sentToFriends)
-                            }
-                            .environmentObject(authState)
-                            .padding(.top, 16)
-
-                            Spacer()
-                        }
-                        .navigationTitle("Share Song")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .navigationBarTrailing) {
-                                Button("Done") {
-                                    showShareSheet = false
-                                }
-                            }
-                        }
-                    }
-                }
-            }
             .toast(isPresented: $showToast, message: toastMessage, type: .success, duration: 3.0)
             .confetti(trigger: $showConfetti)
         }
     }
 
-    private func handleShareComplete(sentToFriends: [User]) {
+    func handleShareComplete(sentToFriends: [User]) {
         showShareSheet = false
+        trackToShare = nil
 
         // Show success feedback
         let friendNames = sentToFriends.map { $0.displayName }.joined(separator: ", ")
@@ -237,7 +166,9 @@ struct MiniPlayerView: View {
         Spacer()
         MiniPlayerView(
             playbackService: PlaybackService.shared,
-            showFullPlayer: .constant(false)
+            showFullPlayer: .constant(false),
+            showShareSheet: .constant(false),
+            trackToShare: .constant(nil)
         )
     }
 }

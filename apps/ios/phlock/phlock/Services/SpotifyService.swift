@@ -124,6 +124,46 @@ class SpotifyService: NSObject {
         )
     }
 
+    // MARK: - Token Refresh
+
+    /// Refresh an expired access token using the refresh token
+    func refreshAccessToken(refreshToken: String) async throws -> SpotifyAuthResult {
+        print("🔄 Refreshing Spotify access token...")
+        var request = URLRequest(url: URL(string: "https://accounts.spotify.com/api/token")!)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+
+        let parameters = [
+            "grant_type": "refresh_token",
+            "refresh_token": refreshToken,
+            "client_id": Config.spotifyClientId
+        ]
+
+        request.httpBody = parameters
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: "&")
+            .data(using: .utf8)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? "No response body"
+            print("❌ Token refresh failed. Status: \((response as? HTTPURLResponse)?.statusCode ?? 0), Body: \(responseBody)")
+            throw SpotifyError.tokenExchangeFailed
+        }
+
+        print("✅ Token refresh successful!")
+
+        let tokenResponse = try JSONDecoder().decode(SpotifyTokenResponse.self, from: data)
+        return SpotifyAuthResult(
+            accessToken: tokenResponse.accessToken,
+            refreshToken: tokenResponse.refreshToken ?? refreshToken, // Spotify may not return a new refresh token
+            expiresIn: tokenResponse.expiresIn,
+            scope: tokenResponse.scope
+        )
+    }
+
     // MARK: - API Calls
 
     /// Fetch current user's Spotify profile
@@ -220,17 +260,33 @@ class SpotifyService: NSObject {
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         request.setValue("no-cache", forHTTPHeaderField: "Pragma")
 
-        let (data, _) = try await URLSession.shared.data(for: request)
-        let response = try JSONDecoder().decode(SpotifyRecentlyPlayedResponse.self, from: data)
+        let (data, httpResponse) = try await URLSession.shared.data(for: request)
 
-        // Debug: Check if tracks have preview URLs and ISRCs
-        print("🎵 Fetched \(response.items.count) recently played tracks from Spotify")
-        let tracksWithPreviews = response.items.filter { $0.track.previewUrl != nil }.count
-        let tracksWithISRC = response.items.filter { $0.track.externalIds?.isrc != nil }.count
-        print("   \(tracksWithPreviews) tracks have preview URLs")
-        print("   \(tracksWithISRC) tracks have ISRC codes")
+        // Debug: Log response status and raw data
+        if let httpResponse = httpResponse as? HTTPURLResponse {
+            print("📡 Spotify recently-played API status: \(httpResponse.statusCode)")
+        }
 
-        return response
+        // Try to decode the response
+        do {
+            let response = try JSONDecoder().decode(SpotifyRecentlyPlayedResponse.self, from: data)
+
+            // Debug: Check if tracks have preview URLs and ISRCs
+            print("🎵 Fetched \(response.items.count) recently played tracks from Spotify")
+            let tracksWithPreviews = response.items.filter { $0.track.previewUrl != nil }.count
+            let tracksWithISRC = response.items.filter { $0.track.externalIds?.isrc != nil }.count
+            print("   \(tracksWithPreviews) tracks have preview URLs")
+            print("   \(tracksWithISRC) tracks have ISRC codes")
+
+            return response
+        } catch {
+            // Log the actual response for debugging
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("❌ Failed to decode Spotify recently-played response")
+                print("📄 Raw response (first 500 chars): \(String(jsonString.prefix(500)))")
+            }
+            throw error
+        }
     }
 
     /// Search for an artist by name and return their Spotify ID
@@ -258,6 +314,109 @@ class SpotifyService: NSObject {
 
         print("⚠️ No Spotify artist found for: \(name)")
         return nil
+    }
+
+    /// Save a track to the user's Spotify library
+    /// - Parameters:
+    ///   - trackId: The Spotify track ID
+    ///   - accessToken: User's Spotify access token
+    func saveTrackToLibrary(trackId: String, accessToken: String) async throws {
+        print("💾 Saving track \(trackId) to Spotify library...")
+
+        guard let url = URL(string: "https://api.spotify.com/v1/me/tracks") else {
+            throw SpotifyError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        // Body: array of track IDs
+        let body = ["ids": [trackId]]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyError.apiError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            print("✅ Track saved to Spotify library")
+        } else if httpResponse.statusCode == 401 {
+            throw SpotifyError.apiError("Unauthorized - token may be expired")
+        } else {
+            throw SpotifyError.apiError("Failed to save track (status: \(httpResponse.statusCode))")
+        }
+    }
+
+    /// Remove a track from the user's Spotify library
+    /// - Parameters:
+    ///   - trackId: The Spotify track ID
+    ///   - accessToken: User's Spotify access token
+    func removeTrackFromLibrary(trackId: String, accessToken: String) async throws {
+        print("🗑️ Removing track \(trackId) from Spotify library...")
+
+        guard let url = URL(string: "https://api.spotify.com/v1/me/tracks") else {
+            throw SpotifyError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        // Body: array of track IDs
+        let body = ["ids": [trackId]]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyError.apiError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            print("✅ Track removed from Spotify library")
+        } else if httpResponse.statusCode == 401 {
+            throw SpotifyError.apiError("Unauthorized - token may be expired")
+        } else {
+            throw SpotifyError.apiError("Failed to remove track (status: \(httpResponse.statusCode))")
+        }
+    }
+
+    /// Check if a track is saved in the user's Spotify library
+    /// - Parameters:
+    ///   - trackId: The Spotify track ID
+    ///   - accessToken: User's Spotify access token
+    /// - Returns: True if the track is saved, false otherwise
+    func isTrackSaved(trackId: String, accessToken: String) async throws -> Bool {
+        guard let url = URL(string: "https://api.spotify.com/v1/me/tracks/contains?ids=\(trackId)") else {
+            throw SpotifyError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyError.apiError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            // Parse response as array of booleans
+            if let results = try? JSONDecoder().decode([Bool].self, from: data), let isSaved = results.first {
+                print("✅ Track saved status: \(isSaved)")
+                return isSaved
+            }
+        } else if httpResponse.statusCode == 401 {
+            throw SpotifyError.apiError("Unauthorized - token may be expired")
+        }
+
+        return false
     }
 
     // MARK: - PKCE Helper Methods

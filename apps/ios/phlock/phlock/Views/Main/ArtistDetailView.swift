@@ -6,6 +6,7 @@ struct ArtistDetailView: View {
 
     @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject var playbackService: PlaybackService
+    @EnvironmentObject var authState: AuthenticationState
     @State private var topTracks: [MusicItem] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
@@ -16,6 +17,13 @@ struct ArtistDetailView: View {
     @State private var isSearchBarExpanded = false
     @State private var keyboardHeight: CGFloat = 0
     @FocusState private var isSearchFieldFocused: Bool
+
+    // Share state for tracks
+    @State private var showShareSheetForTrackId: String? = nil
+
+    // Store observer tokens to properly remove them later
+    @State private var keyboardShowObserver: NSObjectProtocol?
+    @State private var keyboardHideObserver: NSObjectProtocol?
 
     var displayedTracks: [MusicItem] {
         searchText.isEmpty ? topTracks : searchResults
@@ -81,7 +89,8 @@ struct ArtistDetailView: View {
                                     let isCurrentTrack = playbackService.currentTrack?.id == track.id
                                     let isPlaying = isCurrentTrack && playbackService.isPlaying
 
-                                    HStack(spacing: 12) {
+                                    VStack(spacing: 0) {
+                                        HStack(spacing: 12) {
                                         // Playing indicator bar
                                         if isCurrentTrack {
                                             RoundedRectangle(cornerRadius: 2)
@@ -133,6 +142,16 @@ struct ArtistDetailView: View {
 
                                         Spacer()
 
+                                        // Share Button
+                                        Button {
+                                            showShareSheetForTrackId = track.id
+                                        } label: {
+                                            Image(systemName: showShareSheetForTrackId == track.id ? "paperplane.fill" : "paperplane")
+                                                .font(.system(size: 20))
+                                                .foregroundColor(showShareSheetForTrackId == track.id ? .primary : .secondary)
+                                        }
+                                        .buttonStyle(.plain)
+
                                         // Play Button
                                         Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                                             .font(.system(size: 28))
@@ -149,6 +168,26 @@ struct ArtistDetailView: View {
                                     .contentShape(Rectangle())
                                     .onTapGesture {
                                         playTrack(track)
+                                    }
+
+                                        // QuickSendBar appears below track when sharing
+                                        if showShareSheetForTrackId == track.id {
+                                            QuickSendBar(
+                                                track: track,
+                                                onDismiss: {
+                                                    withAnimation {
+                                                        showShareSheetForTrackId = nil
+                                                    }
+                                                },
+                                                onSendComplete: { sentToFriends in
+                                                    handleShareComplete(sentToFriends: sentToFriends)
+                                                },
+                                                additionalBottomInset: QuickSendBar.Layout.embeddedInset
+                                            )
+                                            .environmentObject(authState)
+                                            .transition(.move(edge: .top).combined(with: .opacity))
+                                            .padding(.top, 8)
+                                        }
                                     }
                                 }
                             }
@@ -275,8 +314,8 @@ struct ArtistDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             loadTopTracks()
-            // Subscribe to keyboard notifications
-            NotificationCenter.default.addObserver(
+            // Subscribe to keyboard notifications and store observers for proper cleanup
+            keyboardShowObserver = NotificationCenter.default.addObserver(
                 forName: UIResponder.keyboardWillShowNotification,
                 object: nil,
                 queue: .main
@@ -286,7 +325,7 @@ struct ArtistDetailView: View {
                 }
             }
 
-            NotificationCenter.default.addObserver(
+            keyboardHideObserver = NotificationCenter.default.addObserver(
                 forName: UIResponder.keyboardWillHideNotification,
                 object: nil,
                 queue: .main
@@ -295,9 +334,15 @@ struct ArtistDetailView: View {
             }
         }
         .onDisappear {
-            // Clean up keyboard observers
-            NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillShowNotification, object: nil)
-            NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
+            // Properly clean up keyboard observers using tokens
+            if let showObserver = keyboardShowObserver {
+                NotificationCenter.default.removeObserver(showObserver)
+                keyboardShowObserver = nil
+            }
+            if let hideObserver = keyboardHideObserver {
+                NotificationCenter.default.removeObserver(hideObserver)
+                keyboardHideObserver = nil
+            }
         }
     }
 
@@ -371,6 +416,15 @@ struct ArtistDetailView: View {
 
     private func playTrack(_ track: MusicItem) {
         PlaybackService.shared.play(track: track)
+    }
+
+    private func handleShareComplete(sentToFriends: [User]) {
+        // Check if this is a close signal (empty array)
+        if sentToFriends.isEmpty {
+            showShareSheetForTrackId = nil
+        }
+        // Otherwise keep QuickSendBar open for more sends
+        // Feedback is handled directly in QuickSendBar
     }
 }
 

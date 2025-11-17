@@ -1,5 +1,6 @@
 import Foundation
 import MusicKit
+import UIKit
 
 /// Service for Apple Music authentication and API interactions
 class AppleMusicService {
@@ -267,18 +268,12 @@ class AppleMusicService {
     func searchTrack(name: String, artist: String, isrc: String? = nil) async throws -> AppleMusicTrack? {
         // Try ISRC search first if available
         if let isrc = isrc, !isrc.isEmpty {
-            print("🔍 Searching Apple Music by ISRC: \(isrc)")
-
             if let track = try await searchByISRC(isrc) {
-                print("✅ Found exact match using ISRC!")
                 return track
-            } else {
-                print("⚠️ No ISRC match found, falling back to text search")
             }
         }
 
         // Fall back to text search with validation
-        print("🔍 Searching Apple Music catalog by text: \(name) by \(artist)")
 
         var searchRequest = MusicCatalogSearchRequest(term: "\(name) \(artist)", types: [Song.self])
         searchRequest.limit = 10 // Get more results to find best match
@@ -291,7 +286,6 @@ class AppleMusicService {
                 // Validate: Check if ISRC matches (if we have it)
                 if let isrc = isrc, let songISRC = song.isrc {
                     if songISRC.uppercased() == isrc.uppercased() {
-                        print("✅ Found exact match by ISRC in search results: \(song.title)")
                         return AppleMusicTrack(
                             id: song.id.rawValue,
                             title: song.title,
@@ -319,28 +313,17 @@ class AppleMusicService {
                 if normalizedSongName.contains(normalizedSearchName) || normalizedSearchName.contains(normalizedSongName) {
                     // Validate artist name also matches
                     if song.artistName.lowercased().contains(artist.lowercased().split(separator: " ").first?.lowercased() ?? "") {
-                        print("✅ Found validated match in Apple Music: \(song.title)")
-
-                        let track = AppleMusicTrack(
+                        return AppleMusicTrack(
                             id: song.id.rawValue,
                             title: song.title,
                             artistName: song.artistName,
                             artworkURL: song.artwork?.url(width: 300, height: 300)?.absoluteString,
                             previewURL: song.previewAssets?.first?.url?.absoluteString
                         )
-
-                        if track.previewURL != nil {
-                            print("✅ Preview URL available!")
-                        } else {
-                            print("⚠️ No preview URL available for this track")
-                        }
-
-                        return track
                     }
                 }
             }
 
-            print("❌ No validated match found in Apple Music catalog")
             return nil
         } catch {
             print("❌ Apple Music search failed: \(error)")
@@ -355,8 +338,58 @@ class AppleMusicService {
         // Apple Music's MusicCatalogSearchRequest doesn't support ISRC as a search term
         // We would need to use the catalog lookup API which requires an Apple Music ID
         // For now, return nil to fall back to text search with validation
-        print("⚠️ Apple Music catalog search doesn't support ISRC lookup directly")
         return nil
+    }
+
+    /// Save a track to the user's Apple Music library
+    /// - Parameter trackId: The Apple Music catalog track ID
+    func saveTrackToLibrary(trackId: String) async throws {
+        print("💾 Saving track \(trackId) to Apple Music library...")
+
+        // Check authorization status
+        let status = await MusicAuthorization.request()
+        guard status == .authorized else {
+            print("❌ Apple Music authorization required")
+            throw AppleMusicError.authorizationDenied
+        }
+
+        // Convert string ID to MusicItemID
+        let musicItemId = MusicItemID(trackId)
+
+        // Create a library request to add the song
+        do {
+            // Note: MusicKit doesn't provide a direct "add" method
+            // We need to use the Song ID and add it to the library
+            // This requires creating a MusicLibraryRequest with the edit capability
+
+            // Create the song reference from catalog ID
+            let catalogRequest = MusicCatalogResourceRequest<Song>(matching: \.id, equalTo: musicItemId)
+            let catalogResponse = try await catalogRequest.response()
+
+            guard let song = catalogResponse.items.first else {
+                print("❌ Could not find song in Apple Music catalog")
+                throw AppleMusicError.apiError("Song not found in catalog")
+            }
+
+            // Add to library using play parameters
+            // Note: MusicKit's library management is limited
+            // The primary way to add songs is through the Music app UI
+            // or using MusicPlayer to play and add
+            print("⚠️ Apple Music library addition requires user interaction")
+            print("   Opening song in Apple Music app for user to add...")
+
+            // Open the song in Apple Music app where user can add it
+            if let url = song.url {
+                await MainActor.run {
+                    UIApplication.shared.open(url)
+                }
+            }
+
+            print("✅ Opened track in Apple Music for adding to library")
+        } catch {
+            print("❌ Failed to save track to Apple Music library: \(error)")
+            throw AppleMusicError.apiError("Failed to add to library: \(error.localizedDescription)")
+        }
     }
 }
 

@@ -68,11 +68,9 @@ struct ColorfulPhlockLogoView: View {
         .onAppear {
             if sequentialAnimation && !animationStarted {
                 animationStarted = true
-                print("🎨 ColorfulPhlockLogoView: Starting sequential animation")
                 startSequentialAnimation()
             } else if animate && !animationStarted {
                 animationStarted = true
-                print("🎨 ColorfulPhlockLogoView: View appeared, starting continuous rotation")
                 // Show all dots immediately for continuous rotation mode
                 showCenter = true
                 visibleInnerDots = innerRingDots.count
@@ -92,21 +90,17 @@ struct ColorfulPhlockLogoView: View {
         .onChange(of: animate) { _, newValue in
             // Start rotation when animate changes to true
             if newValue && innerRotation == 0 && outerRotation == 0 {
-                print("🎨 ColorfulPhlockLogoView: animate parameter changed to true, starting rotation")
                 startRotationAnimation(duration: 3.0)
             }
         }
     }
 
     private func startSequentialAnimation() {
-        print("🎨 Starting sequential dot animation (fast mode - 1.5s total)")
-
         // Step 1: Show center dot - faster
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
                 showCenter = true
             }
-            print("🎨 Center dot appeared")
         }
 
         // Step 2: Show inner ring dots one by one - faster
@@ -116,7 +110,6 @@ struct ColorfulPhlockLogoView: View {
                 withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
                     visibleInnerDots = i + 1
                 }
-                print("🎨 Inner dot \(i + 1)/\(self.innerRingDots.count) appeared")
             }
         }
 
@@ -128,15 +121,12 @@ struct ColorfulPhlockLogoView: View {
                 withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
                     visibleOuterDots = i + 1
                 }
-                print("🎨 Outer dot \(i + 1)/\(self.outerRingDots.count) appeared")
             }
         }
 
         // Step 4: Notify completion when all dots appear (don't start rotation yet)
         let allDotsVisibleDelay = outerStartDelay + Double(outerRingDots.count) * outerDotDelay
         DispatchQueue.main.asyncAfter(deadline: .now() + allDotsVisibleDelay) {
-            print("🎨 All dots visible at \(allDotsVisibleDelay)s, notifying completion")
-
             // Notify completion - parent view will decide what to do next
             // (fade to MainView if authenticated, or transition to WelcomeView if not)
             onAnimationComplete?()
@@ -144,16 +134,12 @@ struct ColorfulPhlockLogoView: View {
     }
 
     private func startRotationAnimation(duration: Double = 4.0) {
-        print("🎨 Starting rotation animation with duration: \(duration)s")
-
         // Rotation animation
         // Inner ring rotates clockwise (positive), outer ring counter-clockwise (negative)
         withAnimation(.linear(duration: duration).repeatForever(autoreverses: false)) {
             innerRotation = 360
             outerRotation = -360
         }
-
-        print("🎨 Rotation animation started")
     }
 
     // Inner ring: 6 dots at 60° intervals
