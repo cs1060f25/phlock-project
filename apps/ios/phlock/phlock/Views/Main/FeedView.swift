@@ -32,6 +32,8 @@ struct FeedView: View {
     @State private var toastMessage = ""
     @State private var toastType: ShareToast.ToastType = .success
     @State private var pullProgress: CGFloat = 0
+    @State private var currentPlayingIndex: Int? = nil
+    @State private var autoplayEnabled = true
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -114,6 +116,11 @@ struct FeedView: View {
                 print("🔄 Daily playlist loaded")
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { _ in
+            if autoplayEnabled {
+                playNextTrack()
+            }
+        }
     }
 
     // MARK: - Daily Playlist List
@@ -129,11 +136,17 @@ struct FeedView: View {
                     .listRowBackground(Color.clear)
                     .id("playlistTop")
 
+                // Show existing daily songs
                 ForEach(Array(dailySongs.enumerated()), id: \.element.id) { index, song in
                     DailyPlaylistRow(
                         song: song,
                         position: index + 1,
                         member: phlockMembers.first(where: { $0.user.id == song.senderId })?.user,
+                        isCurrentlyPlaying: playbackService.currentTrack?.id == song.trackId && playbackService.isPlaying,
+                        onPlayTapped: {
+                            currentPlayingIndex = index
+                            playTrackAtIndex(index)
+                        },
                         onSwapTapped: {
                             if let member = phlockMembers.first(where: { $0.user.id == song.senderId })?.user {
                                 selectedMemberToSwap = member
@@ -152,6 +165,21 @@ struct FeedView: View {
                     .environmentObject(playbackService)
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
+                }
+
+                // Add empty slots for positions 4 and 5 if we have less than 5 songs
+                if dailySongs.count < 5 {
+                    ForEach((dailySongs.count + 1)...5, id: \.self) { position in
+                        EmptySlotRow(
+                            position: position,
+                            onAddMemberTapped: {
+                                selectedPositionToAdd = position
+                                showAddSheet = true
+                            }
+                        )
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+                    }
                 }
             }
             .listStyle(.plain)
@@ -295,6 +323,55 @@ struct FeedView: View {
             }
         }
     }
+
+    // MARK: - Playback Methods
+
+    private func playTrackAtIndex(_ index: Int) {
+        guard index >= 0 && index < dailySongs.count else { return }
+
+        let song = dailySongs[index]
+
+        // Check if this track is already playing
+        if playbackService.currentTrack?.id == song.trackId && playbackService.isPlaying {
+            playbackService.pause()
+            return
+        }
+
+        // Create MusicItem from Share
+        let track = MusicItem(
+            id: song.trackId,
+            name: song.trackName,
+            artistName: song.artistName,
+            previewUrl: song.previewUrl,
+            albumArtUrl: song.albumArtUrl,
+            isrc: nil,
+            playedAt: nil,
+            spotifyId: nil,
+            appleMusicId: nil,
+            popularity: nil,
+            followerCount: nil
+        )
+
+        currentPlayingIndex = index
+        playbackService.play(
+            track: track,
+            sourceId: song.id.uuidString,
+            showMiniPlayer: true
+        )
+    }
+
+    private func playNextTrack() {
+        guard let currentIndex = currentPlayingIndex else { return }
+
+        let nextIndex = currentIndex + 1
+        if nextIndex < dailySongs.count {
+            print("🎵 Autoplaying next track at index \(nextIndex)")
+            playTrackAtIndex(nextIndex)
+        } else {
+            print("🎵 Reached end of playlist")
+            currentPlayingIndex = nil
+        }
+    }
 }
 
 // MARK: - Daily Playlist Row
@@ -303,71 +380,70 @@ struct DailyPlaylistRow: View {
     let song: Share
     let position: Int
     let member: User?
+    let isCurrentlyPlaying: Bool
+    let onPlayTapped: () -> Void
     let onSwapTapped: () -> Void
     let onAddToLibrary: () -> Void
     let onProfileTapped: () -> Void
 
     @EnvironmentObject var playbackService: PlaybackService
     @Environment(\.colorScheme) var colorScheme
-    @State private var isPlaying = false
 
     var body: some View {
         HStack(spacing: 16) {
-            // Album artwork (Left)
-            Button {
-                togglePlayback()
-            } label: {
-                ZStack {
-                    if let albumArtUrl = song.albumArtUrl,
-                       let url = URL(string: albumArtUrl) {
-                        AsyncImage(url: url) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.2))
-                                .overlay(
-                                    Image(systemName: "music.note")
-                                        .foregroundColor(.gray)
-                                )
-                        }
-                        .frame(width: 56, height: 56)
-                        .cornerRadius(6)
-                    } else {
+            // Album artwork with play overlay (Left) - matching RecentTrackCard style
+            ZStack {
+                if let albumArtUrl = song.albumArtUrl,
+                   let url = URL(string: albumArtUrl) {
+                    AsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
                         Rectangle()
                             .fill(Color.gray.opacity(0.2))
                             .overlay(
                                 Image(systemName: "music.note")
                                     .foregroundColor(.gray)
                             )
-                            .frame(width: 56, height: 56)
-                            .cornerRadius(6)
                     }
-
-                    // Play indicator overlay
-                    if isPlaying && playbackService.currentTrack?.id == song.trackId {
-                        Color.black.opacity(0.4)
-                            .cornerRadius(6)
-                            .overlay(
-                                Image(systemName: "pause.fill")
-                                    .foregroundColor(.white)
-                                    .font(.system(size: 20))
-                            )
-                    }
+                    .frame(width: 56, height: 56)
+                    .cornerRadius(6)
+                } else {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.2))
+                        .overlay(
+                            Image(systemName: "music.note")
+                                .foregroundColor(.gray)
+                        )
+                        .frame(width: 56, height: 56)
+                        .cornerRadius(6)
                 }
+
+                // Play button overlay (center) - matching RecentTrackCard style
+                Button {
+                    onPlayTapped()
+                } label: {
+                    Image(systemName: isCurrentlyPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white)
+                        .shadow(color: Color.black.opacity(0.5), radius: 4, x: 0, y: 2)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .disabled(song.previewUrl == nil)
+                .opacity(song.previewUrl != nil ? 1.0 : 0.4)
             }
-            .buttonStyle(.plain)
 
             // Song info (Middle)
             VStack(alignment: .leading, spacing: 4) {
                 Text(song.trackName)
-                    .font(.nunitoSans(size: 16, weight: .bold))
+                    .font(.lora(size: 16, weight: .bold))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                 
                 Text(song.artistName)
-                    .font(.nunitoSans(size: 14, weight: .regular))
+                    .font(.lora(size: 14, weight: .regular))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
@@ -435,43 +511,59 @@ struct DailyPlaylistRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(Color(UIColor.systemBackground))
-        .onAppear {
-            updatePlayingState()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { _ in
-            updatePlayingState()
-        }
     }
+}
 
-    private func togglePlayback() {
-        if playbackService.currentTrack?.id == song.trackId && playbackService.isPlaying {
-            playbackService.pause()
-        } else {
-            // Create MusicItem from Share
-            let track = MusicItem(
-                id: song.trackId,
-                name: song.trackName,
-                artistName: song.artistName,
-                previewUrl: song.previewUrl,
-                albumArtUrl: song.albumArtUrl,
-                isrc: nil,
-                playedAt: nil,
-                spotifyId: nil,
-                appleMusicId: nil,
-                popularity: nil,
-                followerCount: nil
-            )
-            
-            playbackService.play(
-                track: track,
-                sourceId: song.id.uuidString,
-                showMiniPlayer: true
-            )
+// MARK: - Empty Slot Row
+
+struct EmptySlotRow: View {
+    let position: Int
+    let onAddMemberTapped: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        HStack(spacing: 16) {
+            // Empty slot indicator
+            Rectangle()
+                .fill(Color.gray.opacity(0.1))
+                .frame(width: 56, height: 56)
+                .cornerRadius(6)
+                .overlay(
+                    Image(systemName: "plus")
+                        .foregroundColor(.gray)
+                        .font(.system(size: 20))
+                )
+
+            // Text content
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Position \(position)")
+                    .font(.lora(size: 16, weight: .bold))
+                    .foregroundColor(.primary)
+
+                Text("Add a friend to your phlock")
+                    .font(.lora(size: 14, weight: .regular))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            // Add button
+            Button {
+                onAddMemberTapped()
+            } label: {
+                Text("Add")
+                    .font(.lora(size: 14, weight: .semiBold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.primary)
+                    .cornerRadius(16)
+            }
+            .buttonStyle(.plain)
         }
-    }
-
-    private func updatePlayingState() {
-        isPlaying = playbackService.isPlaying && playbackService.currentTrack?.id == song.trackId
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(UIColor.systemBackground))
     }
 }
 
@@ -531,11 +623,11 @@ struct EmptyDailyPlaylistView: View {
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(member.displayName)
-                                    .font(.nunitoSans(size: 16, weight: .semiBold))
+                                    .font(.lora(size: 16, weight: .semiBold))
                                     .foregroundColor(.primary)
                                 
                                 Text("Waiting for daily song...")
-                                    .font(.nunitoSans(size: 14, weight: .regular))
+                                    .font(.lora(size: 14, weight: .regular))
                                     .italic()
                                     .foregroundColor(.secondary)
                             }
@@ -555,7 +647,7 @@ struct EmptyDailyPlaylistView: View {
                                 )
 
                             Text("Add a member to your phlock")
-                                .font(.nunitoSans(size: 16, weight: .semiBold))
+                                .font(.lora(size: 16, weight: .semiBold))
                                 .foregroundColor(.secondary)
 
                             Spacer()
@@ -596,10 +688,10 @@ struct FeedErrorStateView: View {
                 .foregroundColor(.orange)
 
             Text("Unable to load playlist")
-                .font(.nunitoSans(size: 20, weight: .bold))
+                .font(.lora(size: 20, weight: .bold))
 
             Text(error)
-                .font(.nunitoSans(size: 14, weight: .regular))
+                .font(.lora(size: 14, weight: .regular))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
@@ -608,7 +700,7 @@ struct FeedErrorStateView: View {
                 onRetry()
             } label: {
                 Text("Try Again")
-                    .font(.nunitoSans(size: 16, weight: .semiBold))
+                    .font(.lora(size: 16, weight: .semiBold))
                     .foregroundColor(.white)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 12)
@@ -639,7 +731,7 @@ struct SwapMemberView: View {
                 // Current member info
                 VStack(spacing: 8) {
                     Text("Replacing")
-                        .font(.nunitoSans(size: 14, weight: .regular))
+                        .font(.lora(size: 14, weight: .regular))
                         .foregroundColor(.secondary)
 
                     HStack(spacing: 12) {
@@ -662,7 +754,7 @@ struct SwapMemberView: View {
                         }
 
                         Text(currentMember.displayName)
-                            .font(.nunitoSans(size: 18, weight: .bold))
+                            .font(.lora(size: 18, weight: .bold))
                     }
                 }
                 .padding()
@@ -676,9 +768,9 @@ struct SwapMemberView: View {
                 } else if friends.isEmpty {
                     VStack(spacing: 12) {
                         Text("No available friends")
-                            .font(.nunitoSans(size: 16, weight: .semiBold))
+                            .font(.lora(size: 16, weight: .semiBold))
                         Text("All your friends are already in your phlock")
-                            .font(.nunitoSans(size: 14, weight: .regular))
+                            .font(.lora(size: 14, weight: .regular))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -706,11 +798,11 @@ struct SwapMemberView: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(friend.displayName)
-                                    .font(.nunitoSans(size: 16, weight: .semiBold))
+                                    .font(.lora(size: 16, weight: .semiBold))
 
                                 if friend.username != nil {
                                     Text("@\(friend.username ?? "")")
-                                        .font(.nunitoSans(size: 12, weight: .regular))
+                                        .font(.lora(size: 12, weight: .regular))
                                         .foregroundColor(.secondary)
                                 }
                             }
@@ -746,7 +838,7 @@ struct SwapMemberView: View {
                         }
                     }
                     .disabled(selectedFriend == nil)
-                    .font(.nunitoSans(size: 16, weight: .semiBold))
+                    .font(.lora(size: 16, weight: .semiBold))
                 }
             }
             .task {
@@ -802,9 +894,9 @@ struct AddMemberView: View {
                 } else if friends.isEmpty {
                     VStack(spacing: 12) {
                         Text("No available friends")
-                            .font(.nunitoSans(size: 16, weight: .semiBold))
+                            .font(.lora(size: 16, weight: .semiBold))
                         Text("Add more friends to build your phlock")
-                            .font(.nunitoSans(size: 14, weight: .regular))
+                            .font(.lora(size: 14, weight: .regular))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -832,11 +924,11 @@ struct AddMemberView: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(friend.displayName)
-                                    .font(.nunitoSans(size: 16, weight: .semiBold))
+                                    .font(.lora(size: 16, weight: .semiBold))
 
                                 if friend.username != nil {
                                     Text("@\(friend.username ?? "")")
-                                        .font(.nunitoSans(size: 12, weight: .regular))
+                                        .font(.lora(size: 12, weight: .regular))
                                         .foregroundColor(.secondary)
                                 }
                             }
@@ -872,7 +964,7 @@ struct AddMemberView: View {
                         }
                     }
                     .disabled(selectedFriend == nil)
-                    .font(.nunitoSans(size: 16, weight: .semiBold))
+                    .font(.lora(size: 16, weight: .semiBold))
                 }
             }
             .task {
