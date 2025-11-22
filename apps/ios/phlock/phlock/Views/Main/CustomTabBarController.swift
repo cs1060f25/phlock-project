@@ -9,9 +9,11 @@ struct CustomTabBarView: View {
     @Binding var profileNavigationPath: NavigationPath
     @Binding var clearDiscoverSearchTrigger: Int
     @Binding var refreshFeedTrigger: Int
+    @Binding var refreshDiscoverTrigger: Int
     @Binding var refreshInboxTrigger: Int
     @Binding var refreshPhlocksTrigger: Int
     @Binding var scrollFeedToTopTrigger: Int
+    @Binding var scrollDiscoverToTopTrigger: Int
     @Binding var scrollInboxToTopTrigger: Int
     @Binding var scrollPhlocksToTopTrigger: Int
     @Environment(\.colorScheme) var colorScheme
@@ -121,8 +123,14 @@ struct CustomTabBarView: View {
             discoverNavigationPath = NavigationPath()
             print("✅ Discover navigation path reset")
         } else {
-            clearDiscoverSearchTrigger += 1
-            print("🔍 Clearing search")
+            switch tapCount {
+            case 1:
+                scrollDiscoverToTopTrigger += 1
+                print("⬆️ Scrolling discover to top")
+            default:
+                refreshDiscoverTrigger += 1
+                print("🔄 Refreshing discover")
+            }
         }
     }
 
@@ -228,7 +236,7 @@ struct TabBarButton: View {
                     .foregroundColor(isSelected ? (colorScheme == .dark ? .white : .black) : .gray)
 
                 Text(title)
-                    .font(.system(size: 10))
+                    .font(.lora(size: 10, weight: .medium))
                     .foregroundColor(isSelected ? (colorScheme == .dark ? .white : .black) : .gray)
             }
             .frame(maxWidth: .infinity)

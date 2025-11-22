@@ -10,6 +10,20 @@ struct MainView: View {
     @State private var recognitionTrackToShare: MusicItem? = nil
     @State private var showRecognitionQuickSend = false
 
+    private var refreshDiscoverTriggerBinding: Binding<Int> {
+        Binding(
+            get: { navigationState.refreshDiscoverTrigger },
+            set: { navigationState.refreshDiscoverTrigger = $0 }
+        )
+    }
+
+    private var scrollDiscoverToTopTriggerBinding: Binding<Int> {
+        Binding(
+            get: { navigationState.scrollDiscoverToTopTrigger },
+            set: { navigationState.scrollDiscoverToTopTrigger = $0 }
+        )
+    }
+
     var body: some View {
         let miniPlayerInset = playbackService.currentTrack != nil && playbackService.shouldShowMiniPlayer
             ? MiniPlayerView.Layout.height
@@ -27,9 +41,11 @@ struct MainView: View {
                     profileNavigationPath: $navigationState.profileNavigationPath,
                     clearDiscoverSearchTrigger: $navigationState.clearDiscoverSearchTrigger,
                     refreshFeedTrigger: $navigationState.refreshFeedTrigger,
+                    refreshDiscoverTrigger: $navigationState.refreshDiscoverTrigger,
                     refreshInboxTrigger: $navigationState.refreshInboxTrigger,
                     refreshPhlocksTrigger: $navigationState.refreshPhlocksTrigger,
                     scrollFeedToTopTrigger: $navigationState.scrollFeedToTopTrigger,
+                    scrollDiscoverToTopTrigger: $navigationState.scrollDiscoverToTopTrigger,
                     scrollInboxToTopTrigger: $navigationState.scrollInboxToTopTrigger,
                     scrollPhlocksToTopTrigger: $navigationState.scrollPhlocksToTopTrigger,
                     feedView: AnyView(
@@ -40,7 +56,12 @@ struct MainView: View {
                             .environment(\.colorScheme, colorScheme)
                     ),
                     discoverView: AnyView(
-                        DiscoverView(navigationPath: $navigationState.discoverNavigationPath, clearSearchTrigger: $navigationState.clearDiscoverSearchTrigger)
+                        DiscoverView(
+                            navigationPath: $navigationState.discoverNavigationPath,
+                            clearSearchTrigger: $navigationState.clearDiscoverSearchTrigger,
+                            refreshTrigger: refreshDiscoverTriggerBinding,
+                            scrollToTopTrigger: scrollDiscoverToTopTriggerBinding
+                        )
                             .environmentObject(authState)
                             .environmentObject(playbackService)
                             .environmentObject(navigationState)

@@ -24,11 +24,13 @@ class NavigationState: ObservableObject {
     // MARK: - Refresh Triggers
     @Published var clearDiscoverSearchTrigger = 0
     @Published var refreshFeedTrigger = 0
+    @Published var refreshDiscoverTrigger = 0
     @Published var refreshInboxTrigger = 0
     @Published var refreshPhlocksTrigger = 0
 
     // MARK: - Scroll Triggers
     @Published var scrollFeedToTopTrigger = 0
+    @Published var scrollDiscoverToTopTrigger = 0
     @Published var scrollInboxToTopTrigger = 0
     @Published var scrollPhlocksToTopTrigger = 0
 
@@ -72,7 +74,8 @@ class NavigationState: ObservableObject {
             refreshFeedTrigger += 1
             scrollFeedToTopTrigger += 1
         case 1:
-            clearDiscoverSearchTrigger += 1
+            refreshDiscoverTrigger += 1
+            scrollDiscoverToTopTrigger += 1
         case 2:
             refreshInboxTrigger += 1
             scrollInboxToTopTrigger += 1

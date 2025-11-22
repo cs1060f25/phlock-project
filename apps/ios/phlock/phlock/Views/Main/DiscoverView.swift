@@ -12,6 +12,8 @@ struct DiscoverView: View {
     @Environment(\.colorScheme) var colorScheme
     @Binding var navigationPath: NavigationPath
     @Binding var clearSearchTrigger: Int
+    @Binding var refreshTrigger: Int
+    @Binding var scrollToTopTrigger: Int
 
     @State private var searchText = ""
     @State private var selectedFilter: SearchFilter = .all
@@ -20,6 +22,8 @@ struct DiscoverView: View {
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
     @FocusState private var isSearchFieldFocused: Bool
+    @State private var isRefreshing = false
+    @State private var pullProgress: CGFloat = 0
 
     // Recently played tracks state
     @State private var recentlyPlayedTracks: [MusicItem] = []
@@ -64,6 +68,7 @@ struct DiscoverView: View {
                         .foregroundColor(.gray)
 
                     TextField("search for music...", text: $searchText)
+                        .font(.lora(size: 16, weight: .regular))
                         .textFieldStyle(.plain)
                         .autocorrectionDisabled()
                         .focused($isSearchFieldFocused)
@@ -138,7 +143,7 @@ struct DiscoverView: View {
                     } else {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("recently played")
-                                .font(.nunitoSans(size: 20, weight: .bold))
+                                .font(.lora(size: 20, weight: .bold))
                                 .padding(.horizontal, 16)
                                 .padding(.top, 4)
 
@@ -197,9 +202,28 @@ struct DiscoverView: View {
                 loadRecentlyPlayedTracks()
                 loadTodaysDailySong()
             }
+            .onChange(of: refreshTrigger) { oldValue, newValue in
+                Task {
+                    // Scroll to top and reload data
+                    withAnimation {
+                        scrollToTopTrigger += 1
+                    }
+                    isRefreshing = true
+                    await refreshContent()
+                    isRefreshing = false
+                }
+            }
         }
         .fullScreenSwipeBack()
         .toast(isPresented: $showDailySongToast, message: dailySongToastMessage, type: .success, duration: 3.0)
+    }
+
+    private func refreshContent() async {
+        // Clear search results and reload recent tracks
+        searchText = ""
+        searchResults = nil
+        loadRecentlyPlayedTracks()
+        loadTodaysDailySong()
     }
 
     private func performDebouncedSearch() {
@@ -372,7 +396,7 @@ struct DailySongStreakBanner: View {
                     Text(user.streakEmoji)
                         .font(.system(size: 20))
                     Text("\(user.dailySongStreak)")
-                        .font(.nunitoSans(size: 18, weight: .bold))
+                        .font(.lora(size: 18, weight: .bold))
                         .foregroundColor(.primary)
                 }
             }
@@ -381,14 +405,14 @@ struct DailySongStreakBanner: View {
             VStack(alignment: .leading, spacing: 2) {
                 if let dailySong = todaysDailySong {
                     Text("Today's song:")
-                        .font(.nunitoSans(size: 12, weight: .semiBold))
+                        .font(.lora(size: 12, weight: .semiBold))
                         .foregroundColor(.secondary)
                     Text(dailySong.trackName)
-                        .font(.nunitoSans(size: 14, weight: .bold))
+                        .font(.lora(size: 14, weight: .bold))
                         .lineLimit(1)
                 } else {
                     Text("Select your song for today")
-                        .font(.nunitoSans(size: 14, weight: .semiBold))
+                        .font(.lora(size: 14, weight: .semiBold))
                         .foregroundColor(.primary)
                 }
             }
@@ -412,7 +436,12 @@ struct DailySongStreakBanner: View {
 }
 
 #Preview {
-    DiscoverView(navigationPath: .constant(NavigationPath()), clearSearchTrigger: .constant(0))
+    DiscoverView(
+        navigationPath: .constant(NavigationPath()),
+        clearSearchTrigger: .constant(0),
+        refreshTrigger: .constant(0),
+        scrollToTopTrigger: .constant(0)
+    )
         .environmentObject(AuthenticationState())
         .environmentObject(PlaybackService.shared)
 }

@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import Supabase
 
 // Navigation destination types for Feed
 enum FeedDestination: Hashable {
@@ -34,6 +35,14 @@ struct FeedView: View {
     @State private var pullProgress: CGFloat = 0
     @State private var currentPlayingIndex: Int? = nil
     @State private var autoplayEnabled = true
+
+    private var phlockMembersByPosition: [Int: User] {
+        Dictionary(uniqueKeysWithValues: phlockMembers.map { ($0.position, $0.user) })
+    }
+
+    private var songsBySender: [UUID: Share] {
+        Dictionary(uniqueKeysWithValues: dailySongs.map { ($0.senderId, $0) })
+    }
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -104,16 +113,14 @@ struct FeedView: View {
             await loadDailyPlaylist()
         }
         .onChange(of: refreshTrigger) { oldValue, newValue in
-            print("🔄 Playlist refreshTrigger changed from \(oldValue) to \(newValue)")
             Task {
-                if newValue == 0 {
+                // Scroll to top and reload data
+                withAnimation {
                     scrollToTopTrigger += 1
                 }
                 isRefreshing = true
-                print("🔄 Loading daily playlist...")
                 await loadDailyPlaylist()
                 isRefreshing = false
-                print("🔄 Daily playlist loaded")
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { _ in
@@ -136,40 +143,49 @@ struct FeedView: View {
                     .listRowBackground(Color.clear)
                     .id("playlistTop")
 
-                // Show existing daily songs
-                ForEach(Array(dailySongs.enumerated()), id: \.element.id) { index, song in
-                    DailyPlaylistRow(
-                        song: song,
-                        position: index + 1,
-                        member: phlockMembers.first(where: { $0.user.id == song.senderId })?.user,
-                        isCurrentlyPlaying: playbackService.currentTrack?.id == song.trackId && playbackService.isPlaying,
-                        onPlayTapped: {
-                            currentPlayingIndex = index
-                            playTrackAtIndex(index)
-                        },
-                        onSwapTapped: {
-                            if let member = phlockMembers.first(where: { $0.user.id == song.senderId })?.user {
-                                selectedMemberToSwap = member
-                                showSwapSheet = true
-                            }
-                        },
-                        onAddToLibrary: {
-                            addToLibrary(song)
-                        },
-                        onProfileTapped: {
-                            if let member = phlockMembers.first(where: { $0.user.id == song.senderId })?.user {
-                                navigationPath.append(FeedDestination.userProfile(member))
-                            }
+                ForEach(1...5, id: \.self) { position in
+                    if let member = phlockMembersByPosition[position] {
+                        if let song = songsBySender[member.id],
+                           let songIndex = dailySongs.firstIndex(where: { $0.id == song.id }) {
+                            DailyPlaylistRow(
+                                song: song,
+                                position: position,
+                                member: member,
+                                isCurrentlyPlaying: playbackService.currentTrack?.id == song.trackId && playbackService.isPlaying,
+                                onPlayTapped: {
+                                    currentPlayingIndex = songIndex
+                                    playTrackAtIndex(songIndex)
+                                },
+                                onSwapTapped: {
+                                    selectedMemberToSwap = member
+                                    showSwapSheet = true
+                                },
+                                onAddToLibrary: {
+                                    addToLibrary(song)
+                                },
+                                onProfileTapped: {
+                                    navigationPath.append(FeedDestination.userProfile(member))
+                                }
+                            )
+                            .environmentObject(playbackService)
+                            .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.hidden)
+                        } else {
+                            WaitingForSongRow(
+                                position: position,
+                                member: member,
+                                onSwapTapped: {
+                                    selectedMemberToSwap = member
+                                    showSwapSheet = true
+                                },
+                                onProfileTapped: {
+                                    navigationPath.append(FeedDestination.userProfile(member))
+                                }
+                            )
+                            .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.hidden)
                         }
-                    )
-                    .environmentObject(playbackService)
-                    .listRowInsets(EdgeInsets())
-                    .listRowSeparator(.hidden)
-                }
-
-                // Add empty slots for positions 4 and 5 if we have less than 5 songs
-                if dailySongs.count < 5 {
-                    ForEach((dailySongs.count + 1)...5, id: \.self) { position in
+                    } else {
                         EmptySlotRow(
                             position: position,
                             onAddMemberTapped: {
@@ -192,11 +208,9 @@ struct FeedView: View {
             ) {
                 await loadDailyPlaylist()
             }
-            .onChange(of: scrollToTopTrigger) { oldValue, newValue in
-                print("📜 Playlist scrollToTopTrigger changed from \(oldValue) to \(newValue)")
+            .onChange(of: scrollToTopTrigger) { _, _ in
                 withAnimation {
                     scrollProxy.scrollTo("playlistTop", anchor: .top)
-                    print("📜 Scrolled to playlistTop")
                 }
             }
         }
@@ -248,24 +262,159 @@ struct FeedView: View {
     private func addToLibrary(_ song: Share) {
         Task {
             do {
-                let platformType = authState.currentUser?.platformType ?? .spotify
-
-                if platformType == .spotify {
-                    try await SpotifyService.shared.addToLibrary(trackId: song.trackId)
-                } else {
-                    try await AppleMusicService.shared.addToLibrary(trackId: song.trackId)
+                guard let currentUser = authState.currentUser else {
+                    toastMessage = "Please sign in to save"
+                    toastType = .error
+                    showToast = true
+                    return
                 }
 
-                toastMessage = "Added to library"
+                guard let platformType = currentUser.platformType else {
+                    toastMessage = "Link a streaming account first"
+                    toastType = .error
+                    showToast = true
+                    return
+                }
+
+                switch platformType {
+                case .spotify:
+                    let accessToken = try await fetchAccessToken(for: currentUser, platform: platformType)
+                    let spotifyId = sanitizeSpotifyId(song.trackId)
+                    try await SpotifyService.shared.saveTrackToLibrary(
+                        trackId: spotifyId,
+                        accessToken: accessToken
+                    )
+                case .appleMusic:
+                    let appleMusicId = try await resolveAppleMusicTrackId(for: song)
+                    try await AppleMusicService.shared.saveTrackToLibrary(trackId: appleMusicId)
+                }
+
+                try await ShareService.shared.trackLibrarySave(
+                    trackId: song.trackId,
+                    userId: currentUser.id,
+                    platformType: platformType
+                )
+
+                toastMessage = platformType == .spotify ? "Added to Spotify" : "Added in Apple Music"
                 toastType = .success
                 showToast = true
             } catch {
-                toastMessage = "Failed to add to library"
+                let message = (error as? LocalizedError)?.errorDescription ?? "Failed to add to library"
+                toastMessage = message
                 toastType = .error
                 showToast = true
                 print("❌ Error adding to library: \(error)")
             }
         }
+    }
+
+    private func fetchAccessToken(for user: User, platform: PlatformType) async throws -> String {
+        let supabase = PhlockSupabaseClient.shared.client
+
+        var tokens: [PlatformToken] = try await supabase
+            .from("platform_tokens")
+            .select("*")
+            .eq("user_id", value: user.id.uuidString)
+            .eq("platform_type", value: platform.rawValue)
+            .order("updated_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+
+        if var token = tokens.first {
+            if platform == .spotify {
+                // Refresh slightly early to avoid race on expiry
+                let refreshThreshold = token.tokenExpiresAt.addingTimeInterval(-120)
+                if Date() >= refreshThreshold {
+                    guard let refreshToken = token.refreshToken else {
+                        throw NSError(
+                            domain: "FeedView",
+                            code: -2,
+                            userInfo: [NSLocalizedDescriptionKey: "No Spotify refresh token; please relink."]
+                        )
+                    }
+
+                    let refreshed = try await SpotifyService.shared.refreshAccessToken(refreshToken: refreshToken)
+                    let now = Date()
+                    let newExpiresAt = now.addingTimeInterval(TimeInterval(refreshed.expiresIn))
+
+                    struct TokenUpdate: Encodable {
+                        let access_token: String
+                        let refresh_token: String
+                        let token_expires_at: String
+                        let updated_at: String
+                    }
+
+                    let updatePayload = TokenUpdate(
+                        access_token: refreshed.accessToken,
+                        refresh_token: refreshed.refreshToken ?? refreshToken,
+                        token_expires_at: ISO8601DateFormatter().string(from: newExpiresAt),
+                        updated_at: ISO8601DateFormatter().string(from: now)
+                    )
+
+                    try await supabase
+                        .from("platform_tokens")
+                        .update(updatePayload)
+                        .eq("id", value: token.id.uuidString)
+                        .execute()
+
+                    token = PlatformToken(
+                        id: token.id,
+                        userId: token.userId,
+                        platformType: token.platformType,
+                        accessToken: refreshed.accessToken,
+                        refreshToken: refreshed.refreshToken ?? refreshToken,
+                        tokenExpiresAt: newExpiresAt,
+                        scope: token.scope,
+                        createdAt: token.createdAt,
+                        updatedAt: now
+                    )
+                }
+            }
+
+            return token.accessToken
+        }
+
+        throw NSError(
+            domain: "FeedView",
+            code: -1,
+            userInfo: [NSLocalizedDescriptionKey: "No \(platform.rawValue) token found"]
+        )
+    }
+
+    private func sanitizeSpotifyId(_ rawId: String) -> String {
+        if rawId.contains("/") || rawId.contains(":") {
+            if let last = rawId.split(whereSeparator: { $0 == "/" || $0 == ":" }).last {
+                return String(last)
+            }
+        }
+        return rawId
+    }
+
+    private func resolveAppleMusicTrackId(for song: Share) async throws -> String {
+        // If the trackId already looks like an Apple Music catalog ID, use it directly
+        if !song.trackId.isEmpty,
+           CharacterSet.decimalDigits.isSuperset(of: CharacterSet(charactersIn: song.trackId)) {
+            return song.trackId
+        }
+
+        // Try parsing from a URL if one was stored
+        if let url = URL(string: song.trackId),
+           let lastComponent = url.pathComponents.last,
+           CharacterSet.decimalDigits.isSuperset(of: CharacterSet(charactersIn: lastComponent)) {
+            return lastComponent
+        }
+
+        // Fallback: search Apple Music by name/artist
+        if let track = try? await AppleMusicService.shared.searchTrack(
+            name: song.trackName,
+            artist: song.artistName,
+            isrc: nil
+        ) {
+            return track.id
+        }
+
+        throw AppleMusicError.apiError("Could not locate Apple Music track for \(song.trackName)")
     }
 
     private func handleSwapCompleted(oldMember: User, newMember: User) {
@@ -504,6 +653,83 @@ struct DailyPlaylistRow: View {
                             )
                             .frame(width: 32, height: 32)
                     }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(UIColor.systemBackground))
+    }
+}
+
+struct WaitingForSongRow: View {
+    let position: Int
+    let member: User
+    let onSwapTapped: () -> Void
+    let onProfileTapped: () -> Void
+
+    var body: some View {
+        HStack(spacing: 16) {
+            if let photoUrl = member.profilePhotoUrl,
+               let url = URL(string: photoUrl) {
+                AsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Circle()
+                        .fill(Color.gray.opacity(0.3))
+                        .overlay(
+                            Text(String(member.displayName.prefix(1)))
+                                .font(.system(size: 12))
+                        )
+                }
+                .frame(width: 56, height: 56)
+                .clipShape(Circle())
+            } else {
+                Circle()
+                    .fill(Color.gray.opacity(0.3))
+                    .overlay(
+                        Image(systemName: "person.fill")
+                            .foregroundColor(.gray)
+                    )
+                    .frame(width: 56, height: 56)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(member.displayName)
+                    .font(.lora(size: 16, weight: .semiBold))
+                    .foregroundColor(.primary)
+
+                Text("Waiting for today's song...")
+                    .font(.lora(size: 14, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .italic()
+
+                Text("Position \(position)")
+                    .font(.lora(size: 12, weight: .regular))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            HStack(spacing: 12) {
+                Button {
+                    onSwapTapped()
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 20))
+                        .foregroundColor(.primary)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    onProfileTapped()
+                } label: {
+                    Image(systemName: "person.crop.circle")
+                        .font(.system(size: 22))
+                        .foregroundColor(.primary)
                 }
                 .buttonStyle(.plain)
             }
