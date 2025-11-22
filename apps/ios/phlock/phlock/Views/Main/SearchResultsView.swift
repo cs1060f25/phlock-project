@@ -8,9 +8,29 @@ struct SearchResultsList: View {
     let platformType: PlatformType
     let searchQuery: String
     @Binding var navigationPath: NavigationPath
+    let onSelectDailySong: ((MusicItem) -> Void)?
+    let todaysDailySong: Share?
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var navigationState: NavigationState
+
+    init(
+        results: SearchResult,
+        filter: DiscoverView.SearchFilter,
+        platformType: PlatformType,
+        searchQuery: String,
+        navigationPath: Binding<NavigationPath>,
+        onSelectDailySong: ((MusicItem) -> Void)? = nil,
+        todaysDailySong: Share? = nil
+    ) {
+        self.results = results
+        self.filter = filter
+        self.platformType = platformType
+        self.searchQuery = searchQuery
+        self._navigationPath = navigationPath
+        self.onSelectDailySong = onSelectDailySong
+        self.todaysDailySong = todaysDailySong
+    }
 
     var displayedTracks: [MusicItem] {
         filter == .artists ? [] : results.tracks
@@ -105,7 +125,9 @@ struct SearchResultsList: View {
                         TrackResultRow(
                             track: result.item,
                             platformType: platformType,
-                            showType: true
+                            showType: true,
+                            onSelectDailySong: onSelectDailySong,
+                            todaysDailySong: todaysDailySong
                         )
                         .environmentObject(authState)
                         .environmentObject(navigationState)
@@ -125,7 +147,9 @@ struct SearchResultsList: View {
                         TrackResultRow(
                             track: track,
                             platformType: platformType,
-                            showType: false
+                            showType: false,
+                            onSelectDailySong: onSelectDailySong,
+                            todaysDailySong: todaysDailySong
                         )
                         .environmentObject(authState)
                         .environmentObject(navigationState)
@@ -163,6 +187,8 @@ struct TrackResultRow: View {
     let track: MusicItem
     let platformType: PlatformType
     let showType: Bool
+    let onSelectDailySong: ((MusicItem) -> Void)?
+    let todaysDailySong: Share?
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var navigationState: NavigationState
@@ -171,12 +197,30 @@ struct TrackResultRow: View {
     @State private var showToast = false
     @State private var toastMessage = ""
 
+    init(
+        track: MusicItem,
+        platformType: PlatformType,
+        showType: Bool,
+        onSelectDailySong: ((MusicItem) -> Void)? = nil,
+        todaysDailySong: Share? = nil
+    ) {
+        self.track = track
+        self.platformType = platformType
+        self.showType = showType
+        self.onSelectDailySong = onSelectDailySong
+        self.todaysDailySong = todaysDailySong
+    }
+
     var isCurrentTrack: Bool {
         playbackService.currentTrack?.id == track.id
     }
 
     var isPlaying: Bool {
         isCurrentTrack && playbackService.isPlaying
+    }
+
+    var isSelectedAsDaily: Bool {
+        todaysDailySong?.trackId == track.id
     }
 
     var body: some View {
@@ -202,7 +246,7 @@ struct TrackResultRow: View {
                 .clipShape(RoundedRectangle(cornerRadius: 4))
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
-                        .stroke(isCurrentTrack ? Color.primary : Color.clear, lineWidth: 2.5)
+                        .stroke(isCurrentTrack ? Color.primary : (isSelectedAsDaily ? Color.green : Color.clear), lineWidth: 2.5)
                 )
             } else {
                 Color.gray.opacity(0.2)
@@ -212,10 +256,18 @@ struct TrackResultRow: View {
 
             // Track Info
             VStack(alignment: .leading, spacing: 4) {
-                Text(track.name)
-                    .font(.nunitoSans(size: 16, weight: isCurrentTrack ? .bold : .semiBold))
-                    .lineLimit(1)
-                    .foregroundColor(.primary)
+                HStack(spacing: 4) {
+                    Text(track.name)
+                        .font(.nunitoSans(size: 16, weight: isCurrentTrack ? .bold : .semiBold))
+                        .lineLimit(1)
+                        .foregroundColor(.primary)
+
+                    if isSelectedAsDaily {
+                        Text("✓")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.green)
+                    }
+                }
 
                 if showType {
                     Text("Track")
@@ -230,6 +282,18 @@ struct TrackResultRow: View {
             }
 
             Spacer()
+
+            // Daily Song Button (only show if handler provided and not already selected)
+            if let selectHandler = onSelectDailySong, !isSelectedAsDaily {
+                Button {
+                    selectHandler(track)
+                } label: {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.orange)
+                }
+                .buttonStyle(.plain)
+            }
 
             // Share Button
             Button {
@@ -395,9 +459,23 @@ struct ErrorView: View {
 struct RecentlyPlayedGridView: View {
     let tracks: [MusicItem]
     let platformType: PlatformType
+    let onSelectDailySong: ((MusicItem) -> Void)?
+    let todaysDailySong: Share?
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var navigationState: NavigationState
     @Environment(\.colorScheme) var colorScheme
+
+    init(
+        tracks: [MusicItem],
+        platformType: PlatformType,
+        onSelectDailySong: ((MusicItem) -> Void)? = nil,
+        todaysDailySong: Share? = nil
+    ) {
+        self.tracks = tracks
+        self.platformType = platformType
+        self.onSelectDailySong = onSelectDailySong
+        self.todaysDailySong = todaysDailySong
+    }
 
     // 3 columns grid
     let columns = [
@@ -411,7 +489,9 @@ struct RecentlyPlayedGridView: View {
             LazyVGrid(columns: columns, spacing: 12, pinnedViews: []) {
                 ForEach(tracks, id: \.id) { track in
                     RecentTrackCard(
-                        track: track
+                        track: track,
+                        onSelectDailySong: onSelectDailySong,
+                        todaysDailySong: todaysDailySong
                     )
                     .environmentObject(playbackService)
                     .environmentObject(navigationState)
@@ -427,9 +507,21 @@ struct RecentlyPlayedGridView: View {
 
 struct RecentTrackCard: View {
     let track: MusicItem
+    let onSelectDailySong: ((MusicItem) -> Void)?
+    let todaysDailySong: Share?
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var navigationState: NavigationState
     @Environment(\.colorScheme) var colorScheme
+
+    init(
+        track: MusicItem,
+        onSelectDailySong: ((MusicItem) -> Void)? = nil,
+        todaysDailySong: Share? = nil
+    ) {
+        self.track = track
+        self.onSelectDailySong = onSelectDailySong
+        self.todaysDailySong = todaysDailySong
+    }
 
     var isCurrentTrack: Bool {
         playbackService.currentTrack?.id == track.id
@@ -437,6 +529,10 @@ struct RecentTrackCard: View {
 
     var isPlaying: Bool {
         isCurrentTrack && playbackService.isPlaying
+    }
+
+    var isSelectedAsDaily: Bool {
+        todaysDailySong?.trackId == track.id
     }
 
     var body: some View {
@@ -450,27 +546,66 @@ struct RecentTrackCard: View {
                             image
                                 .resizable()
                                 .scaledToFill()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                         case .failure(_):
                             Color.gray.opacity(0.2)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                         case .empty:
                             Color.gray.opacity(0.2)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                         @unknown default:
                             Color.gray.opacity(0.2)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
                     }
-                    .aspectRatio(1.0, contentMode: .fill)
+                    .aspectRatio(1.0, contentMode: .fit)
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 } else {
                     Color.gray.opacity(0.2)
-                        .aspectRatio(1.0, contentMode: .fill)
+                        .aspectRatio(1.0, contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
 
-                // Send button (top-right corner)
+                // Action buttons (top corners)
                 VStack {
                     HStack {
+                        // Daily song button (top-left corner) - only show if handler provided and not already selected
+                        if let selectHandler = onSelectDailySong, !isSelectedAsDaily {
+                            Button {
+                                selectHandler(track)
+                            } label: {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.orange.opacity(0.9))
+                                        .frame(width: 26, height: 26)
+
+                                    Image(systemName: "star.fill")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.white)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.leading, 4)
+                            .padding(.top, 4)
+                        } else if isSelectedAsDaily {
+                            // Show check mark if selected
+                            ZStack {
+                                Circle()
+                                    .fill(Color.green.opacity(0.9))
+                                    .frame(width: 26, height: 26)
+
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            .padding(.leading, 4)
+                            .padding(.top, 4)
+                        }
+
                         Spacer()
+
+                        // Send button (top-right corner)
                         Button {
                             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                                 navigationState.shareTrack = track

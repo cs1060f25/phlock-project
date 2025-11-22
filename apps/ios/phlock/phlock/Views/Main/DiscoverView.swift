@@ -26,6 +26,13 @@ struct DiscoverView: View {
     @State private var isLoadingRecentTracks = false
     @State private var recentTracksError: String?
 
+    // Daily song state
+    @State private var todaysDailySong: Share?
+    @State private var isLoadingDailySong = false
+    @State private var dailySongError: String?
+    @State private var showDailySongToast = false
+    @State private var dailySongToastMessage = ""
+
     enum SearchFilter: String, CaseIterable {
         case all = "All"
         case tracks = "Tracks"
@@ -43,6 +50,14 @@ struct DiscoverView: View {
     var body: some View {
         NavigationStack(path: $navigationPath) {
             VStack(spacing: 0) {
+                // Daily Song Streak Banner
+                if let user = authState.currentUser, user.dailySongStreak > 0 || !user.hasSelectedToday {
+                    DailySongStreakBanner(
+                        user: user,
+                        todaysDailySong: todaysDailySong
+                    )
+                }
+
                 // Search Bar
                 HStack {
                     Image(systemName: "magnifyingglass")
@@ -129,7 +144,9 @@ struct DiscoverView: View {
 
                             RecentlyPlayedGridView(
                                 tracks: recentlyPlayedTracks,
-                                platformType: authState.currentUser?.platformType ?? .spotify
+                                platformType: authState.currentUser?.platformType ?? .spotify,
+                                onSelectDailySong: { track in selectDailySong(track, note: nil) },
+                                todaysDailySong: todaysDailySong
                             )
                             .environmentObject(PlaybackService.shared)
                             .environmentObject(navigationState)
@@ -141,7 +158,9 @@ struct DiscoverView: View {
                         filter: selectedFilter,
                         platformType: authState.currentUser?.platformType ?? .spotify,
                         searchQuery: searchText,
-                        navigationPath: $navigationPath
+                        navigationPath: $navigationPath,
+                        onSelectDailySong: { track in selectDailySong(track, note: nil) },
+                        todaysDailySong: todaysDailySong
                     )
                     .environmentObject(navigationState)
                 }
@@ -174,11 +193,13 @@ struct DiscoverView: View {
                 }
             }
             .task {
-                // Load recently played tracks on view appear
+                // Load recently played tracks and daily song on view appear
                 loadRecentlyPlayedTracks()
+                loadTodaysDailySong()
             }
         }
         .fullScreenSwipeBack()
+        .toast(isPresented: $showDailySongToast, message: dailySongToastMessage, type: .success, duration: 3.0)
     }
 
     private func performDebouncedSearch() {
@@ -265,6 +286,50 @@ struct DiscoverView: View {
             isLoadingRecentTracks = false
         }
     }
+
+    private func loadTodaysDailySong() {
+        guard let userId = authState.currentUser?.id else { return }
+
+        Task {
+            isLoadingDailySong = true
+            dailySongError = nil
+
+            do {
+                todaysDailySong = try await ShareService.shared.getTodaysDailySong(for: userId)
+                print("✅ Loaded today's daily song: \(todaysDailySong?.trackName ?? "none")")
+            } catch {
+                dailySongError = "Failed to load daily song"
+                print("❌ Error loading daily song: \(error)")
+            }
+
+            isLoadingDailySong = false
+        }
+    }
+
+    func selectDailySong(_ track: MusicItem, note: String? = nil) {
+        guard let userId = authState.currentUser?.id else { return }
+
+        Task {
+            do {
+                let share = try await ShareService.shared.selectDailySong(track: track, note: note, userId: userId)
+                todaysDailySong = share
+
+                // Update user in authState to reflect streak change
+                if var updatedUser = authState.currentUser {
+                    updatedUser = try await UserService.shared.getUser(userId: userId) ?? updatedUser
+                    authState.currentUser = updatedUser
+                }
+
+                dailySongToastMessage = "🔥 \(track.name) is your song today!"
+                showDailySongToast = true
+                print("✅ Selected daily song: \(track.name)")
+            } catch {
+                dailySongToastMessage = "❌ \(error.localizedDescription)"
+                showDailySongToast = true
+                print("❌ Error selecting daily song: \(error)")
+            }
+        }
+    }
 }
 
 // MARK: - Profile Icon Component
@@ -289,6 +354,60 @@ struct ProfileIconView: View {
             Image(systemName: "person.circle")
                 .font(.system(size: 22))
         }
+    }
+}
+
+// MARK: - Daily Song Streak Banner
+
+struct DailySongStreakBanner: View {
+    let user: User
+    let todaysDailySong: Share?
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Streak indicator
+            if user.dailySongStreak > 0 {
+                HStack(spacing: 4) {
+                    Text(user.streakEmoji)
+                        .font(.system(size: 20))
+                    Text("\(user.dailySongStreak)")
+                        .font(.nunitoSans(size: 18, weight: .bold))
+                        .foregroundColor(.primary)
+                }
+            }
+
+            // Status text
+            VStack(alignment: .leading, spacing: 2) {
+                if let dailySong = todaysDailySong {
+                    Text("Today's song:")
+                        .font(.nunitoSans(size: 12, weight: .semiBold))
+                        .foregroundColor(.secondary)
+                    Text(dailySong.trackName)
+                        .font(.nunitoSans(size: 14, weight: .bold))
+                        .lineLimit(1)
+                } else {
+                    Text("Select your song for today")
+                        .font(.nunitoSans(size: 14, weight: .semiBold))
+                        .foregroundColor(.primary)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            user.hasSelectedToday
+                ? Color.green.opacity(colorScheme == .dark ? 0.2 : 0.1)
+                : Color.orange.opacity(colorScheme == .dark ? 0.2 : 0.1)
+        )
+        .overlay(
+            Rectangle()
+                .frame(height: 1)
+                .foregroundColor(Color.gray.opacity(0.2)),
+            alignment: .bottom
+        )
     }
 }
 

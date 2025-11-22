@@ -573,6 +573,160 @@ class ShareService {
             print("✅ Updated related share \(latestShare.id) to saved status")
         }
     }
+
+    // MARK: - Daily Song Selection
+
+    /// Select a song as today's daily song
+    /// - Parameters:
+    ///   - track: The music item to set as daily song
+    ///   - note: Optional note (max 280 characters)
+    ///   - userId: The user's ID
+    /// - Returns: The created share representing the daily song
+    func selectDailySong(track: MusicItem, note: String? = nil, userId: UUID) async throws -> Share {
+        // Validate note length
+        if let note = note, note.count > 280 {
+            throw ShareError.commentTooLong
+        }
+
+        // Check if user already selected a song today
+        let today = Calendar.current.startOfDay(for: Date())
+        if let existing = try await getTodaysDailySong(for: userId) {
+            print("⚠️ User already selected daily song today: \(existing.trackName)")
+            throw ShareError.customError("You've already selected '\(existing.trackName)' as today's song")
+        }
+
+        // Validate and enrich track metadata
+        let validatedTrack = try await validateTrackMetadata(track)
+
+        // Create a self-share with is_daily_song = true
+        struct DailySongInsert: Encodable {
+            let sender_id: String
+            let recipient_id: String
+            let track_id: String
+            let track_name: String
+            let artist_name: String
+            let album_art_url: String
+            let message: String
+            let status: String
+            let is_daily_song: Bool
+            let selected_date: String
+            let preview_url: String
+        }
+
+        let shareData = DailySongInsert(
+            sender_id: userId.uuidString,
+            recipient_id: userId.uuidString, // Self-share
+            track_id: validatedTrack.id,
+            track_name: validatedTrack.name,
+            artist_name: validatedTrack.artistName ?? "Unknown Artist",
+            album_art_url: validatedTrack.albumArtUrl ?? "",
+            message: note ?? "",
+            status: ShareStatus.sent.rawValue,
+            is_daily_song: true,
+            selected_date: ISO8601DateFormatter().string(from: today),
+            preview_url: validatedTrack.previewUrl ?? ""
+        )
+
+        let share: Share = try await supabase
+            .from("shares")
+            .insert(shareData)
+            .select()
+            .single()
+            .execute()
+            .value
+
+        print("✨ Selected daily song: '\(share.trackName)' for user \(userId)")
+        return share
+    }
+
+    /// Get today's daily song for a user
+    /// - Parameter userId: The user's ID
+    /// - Returns: Today's daily song share, or nil if not selected
+    func getTodaysDailySong(for userId: UUID) async throws -> Share? {
+        let today = Calendar.current.startOfDay(for: Date())
+        let todayString = ISO8601DateFormatter().string(from: today)
+
+        let shares: [Share] = try await supabase
+            .from("shares")
+            .select("*")
+            .eq("sender_id", value: userId.uuidString)
+            .eq("is_daily_song", value: true)
+            .eq("selected_date", value: todayString)
+            .limit(1)
+            .execute()
+            .value
+
+        return shares.first
+    }
+
+    /// Get daily songs from specific users for a specific date
+    /// - Parameters:
+    ///   - userIds: Array of user IDs
+    ///   - date: The date to fetch songs for (defaults to today)
+    /// - Returns: Array of daily songs
+    func getDailySongs(from userIds: [UUID], for date: Date = Date()) async throws -> [Share] {
+        let targetDate = Calendar.current.startOfDay(for: date)
+        let dateString = ISO8601DateFormatter().string(from: targetDate)
+
+        guard !userIds.isEmpty else {
+            return []
+        }
+
+        let userIdStrings = userIds.map { $0.uuidString }
+
+        let shares: [Share] = try await supabase
+            .from("shares")
+            .select("*")
+            .in("sender_id", values: userIdStrings)
+            .eq("is_daily_song", value: true)
+            .eq("selected_date", value: dateString)
+            .execute()
+            .value
+
+        print("📅 Found \(shares.count) daily songs for \(userIds.count) users on \(dateString)")
+        return shares
+    }
+
+    /// Update the note for today's daily song
+    /// - Parameters:
+    ///   - note: New note text (max 280 characters)
+    ///   - userId: The user's ID
+    func updateDailySongNote(_ note: String, for userId: UUID) async throws {
+        if note.count > 280 {
+            throw ShareError.commentTooLong
+        }
+
+        guard let todaysSong = try await getTodaysDailySong(for: userId) else {
+            throw ShareError.shareNotFound
+        }
+
+        try await supabase
+            .from("shares")
+            .update(["message": note])
+            .eq("id", value: todaysSong.id.uuidString)
+            .execute()
+
+        print("✏️ Updated daily song note for user \(userId)")
+    }
+
+    /// Get daily songs history for a user
+    /// - Parameters:
+    ///   - userId: The user's ID
+    ///   - limit: Maximum number of days to fetch
+    /// - Returns: Array of daily songs, most recent first
+    func getDailySongHistory(for userId: UUID, limit: Int = 30) async throws -> [Share] {
+        let shares: [Share] = try await supabase
+            .from("shares")
+            .select("*")
+            .eq("sender_id", value: userId.uuidString)
+            .eq("is_daily_song", value: true)
+            .order("selected_date", ascending: false)
+            .limit(limit)
+            .execute()
+            .value
+
+        return shares
+    }
 }
 
 // MARK: - Errors
@@ -596,6 +750,26 @@ enum ShareServiceError: LocalizedError {
             return "Comment must be 280 characters or less"
         case .commentCreationFailed:
             return "Failed to create comment"
+        }
+    }
+}
+
+enum ShareError: LocalizedError {
+    case commentTooLong
+    case shareNotFound
+    case commentCreationFailed
+    case customError(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .commentTooLong:
+            return "Comment must be 280 characters or less"
+        case .shareNotFound:
+            return "Share not found"
+        case .commentCreationFailed:
+            return "Failed to add comment"
+        case .customError(let message):
+            return message
         }
     }
 }

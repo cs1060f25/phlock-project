@@ -1,5 +1,6 @@
 import Foundation
 import AuthenticationServices
+import Supabase
 
 /// Service for Spotify OAuth and API interactions
 class SpotifyService: NSObject {
@@ -417,6 +418,36 @@ class SpotifyService: NSObject {
         }
 
         return false
+    }
+
+    // MARK: - Convenience Methods for Daily Playlist
+
+    /// Add a track to the user's library
+    /// Note: This requires the access token to be provided by the caller
+    /// The caller should retrieve the token from the platform_tokens table
+    func addToLibrary(trackId: String) async throws {
+        // Get the current user's token from the database
+        let supabase = PhlockSupabaseClient.shared.client
+
+        // Get current user ID from Auth
+        guard let userId = supabase.auth.currentUser?.id else {
+            throw SpotifyError.apiError("No authenticated user")
+        }
+
+        // Get the platform token from database
+        let tokens: [PlatformToken] = try await supabase
+            .from("platform_tokens")
+            .select("*")
+            .eq("user_id", value: userId.uuidString)
+            .eq("platform_type", value: "spotify")
+            .execute()
+            .value
+
+        guard let token = tokens.first else {
+            throw SpotifyError.apiError("No Spotify token found for user")
+        }
+
+        try await saveTrackToLibrary(trackId: trackId, accessToken: token.accessToken)
     }
 
     // MARK: - PKCE Helper Methods

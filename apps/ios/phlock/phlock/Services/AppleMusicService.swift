@@ -391,6 +391,14 @@ class AppleMusicService {
             throw AppleMusicError.apiError("Failed to add to library: \(error.localizedDescription)")
         }
     }
+
+    // MARK: - Convenience Methods for Daily Playlist
+
+    /// Add a track to the user's library
+    /// Note: For Apple Music, this will open the track in the Music app where the user can add it
+    func addToLibrary(trackId: String) async throws {
+        try await saveTrackToLibrary(trackId: trackId)
+    }
 }
 
 // MARK: - Models
