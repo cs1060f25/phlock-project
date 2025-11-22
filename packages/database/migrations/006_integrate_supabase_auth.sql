@@ -106,7 +106,7 @@ RETURNS VOID AS $$
 BEGIN
   UPDATE users
   SET
-    auth_id = new_auth_id,
+    auth_user_id = new_auth_id,
     auth_provider = CASE
       WHEN auth_provider IS NULL THEN provider
       WHEN auth_provider != provider THEN 'both'

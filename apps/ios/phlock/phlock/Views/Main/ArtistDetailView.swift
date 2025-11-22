@@ -182,11 +182,11 @@ struct ArtistDetailView: View {
                                                 onSendComplete: { sentToFriends in
                                                     handleShareComplete(sentToFriends: sentToFriends)
                                                 },
-                                                additionalBottomInset: QuickSendBar.Layout.embeddedInset
+                                                additionalBottomInset: QuickSendBar.Layout.overlayInset
                                             )
                                             .environmentObject(authState)
-                                            .transition(.move(edge: .top).combined(with: .opacity))
-                                            .padding(.top, 8)
+                                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                                            .zIndex(QuickSendBar.Layout.overlayZ)
                                         }
                                     }
                                 }
@@ -196,7 +196,6 @@ struct ArtistDetailView: View {
                     .padding(.bottom, 100) // Space for mini player
                     }
                     .scrollDismissesKeyboard(.interactively)
-                    .ignoresSafeArea(.keyboard, edges: .bottom)
                     .frame(width: scrollGeometry.size.width, height: scrollGeometry.size.height)
                 }
             }

@@ -19,6 +19,7 @@ class NavigationState: ObservableObject {
     @Published var discoverNavigationPath = NavigationPath()
     @Published var inboxNavigationPath = NavigationPath()
     @Published var phlocksNavigationPath = NavigationPath()
+    @Published var profileNavigationPath = NavigationPath()
 
     // MARK: - Refresh Triggers
     @Published var clearDiscoverSearchTrigger = 0
@@ -33,6 +34,11 @@ class NavigationState: ObservableObject {
 
     // MARK: - Player State
     @Published var showFullPlayer = false
+    @Published var isFabHidden = false
+
+    // MARK: - Share Sheet State
+    @Published var showShareSheet = false
+    @Published var shareTrack: MusicItem? = nil
 
     init() {
         // Initialize selectedTab with stored value after all properties are set
@@ -52,6 +58,8 @@ class NavigationState: ObservableObject {
             inboxNavigationPath = NavigationPath()
         case 3:
             phlocksNavigationPath = NavigationPath()
+        case 4:
+            profileNavigationPath = NavigationPath()
         default:
             break
         }
@@ -103,6 +111,7 @@ class NavigationState: ObservableObject {
         case 1: return discoverNavigationPath
         case 2: return inboxNavigationPath
         case 3: return phlocksNavigationPath
+        case 4: return profileNavigationPath
         default: return NavigationPath()
         }
     }

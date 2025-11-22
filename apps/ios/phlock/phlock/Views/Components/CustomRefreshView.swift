@@ -38,7 +38,7 @@ struct PullToRefreshHelper: UIViewRepresentable {
         private weak var scrollView: UIScrollView?
         private var offsetObservation: NSKeyValueObservation?
         private(set) var currentProgress: CGFloat = 0
-        private let pullDistance: CGFloat = 80
+        private let pullDistance: CGFloat = 60
 
         override func didMoveToSuperview() {
             super.didMoveToSuperview()
@@ -130,7 +130,7 @@ struct PullToRefreshHelper: UIViewRepresentable {
 }
 
 extension View {
-    func pullToRefreshWithWaveform(
+    func pullToRefreshWithSpinner(
         isRefreshing: Binding<Bool>,
         pullProgress: Binding<CGFloat>,
         colorScheme: ColorScheme,
@@ -151,13 +151,11 @@ extension View {
             .overlay(alignment: .top) {
                 ZStack {
                     if isRefreshing.wrappedValue || pullProgress.wrappedValue > 0 {
-                        WaveformLoadingView(
-                            barCount: 5,
-                            color: colorScheme == .dark ? .white : .black,
-                            progress: pullProgress.wrappedValue,
-                            isRefreshing: isRefreshing.wrappedValue
-                        )
-                        .padding(.top, 10)
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .tint(colorScheme == .dark ? .white : .black)
+                            .scaleEffect(0.9 + 0.4 * pullProgress.wrappedValue)
+                            .padding(.top, 12)
                     }
                 }
                 .offset(y: -overlayCompensation)

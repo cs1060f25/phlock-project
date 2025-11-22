@@ -4,6 +4,7 @@ Convert music links between multiple streaming platforms on your iOS device.
 
 ## 🚀 Features
 
+- **Persistent "Listen" button** – floating ear FAB opens a Shazam-style capture modal and lets you send the detected song to a friend instantly.
 - **Multi-platform conversion** between 7 major music services:
   - Spotify ↔ Apple Music
   - YouTube ↔ YouTube Music
@@ -73,6 +74,16 @@ npm start
 2. Register your app
 3. Get Client ID and Client Secret
 4. Add to `services/config.js`
+
+### Song Recognition Endpoint (optional)
+1. Use a service like [AudD](https://audd.io) or your own Supabase Edge Function to accept base64 audio.
+2. Expose an HTTPS endpoint that returns `{ trackName, artistName, ... }`.
+3. Add to `.env` so the floating ear FAB can send audio samples:
+   ```
+   EXPO_PUBLIC_SONG_RECOGNITION_URL=https://your-endpoint.example.com
+   EXPO_PUBLIC_SONG_RECOGNITION_API_KEY=optional_token
+   ```
+4. If you skip this, the modal falls back to demo data so the UI can still be tested.
 
 **Note:** Amazon Music and Tidal use the SongLink API (no additional keys needed)
 

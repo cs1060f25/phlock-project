@@ -72,6 +72,7 @@ struct ContentView: View {
                 print("📱 User signed out, will show WelcomeView")
             }
         }
+        .dismissKeyboardOnTouch()
     }
 }
 

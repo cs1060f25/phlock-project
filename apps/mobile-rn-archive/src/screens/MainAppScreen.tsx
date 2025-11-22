@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../components/shared';
+import { SongRecognitionFab } from '../components/song-recognition/SongRecognitionFab';
 import { useAuth } from '../hooks/useAuth';
 
 export function MainAppScreen() {
@@ -31,6 +32,8 @@ export function MainAppScreen() {
           size="medium"
         />
       </View>
+
+      <SongRecognitionFab />
     </SafeAreaView>
   );
 }

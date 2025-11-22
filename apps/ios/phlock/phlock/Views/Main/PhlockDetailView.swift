@@ -7,6 +7,7 @@ struct PhlockDetailView: View {
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var playbackService: PlaybackService
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.dismiss) var dismiss
 
     @State private var recipients: [PhlockRecipient] = []
     @State private var isLoading = true
@@ -57,6 +58,7 @@ struct PhlockDetailView: View {
         }
         .navigationTitle("Phlock Details")
         .navigationBarTitleDisplayMode(.inline)
+        .fullScreenSwipeBack()
         .task {
             await loadRecipients()
         }
@@ -214,66 +216,62 @@ struct RecipientRowView: View {
     @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Profile Photo
-            if let profilePhotoUrl = recipient.user.profilePhotoUrl,
-               let url = URL(string: profilePhotoUrl) {
-                AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                } placeholder: {
+        Button {
+            navigationPath.append(PhlocksDestination.conversation(recipient.user))
+        } label: {
+            HStack(spacing: 12) {
+                // Profile Photo
+                if let profilePhotoUrl = recipient.user.profilePhotoUrl,
+                   let url = URL(string: profilePhotoUrl) {
+                    AsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } placeholder: {
+                        Image(systemName: "person.circle.fill")
+                            .resizable()
+                            .foregroundColor(.gray)
+                    }
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
+                } else {
                     Image(systemName: "person.circle.fill")
                         .resizable()
                         .foregroundColor(.gray)
+                        .frame(width: 44, height: 44)
                 }
-                .frame(width: 44, height: 44)
-                .clipShape(Circle())
-            } else {
-                Image(systemName: "person.circle.fill")
-                    .resizable()
-                    .foregroundColor(.gray)
-                    .frame(width: 44, height: 44)
-            }
 
-            // User Info
-            VStack(alignment: .leading, spacing: 4) {
-                Button {
-                    navigationPath.append(PhlocksDestination.conversation(recipient.user))
-                } label: {
+                // User Info
+                VStack(alignment: .leading, spacing: 4) {
                     Text(recipient.user.displayName)
                         .font(.nunitoSans(size: 16, weight: .semiBold))
                         .foregroundColor(.primary)
-                }
-                .buttonStyle(.plain)
 
-                HStack(spacing: 6) {
-                    Image(systemName: recipient.statusIcon)
-                        .font(.system(size: 12))
+                    HStack(spacing: 6) {
+                        Image(systemName: recipient.statusIcon)
+                            .font(.system(size: 12))
 
-                    Text(recipient.statusText)
-                        .font(.nunitoSans(size: 13))
-                }
-                .foregroundColor(statusSwiftUIColor(recipient.statusColor))
+                        Text(recipient.statusText)
+                            .font(.nunitoSans(size: 13))
+                    }
+                    .foregroundColor(statusSwiftUIColor(recipient.statusColor))
 
-                if let message = recipient.message, !message.isEmpty {
-                    Text("\"\(message)\"")
-                        .font(.nunitoSans(size: 13, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
-                        .padding(.top, 2)
+                    if let message = recipient.message, !message.isEmpty {
+                        Text("\"\(message)\"")
+                            .font(.nunitoSans(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .lineLimit(2)
+                            .padding(.top, 2)
+                    }
                 }
+
+                Spacer()
             }
-
-            Spacer()
-
-            // Status Icon
-            Image(systemName: recipient.statusIcon)
-                .font(.system(size: 24))
-                .foregroundColor(statusSwiftUIColor(recipient.statusColor))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .buttonStyle(.plain)
     }
 
     private func statusSwiftUIColor(_ colorName: String) -> Color {

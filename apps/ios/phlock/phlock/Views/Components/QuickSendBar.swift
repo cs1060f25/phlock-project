@@ -4,11 +4,14 @@ import SwiftUI
 struct QuickSendBar: View {
     @EnvironmentObject var authState: AuthenticationState
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.miniPlayerBottomInset) private var miniPlayerBottomInset
+    @EnvironmentObject var playbackService: PlaybackService
+    @StateObject private var keyboardObserver = KeyboardHeightObserver()
 
     let track: MusicItem
     let onDismiss: () -> Void
     let onSendComplete: ([User]) -> Void
-    var additionalBottomInset: CGFloat = 0
+    var additionalBottomInset: CGFloat = QuickSendBar.Layout.overlayInset
 
     @State private var allFriends: [User] = []
     @State private var isLoading = true
@@ -33,20 +36,6 @@ struct QuickSendBar: View {
         }
     }
 
-    private var shouldShowGroupButton: Bool {
-        selectedFriends.count > 1
-    }
-
-    private var sendButtonText: String {
-        if selectedFriends.count > 1 {
-            return "Send separately"
-        } else if selectedFriends.count == 1 {
-            return "Send"
-        } else {
-            return "Send"
-        }
-    }
-
     private let columns = [
         GridItem(.flexible()),
         GridItem(.flexible()),
@@ -55,21 +44,25 @@ struct QuickSendBar: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ZStack(alignment: .bottom) {
-                // Dimmed background
-                Color.black.opacity(0.4)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        onDismiss()
-                    }
+            let safeBottom = geometry.safeAreaInsets.bottom
+            let isOverlay = additionalBottomInset == QuickSendBar.Layout.overlayInset
+            let effectiveMiniPlayerInset = isOverlay ? 0 : (playbackService.shouldShowMiniPlayer ? miniPlayerBottomInset : 0)
+            let keyboardPadding = keyboardObserver.height
+            // Target ~70% of screen height, capped to avoid full-screen
+            let targetHeight = geometry.size.height * 0.7
+            let sheetHeight = min(max(460, targetHeight), geometry.size.height * 0.9)
+            let computedBottom = safeBottom + additionalBottomInset + effectiveMiniPlayerInset + keyboardPadding
+            let bottomPadding = max(safeBottom + 12, computedBottom)
+            let gridHeight = min(220, sheetHeight * 0.38)
 
+            ZStack(alignment: .bottom) {
                 // Main content container
                 VStack(spacing: 0) {
                     // Drag handle
                     RoundedRectangle(cornerRadius: 2.5)
                         .fill(Color.gray.opacity(0.5))
                         .frame(width: 36, height: 5)
-                        .padding(.top, 8)
+                        .padding(.top, 2)
                         .padding(.bottom, 4)
 
                     // Header with X button
@@ -184,25 +177,24 @@ struct QuickSendBar: View {
                             .padding(.top, 8)
                         }
                     }
-                    .frame(height: UIScreen.main.bounds.height * 0.35) // Fixed height for grid
+                    .frame(height: gridHeight) // Fixed height for grid to leave room for footer
                     .scrollDismissesKeyboard(.interactively)
 
-                    // Bottom section - changes based on selection
-                    if selectedFriends.isEmpty {
-                        // Platform sharing options when no friends selected
-                        platformOptions
-                    } else {
-                        // Message input and optional group button for any selection
-                        messageInputWithOptionalGroup
-                    }
+                if selectedFriends.isEmpty {
+                    platformOptions
+                } else {
+                    messageInputWithOptionalGroup
                 }
-                .padding(.bottom, geometry.safeAreaInsets.bottom + additionalBottomInset)
-                .frame(maxHeight: UIScreen.main.bounds.height * 0.75) // Takes up 75% of screen
+            }
+            .padding(.bottom, bottomPadding)
+            .frame(height: sheetHeight)
                 .background(
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .fill(colorScheme == .dark ? Color(UIColor.systemBackground) : Color.white)
                         .ignoresSafeArea(edges: .bottom)
                 )
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .shadow(color: Color.black.opacity(0.2), radius: 20, x: 0, y: -5)
                 .offset(y: dragOffset.height)
                 .gesture(
                     DragGesture()
@@ -226,9 +218,22 @@ struct QuickSendBar: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .ignoresSafeArea()
+        .zIndex(QuickSendBar.Layout.overlayZ)
         .task {
             await loadFriends()
+        }
+        .dismissKeyboardOnTouch()
+        .onAppear {
+            if additionalBottomInset == QuickSendBar.Layout.overlayInset {
+                playbackService.isShareOverlayPresented = true
+                playbackService.shouldShowMiniPlayer = false
+            }
+        }
+        .onDisappear {
+            if additionalBottomInset == QuickSendBar.Layout.overlayInset {
+                playbackService.isShareOverlayPresented = false
+                playbackService.shouldShowMiniPlayer = true
+            }
         }
     }
 
@@ -318,15 +323,15 @@ struct QuickSendBar: View {
             }
             .padding(.vertical, 16)
         }
+        .padding(.bottom, 16)
     }
 
     // MARK: - Message Input Section
 
     private var messageInputSection: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             Divider()
 
-            // Message input field
             HStack(spacing: 10) {
                 Image(systemName: "bubble.left")
                     .font(.system(size: 15))
@@ -370,35 +375,35 @@ struct QuickSendBar: View {
                     )
             )
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
 
-            // Send button
-            Button {
-                if !isSending {
-                    sendToSelectedFriends()
-                }
-            } label: {
-                HStack {
-                    if isSending {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle())
-                            .scaleEffect(0.8)
-                            .tint(.white)
-                    } else {
-                        Text("Send")
+            HStack {
+                Spacer()
+                Button {
+                    if !isSending {
+                        sendToSelectedFriends()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        if isSending {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle())
+                                .scaleEffect(0.8)
+                                .tint(.white)
+                        }
+                        Text(isSending ? "Sending..." : "Send")
                             .font(.nunitoSans(size: 16, weight: .semiBold))
                     }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(Color.blue)
+                    .cornerRadius(12)
                 }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Color.blue)
-                .cornerRadius(12)
+                .buttonStyle(PressedButtonStyle())
+                .disabled(isSending || selectedFriends.isEmpty)
             }
-            .buttonStyle(PressedButtonStyle())
-            .disabled(isSending || selectedFriends.isEmpty)
             .padding(.horizontal, 16)
-            .padding(.bottom, 12)
+            .padding(.bottom, 8)
         }
     }
 
@@ -480,151 +485,7 @@ struct QuickSendBar: View {
             .buttonStyle(PressedButtonStyle())
             .disabled(isSending || selectedFriends.isEmpty)
             .padding(.horizontal, 16)
-            .padding(.bottom, shouldShowGroupButton ? 8 : 16)
-
-            // Create group button (only for multiple selections)
-            if shouldShowGroupButton {
-                Button {
-                    createGroup()
-                } label: {
-                    HStack(spacing: 8) {
-                        Spacer()
-
-                        // Show first two selected friend avatars (smaller size)
-                        HStack(spacing: -8) {
-                            ForEach(Array(selectedFriends.prefix(2)), id: \.self) { friendId in
-                                if let friend = allFriends.first(where: { $0.id == friendId }) {
-                                    if let photoUrl = friend.profilePhotoUrl, let url = URL(string: photoUrl) {
-                                        AsyncImage(url: url) { image in
-                                            image
-                                                .resizable()
-                                                .scaledToFill()
-                                        } placeholder: {
-                                            FriendInitialsView(displayName: friend.displayName)
-                                        }
-                                        .frame(width: 24, height: 24)
-                                        .clipShape(Circle())
-                                        .overlay(
-                                            Circle()
-                                                .stroke(colorScheme == .dark ? Color.black : Color.white, lineWidth: 2)
-                                        )
-                                    } else {
-                                        FriendInitialsView(displayName: friend.displayName)
-                                            .frame(width: 24, height: 24)
-                                            .overlay(
-                                                Circle()
-                                                    .stroke(colorScheme == .dark ? Color.black : Color.white, lineWidth: 2)
-                                            )
-                                    }
-                                }
-                            }
-                        }
-
-                        Text("Create group")
-                            .font(.nunitoSans(size: 15, weight: .semiBold))
-
-                        Spacer()
-                    }
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(colorScheme == .dark ? Color.white : Color.black, lineWidth: 1.5)
-                    )
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
-            }
-        }
-    }
-
-    // MARK: - Multi-Select Buttons (Deprecated - kept for reference)
-
-    private var multiSelectButtons: some View {
-        VStack(spacing: 12) {
-            Divider()
-                .padding(.top, 8)
-
-            // Send separately button
-            Button {
-                if !isSending {
-                    sendToSelectedFriends()
-                }
-            } label: {
-                HStack {
-                    if isSending {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle())
-                            .scaleEffect(0.8)
-                            .tint(.white)
-                    } else {
-                        Text(sendButtonText)
-                            .font(.nunitoSans(size: 16, weight: .semiBold))
-                    }
-                }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Color.blue)
-                .cornerRadius(12)
-            }
-            .buttonStyle(PressedButtonStyle())
-            .disabled(isSending || selectedFriends.isEmpty)
-            .padding(.horizontal, 16)
-
-            // Create group button
-            if shouldShowGroupButton {
-                Button {
-                    createGroup()
-                } label: {
-                    HStack(spacing: 12) {
-                        // Show first two selected friend avatars
-                        HStack(spacing: -10) {
-                            ForEach(Array(selectedFriends.prefix(2)), id: \.self) { friendId in
-                                if let friend = allFriends.first(where: { $0.id == friendId }) {
-                                    if let photoUrl = friend.profilePhotoUrl, let url = URL(string: photoUrl) {
-                                        AsyncImage(url: url) { image in
-                                            image
-                                                .resizable()
-                                                .scaledToFill()
-                                        } placeholder: {
-                                            FriendInitialsView(displayName: friend.displayName)
-                                        }
-                                        .frame(width: 30, height: 30)
-                                        .clipShape(Circle())
-                                        .overlay(
-                                            Circle()
-                                                .stroke(colorScheme == .dark ? Color.black : Color.white, lineWidth: 2)
-                                        )
-                                    } else {
-                                        FriendInitialsView(displayName: friend.displayName)
-                                            .frame(width: 30, height: 30)
-                                            .overlay(
-                                                Circle()
-                                                    .stroke(colorScheme == .dark ? Color.black : Color.white, lineWidth: 2)
-                                            )
-                                    }
-                                }
-                            }
-                        }
-
-                        Text("Create group")
-                            .font(.nunitoSans(size: 16, weight: .semiBold))
-
-                        Spacer()
-                    }
-                    .padding(14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(colorScheme == .dark ? Color.white : Color.black, lineWidth: 1.5)
-                    )
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 16)
-            }
-
-            Color.clear.frame(height: 8)
+            .padding(.bottom, 16)
         }
     }
 
@@ -751,11 +612,6 @@ struct QuickSendBar: View {
         // Share via Instagram
         print("📸 Sharing via Instagram")
     }
-
-    private func createGroup() {
-        // Create a group with selected friends
-        print("👥 Creating group with \(selectedFriends.count) friends")
-    }
 }
 
 // MARK: - Friend Grid Item
@@ -810,7 +666,8 @@ struct FriendGridItem: View {
                 // Name
                 Text(friend.displayName)
                     .font(.nunitoSans(size: 13))
-                    .lineLimit(2)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                     .multilineTextAlignment(.center)
                     .foregroundColor(.primary)
                     .frame(width: 75)
@@ -823,9 +680,10 @@ struct FriendGridItem: View {
 extension QuickSendBar {
     enum Layout {
         /// Use this when the sheet floats above the tab bar/custom chrome.
-        static let overlayInset: CGFloat = 110
+        static let overlayInset: CGFloat = -(MiniPlayerView.Layout.tabBarOffset + 12)
         /// Use this when QuickSendBar is embedded inline within scroll content.
         static let embeddedInset: CGFloat = 0
+        static let overlayZ: Double = 5000
     }
 }
 
@@ -928,5 +786,6 @@ struct PressedButtonStyle: ButtonStyle {
             onSendComplete: { _ in }
         )
         .environmentObject(AuthenticationState())
+        .environmentObject(PlaybackService.shared)
     }
 }

@@ -53,6 +53,39 @@ class UserService {
         return users.first
     }
 
+    /// Batch fetch users by IDs to avoid N+1 queries
+    func getUsers(userIds: [UUID]) async throws -> [UUID: User] {
+        let uniqueIds = Array(Set(userIds))
+        guard !uniqueIds.isEmpty else { return [:] }
+
+        // Serve cached users without hitting the network
+        var result: [UUID: User] = [:]
+        var idsToFetch: [UUID] = []
+        for id in uniqueIds {
+            if let cached = userCache[id] {
+                result[id] = cached
+            } else {
+                idsToFetch.append(id)
+            }
+        }
+
+        if !idsToFetch.isEmpty {
+            let fetched: [User] = try await supabase
+                .from("users")
+                .select("*")
+                .in("id", values: idsToFetch.map { $0.uuidString })
+                .execute()
+                .value
+
+            for user in fetched {
+                userCache[user.id] = user
+                result[user.id] = user
+            }
+        }
+
+        return result
+    }
+
     // MARK: - Friend Requests
 
     /// Send a friend request to another user

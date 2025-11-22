@@ -27,7 +27,9 @@ struct ConversationView: View {
 
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var playbackService: PlaybackService
+    @EnvironmentObject var navigationState: NavigationState
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.dismiss) var dismiss
 
     @State private var shares: [Share] = []
     @State private var isLoading = true
@@ -43,10 +45,10 @@ struct ConversationView: View {
     @State private var messageText: String = ""
     @State private var isSearching = false
     @State private var isSending = false
+    @State private var searchResultsFrame: CGRect? = nil
 
     var body: some View {
         VStack(spacing: 0) {
-            // Conversation messages
             if isLoading {
                 VStack(spacing: 12) {
                     WaveformLoadingView(barCount: 5, color: .blue)
@@ -73,9 +75,28 @@ struct ConversationView: View {
                             .padding(.top, 100)
                         } else {
                             ForEach(shares) { share in
-                                HStack {
-                                    // Left align for received messages
+                                HStack(alignment: .bottom, spacing: 8) {
                                     if share.senderId != authState.currentUser?.id {
+                                        if let profilePhotoUrl = otherUser.profilePhotoUrl,
+                                           let url = URL(string: profilePhotoUrl) {
+                                            AsyncImage(url: url) { image in
+                                                image
+                                                    .resizable()
+                                                    .scaledToFill()
+                                            } placeholder: {
+                                                Image(systemName: "person.circle.fill")
+                                                    .resizable()
+                                                    .foregroundColor(.gray)
+                                            }
+                                            .frame(width: 32, height: 32)
+                                            .clipShape(Circle())
+                                        } else {
+                                            Image(systemName: "person.circle.fill")
+                                                .resizable()
+                                                .foregroundColor(.gray)
+                                                .frame(width: 32, height: 32)
+                                        }
+
                                         ConversationShareCard(
                                             share: share,
                                             otherUser: otherUser,
@@ -88,11 +109,10 @@ struct ConversationView: View {
                                         )
                                         .environmentObject(authState)
                                         .environmentObject(playbackService)
-                                        .frame(maxWidth: UIScreen.main.bounds.width * 0.8)
+                                        .frame(maxWidth: UIScreen.main.bounds.width * 0.7)
 
                                         Spacer(minLength: 0)
                                     } else {
-                                        // Right align for sent messages
                                         Spacer(minLength: 0)
 
                                         ConversationShareCard(
@@ -117,9 +137,12 @@ struct ConversationView: View {
                     .padding(.vertical, 16)
                     .padding(.bottom, 100) // Space for mini player
                 }
+                .scrollDismissesKeyboard(.never)
             }
-
-            // Search and send bar at bottom
+        }
+        .disableGlobalKeyboardDismiss(shouldKeepKeyboardActive)
+        .coordinateSpace(name: "ConversationRoot")
+        .safeAreaInset(edge: .bottom) {
             ConversationSearchBar(
                 searchQuery: $searchQuery,
                 searchResults: $searchResults,
@@ -134,9 +157,23 @@ struct ConversationView: View {
             )
             .environmentObject(authState)
             .environmentObject(playbackService)
+            .background(
+                Color(UIColor.systemBackground)
+                    .ignoresSafeArea(edges: .bottom)
+            )
         }
         .navigationTitle(otherUser.displayName)
         .navigationBarTitleDisplayMode(.inline)
+        .fullScreenSwipeBack()
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0, coordinateSpace: .named("ConversationRoot"))
+                .onEnded { value in
+                    guard shouldKeepKeyboardActive else { return }
+                    if shouldDismissKeyboard(at: value.startLocation) {
+                        hideKeyboard()
+                    }
+                }
+        )
         .task {
             await loadConversation()
         }
@@ -151,18 +188,45 @@ struct ConversationView: View {
             }
         }
         .onDisappear {
-            // Only pause preview tracks (not sent tracks with mini player)
             if !playbackService.shouldShowMiniPlayer && playbackService.isPlaying {
                 playbackService.pause()
             }
 
-            // Save current selection for when user returns
             ConversationSelectionStore.shared.store(
                 track: selectedTrack,
                 message: messageText,
                 for: otherUser.id
             )
+
+            navigationState.isFabHidden = false
         }
+        .onPreferenceChange(SearchResultsFramePreferenceKey.self) { frame in
+            searchResultsFrame = frame
+        }
+        .onAppear {
+            navigationState.isFabHidden = true
+        }
+        .onChange(of: searchResults.count) { _, newCount in
+            if newCount == 0 {
+                searchResultsFrame = nil
+            }
+        }
+    }
+
+    private var shouldKeepKeyboardActive: Bool {
+        !searchResults.isEmpty && searchQuery.count >= 2 && selectedTrack == nil
+    }
+
+    private func shouldDismissKeyboard(at point: CGPoint) -> Bool {
+        if shouldKeepKeyboardActive {
+            guard let frame = searchResultsFrame else { return false }
+            return !frame.contains(point)
+        }
+        return true
+    }
+
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     private func loadConversation() async {
@@ -280,14 +344,9 @@ struct ConversationSearchBar: View {
                                 Spacer()
 
                                 // Play button
-                                Button {
+                                PlayPauseButton(isPlaying: isTrackPlaying(track)) {
                                     handlePlayPreview(track: track)
-                                } label: {
-                                    Image(systemName: isTrackPlaying(track) ? "pause.circle.fill" : "play.circle.fill")
-                                        .font(.system(size: 24))
-                                        .foregroundColor(isTrackPlaying(track) ? .blue : .secondary)
                                 }
-                                .buttonStyle(.plain)
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
@@ -309,7 +368,16 @@ struct ConversationSearchBar: View {
                     }
                 }
                 .frame(maxHeight: 200)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: SearchResultsFramePreferenceKey.self,
+                            value: proxy.frame(in: .named("ConversationRoot"))
+                        )
+                    }
+                )
                 .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
+                .scrollDismissesKeyboard(.never)
             }
 
             Divider()
@@ -340,15 +408,9 @@ struct ConversationSearchBar: View {
 
                     Spacer()
 
-                    // Play/Pause button
-                    Button {
+                    PlayPauseButton(isPlaying: isTrackPlaying(track)) {
                         handlePlayPreview(track: track)
-                    } label: {
-                        Image(systemName: isTrackPlaying(track) ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(isTrackPlaying(track) ? .blue : .secondary)
                     }
-                    .buttonStyle(.plain)
 
                     Button {
                         selectedTrack = nil
@@ -472,6 +534,25 @@ struct ConversationSearchBar: View {
     }
 }
 
+private struct PlayPauseButton: View {
+    let isPlaying: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+            .font(.system(size: 24))
+            .foregroundColor(isPlaying ? .blue : .secondary)
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+                TapGesture().onEnded {
+                    action()
+                }
+            )
+            .accessibilityLabel(isPlaying ? "Pause preview" : "Play preview")
+            .accessibilityAddTraits(.isButton)
+    }
+}
+
 // MARK: - Conversation Share Card
 
 struct ConversationShareCard: View {
@@ -573,7 +654,7 @@ struct ConversationShareCard: View {
                     Task { await loadComments() }
                 }
             } label: {
-                HStack {
+                HStack(spacing: 8) {
                     Image(systemName: "bubble.left")
                         .font(.system(size: 14))
                     Text("Comments")
@@ -584,7 +665,8 @@ struct ConversationShareCard: View {
                 }
                 .foregroundColor(.secondary)
                 .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -876,3 +958,11 @@ struct ConversationErrorView: View {
 }
 
 // Preview removed due to complex User model initialization
+
+private struct SearchResultsFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect? = nil
+
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
+        value = nextValue() ?? value
+    }
+}

@@ -64,6 +64,7 @@ struct FriendsView: View {
                 await loadData()
             }
         }
+        .fullScreenSwipeBack()
     }
 
     private func loadData() async {

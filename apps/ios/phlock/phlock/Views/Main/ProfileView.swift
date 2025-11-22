@@ -408,7 +408,7 @@ struct MusicStatsCard: View {
                 )
                 .environmentObject(authState)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
-                .zIndex(1000)
+                .zIndex(QuickSendBar.Layout.overlayZ)
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showQuickSendBar)
             }
         }

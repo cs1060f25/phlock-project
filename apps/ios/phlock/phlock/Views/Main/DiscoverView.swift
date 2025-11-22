@@ -8,6 +8,7 @@ enum DiscoverDestination: Hashable {
 
 struct DiscoverView: View {
     @EnvironmentObject var authState: AuthenticationState
+    @EnvironmentObject var navigationState: NavigationState
     @Environment(\.colorScheme) var colorScheme
     @Binding var navigationPath: NavigationPath
     @Binding var clearSearchTrigger: Int
@@ -19,8 +20,6 @@ struct DiscoverView: View {
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
     @FocusState private var isSearchFieldFocused: Bool
-    @State private var showQuickSendBar = false
-    @State private var trackToShare: MusicItem? = nil
 
     // Recently played tracks state
     @State private var recentlyPlayedTracks: [MusicItem] = []
@@ -77,7 +76,8 @@ struct DiscoverView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color.gray.opacity(0.3), lineWidth: 1)
                 )
-                .padding()
+                .padding(.horizontal)
+                .padding(.top)
 
                 // Filter Tabs - always allocated to prevent layout shift
                 Picker("Filter", selection: $selectedFilter) {
@@ -121,19 +121,18 @@ struct DiscoverView: View {
                     } else if recentlyPlayedTracks.isEmpty {
                         EmptySearchView(isSearchFieldFocused: $isSearchFieldFocused)
                     } else {
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text("recently played")
                                 .font(.nunitoSans(size: 20, weight: .bold))
                                 .padding(.horizontal, 16)
-                                .padding(.top, 8)
+                                .padding(.top, 4)
 
                             RecentlyPlayedGridView(
                                 tracks: recentlyPlayedTracks,
-                                platformType: authState.currentUser?.platformType ?? .spotify,
-                                showQuickSendBar: $showQuickSendBar,
-                                trackToShare: $trackToShare
+                                platformType: authState.currentUser?.platformType ?? .spotify
                             )
                             .environmentObject(PlaybackService.shared)
+                            .environmentObject(navigationState)
                         }
                     }
                 } else if let results = searchResults {
@@ -142,10 +141,9 @@ struct DiscoverView: View {
                         filter: selectedFilter,
                         platformType: authState.currentUser?.platformType ?? .spotify,
                         searchQuery: searchText,
-                        navigationPath: $navigationPath,
-                        showQuickSendBar: $showQuickSendBar,
-                        trackToShare: $trackToShare
+                        navigationPath: $navigationPath
                     )
+                    .environmentObject(navigationState)
                 }
             }
             .contentShape(Rectangle())
@@ -155,15 +153,6 @@ struct DiscoverView: View {
             }
             .navigationTitle("discover")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        navigationPath.append(DiscoverDestination.profile)
-                    } label: {
-                        ProfileIconView(user: authState.currentUser)
-                    }
-                }
-            }
             .navigationDestination(for: DiscoverDestination.self) { destination in
                 switch destination {
                 case .artist(let artist, let platformType):
@@ -178,8 +167,8 @@ struct DiscoverView: View {
                 searchResults = nil
                 isSearchFieldFocused = true
             }
-            .onChange(of: showQuickSendBar) { oldValue, newValue in
-                // Dismiss keyboard when QuickSendBar appears
+            .onChange(of: navigationState.showShareSheet) { oldValue, newValue in
+                // Dismiss keyboard when share sheet appears
                 if newValue {
                     isSearchFieldFocused = false
                 }
@@ -189,31 +178,7 @@ struct DiscoverView: View {
                 loadRecentlyPlayedTracks()
             }
         }
-        .overlay(
-            ZStack {
-                if showQuickSendBar, let track = trackToShare {
-                    QuickSendBar(
-                        track: track,
-                        onDismiss: {
-                            withAnimation(.easeOut(duration: 0.3)) {
-                                showQuickSendBar = false
-                                trackToShare = nil
-                            }
-                        },
-                        onSendComplete: { sentToFriends in
-                            if !sentToFriends.isEmpty {
-                                print("✅ Sent to \(sentToFriends.count) friend\(sentToFriends.count == 1 ? "" : "s")")
-                            }
-                        },
-                        additionalBottomInset: QuickSendBar.Layout.overlayInset
-                    )
-                    .environmentObject(authState)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(999)
-                }
-            }
-            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showQuickSendBar)
-        )
+        .fullScreenSwipeBack()
     }
 
     private func performDebouncedSearch() {

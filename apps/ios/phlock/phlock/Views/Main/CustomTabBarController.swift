@@ -1,81 +1,12 @@
 import SwiftUI
-import UIKit
 
-// MARK: - Tab Bar Coordinator
-
-class TabBarCoordinator: NSObject, UITabBarControllerDelegate {
-    var onFeedTabReselected: ((Int) -> Void)?  // Pass tap count
-    var onDiscoverTabReselected: ((Int) -> Void)?  // Pass tap count
-    var onInboxTabReselected: ((Int) -> Void)?  // Pass tap count
-    var onPhlocksTabReselected: ((Int) -> Void)?  // Pass tap count
-    var onTabSelected: ((Int) -> Void)?
-
-    // Track consecutive taps for each tab
-    private var consecutiveTaps: [Int: Int] = [:]
-    private var lastTapTime: [Int: Date] = [:]
-
-    func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
-        // Get the index of the tapped tab
-        guard let index = tabBarController.viewControllers?.firstIndex(of: viewController) else {
-            return true
-        }
-
-        // Check if tapping the already-selected tab
-        let currentIndex = tabBarController.selectedIndex
-        print("📱 Tab tapped: \(index), current: \(currentIndex)")
-
-        if index == currentIndex {
-            // Track consecutive taps
-            let now = Date()
-            if let lastTap = lastTapTime[index], now.timeIntervalSince(lastTap) < 1.0 {
-                // Within 1 second - increment consecutive count
-                consecutiveTaps[index] = (consecutiveTaps[index] ?? 1) + 1
-            } else {
-                // First tap or after timeout - reset to 1
-                consecutiveTaps[index] = 1
-            }
-            lastTapTime[index] = now
-
-            let tapCount = consecutiveTaps[index] ?? 1
-            print("🔄 Reselecting tab \(index) - tap #\(tapCount)")
-
-            // Pass tap count to appropriate handler
-            switch index {
-            case 0:
-                self.onFeedTabReselected?(tapCount)
-            case 1:
-                self.onDiscoverTabReselected?(tapCount)
-            case 2:
-                self.onInboxTabReselected?(tapCount)
-            case 3:
-                self.onPhlocksTabReselected?(tapCount)
-            default:
-                break
-            }
-        } else {
-            // Different tab selected - reset counters
-            consecutiveTaps[index] = 0
-        }
-
-        return true
-    }
-
-    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
-        // Update SwiftUI binding when tab changes
-        if let index = tabBarController.viewControllers?.firstIndex(of: viewController) {
-            onTabSelected?(index)
-        }
-    }
-}
-
-// MARK: - UIKit Tab Bar Wrapper
-
-struct CustomTabBarView: UIViewControllerRepresentable {
+struct CustomTabBarView: View {
     @Binding var selectedTab: Int
     @Binding var feedNavigationPath: NavigationPath
     @Binding var discoverNavigationPath: NavigationPath
     @Binding var inboxNavigationPath: NavigationPath
     @Binding var phlocksNavigationPath: NavigationPath
+    @Binding var profileNavigationPath: NavigationPath
     @Binding var clearDiscoverSearchTrigger: Int
     @Binding var refreshFeedTrigger: Int
     @Binding var refreshInboxTrigger: Int
@@ -89,157 +20,219 @@ struct CustomTabBarView: UIViewControllerRepresentable {
     let discoverView: AnyView
     let inboxView: AnyView
     let phlocksView: AnyView
+    let profileView: AnyView
 
-    func makeCoordinator() -> TabBarCoordinator {
-        let coordinator = TabBarCoordinator()
-        coordinator.onFeedTabReselected = { tapCount in
-            print("🔄 Feed tab reselected - tap #\(tapCount)")
-            DispatchQueue.main.async {
-                if self.feedNavigationPath.count > 0 {
-                    // Always pop to root first if in nested view
-                    self.feedNavigationPath = NavigationPath()
-                    print("✅ Feed navigation path reset")
-                } else {
-                    // Already at root - handle based on tap count
-                    switch tapCount {
-                    case 1:
-                        // First tap when at root - scroll to top
-                        self.scrollFeedToTopTrigger += 1
-                        print("⬆️ Scrolling feed to top")
-                    default:
-                        // Second+ tap - refresh feed (reload data)
-                        self.refreshFeedTrigger += 1
-                        print("🔄 Refreshing feed - trigger: \(self.refreshFeedTrigger)")
-                    }
-                }
+    // Track consecutive taps for reselection
+    @State private var lastTapTime: [Int: Date] = [:]
+    @State private var consecutiveTaps: [Int: Int] = [:]
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            // TabView without page style - tabs switch only via button taps
+            // This prevents conflicts with NavigationStack back gestures
+            TabView(selection: $selectedTab) {
+                feedView
+                    .tag(0)
+
+                discoverView
+                    .tag(1)
+
+                inboxView
+                    .tag(2)
+
+                phlocksView
+                    .tag(3)
+
+                profileView
+                    .tag(4)
             }
+
+            // Custom Tab Bar (only shows 4 tabs, not Profile)
+            CustomTabBar(
+                selectedTab: $selectedTab,
+                onTabTapped: handleTabTap
+            )
         }
-        coordinator.onDiscoverTabReselected = { tapCount in
-            print("🔄 Discover tab reselected - tap #\(tapCount)")
-            DispatchQueue.main.async {
-                if self.discoverNavigationPath.count > 0 {
-                    // Pop to root if we're in a nested view
-                    self.discoverNavigationPath = NavigationPath()
-                    print("✅ Discover navigation path reset")
-                } else {
-                    // Already at root, clear search and focus field
-                    self.clearDiscoverSearchTrigger += 1
-                    print("🔍 Clearing search and focusing field")
-                }
-            }
-        }
-        coordinator.onInboxTabReselected = { tapCount in
-            print("🔄 Inbox tab reselected - tap #\(tapCount)")
-            DispatchQueue.main.async {
-                if self.inboxNavigationPath.count > 0 {
-                    // Always pop to root first if in nested view
-                    self.inboxNavigationPath = NavigationPath()
-                    print("✅ Inbox navigation path reset")
-                } else {
-                    // Already at root - handle based on tap count
-                    switch tapCount {
-                    case 1:
-                        // First tap when at root - scroll to top
-                        self.scrollInboxToTopTrigger += 1
-                        print("⬆️ Scrolling inbox to top")
-                    default:
-                        // Second+ tap - refresh shares (reload data)
-                        self.refreshInboxTrigger += 1
-                        print("🔄 Refreshing shares - trigger: \(self.refreshInboxTrigger)")
-                    }
-                }
-            }
-        }
-        coordinator.onPhlocksTabReselected = { tapCount in
-            print("🔄 Phlocks tab reselected - tap #\(tapCount)")
-            DispatchQueue.main.async {
-                if self.phlocksNavigationPath.count > 0 {
-                    // Always pop to root first if in nested view
-                    self.phlocksNavigationPath = NavigationPath()
-                    print("✅ Phlocks navigation path reset")
-                } else {
-                    // Already at root - handle based on tap count
-                    switch tapCount {
-                    case 1:
-                        // First tap when at root - scroll to top
-                        self.scrollPhlocksToTopTrigger += 1
-                        print("⬆️ Scrolling phlocks to top")
-                    default:
-                        // Second+ tap - refresh phlocks (reload data)
-                        self.refreshPhlocksTrigger += 1
-                        print("🔄 Refreshing phlocks - trigger: \(self.refreshPhlocksTrigger)")
-                    }
-                }
-            }
-        }
-        coordinator.onTabSelected = { index in
-            DispatchQueue.main.async {
-                self.selectedTab = index
-            }
-        }
-        return coordinator
     }
 
-    func makeUIViewController(context: Context) -> UITabBarController {
-        let tabBarController = UITabBarController()
-        tabBarController.delegate = context.coordinator
+    private func handleTabTap(_ tappedTab: Int) {
+        print("📱 Tab tapped: \(tappedTab), current: \(selectedTab)")
 
-        // Set tab bar colors
-        let appearance = UITabBarAppearance()
-        appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = colorScheme == .dark ? UIColor.black : UIColor.white
+        // If tapping Phlocks while on Profile, return to Phlocks
+        if selectedTab == 4 && tappedTab == 3 {
+            selectedTab = 3
+            return
+        }
 
-        // Unselected icon color
-        appearance.stackedLayoutAppearance.normal.iconColor = UIColor.gray
-        appearance.stackedLayoutAppearance.normal.titleTextAttributes = [.foregroundColor: UIColor.gray]
-
-        // Selected icon color
-        appearance.stackedLayoutAppearance.selected.iconColor = colorScheme == .dark ? UIColor.white : UIColor.black
-        appearance.stackedLayoutAppearance.selected.titleTextAttributes = [
-            .foregroundColor: colorScheme == .dark ? UIColor.white : UIColor.black
-        ]
-
-        tabBarController.tabBar.standardAppearance = appearance
-        tabBarController.tabBar.scrollEdgeAppearance = appearance
-
-        // Create view controllers for each tab
-        let feedVC = UIHostingController(rootView: feedView)
-        feedVC.tabBarItem = UITabBarItem(
-            title: "feed",
-            image: UIImage(systemName: "house"),
-            selectedImage: UIImage(systemName: "house.fill")
-        )
-
-        let discoverVC = UIHostingController(rootView: discoverView)
-        discoverVC.tabBarItem = UITabBarItem(
-            title: "discover",
-            image: UIImage(systemName: "magnifyingglass"),
-            selectedImage: UIImage(systemName: "magnifyingglass")
-        )
-
-        let inboxVC = UIHostingController(rootView: inboxView)
-        inboxVC.tabBarItem = UITabBarItem(
-            title: "shares",
-            image: UIImage(systemName: "tray"),
-            selectedImage: UIImage(systemName: "tray.fill")
-        )
-
-        let phlocksVC = UIHostingController(rootView: phlocksView)
-        phlocksVC.tabBarItem = UITabBarItem(
-            title: "phlocks",
-            image: UIImage(systemName: "chart.line.uptrend.xyaxis"),
-            selectedImage: UIImage(systemName: "chart.line.uptrend.xyaxis")
-        )
-
-        tabBarController.viewControllers = [feedVC, discoverVC, inboxVC, phlocksVC]
-        tabBarController.selectedIndex = selectedTab
-
-        return tabBarController
+        // Check if same tab tapped (reselection)
+        if tappedTab == selectedTab {
+            handleTabReselection(tappedTab)
+        } else {
+            // Different tab - navigate
+            selectedTab = tappedTab
+        }
     }
 
-    func updateUIViewController(_ tabBarController: UITabBarController, context: Context) {
-        if tabBarController.selectedIndex != selectedTab {
-            tabBarController.selectedIndex = selectedTab
+    private func handleTabReselection(_ tab: Int) {
+        // Track consecutive taps
+        let now = Date()
+        if let lastTap = lastTapTime[tab], now.timeIntervalSince(lastTap) < 1.0 {
+            consecutiveTaps[tab] = (consecutiveTaps[tab] ?? 1) + 1
+        } else {
+            consecutiveTaps[tab] = 1
         }
+        lastTapTime[tab] = now
+
+        let tapCount = consecutiveTaps[tab] ?? 1
+        print("🔄 Tab \(tab) reselected - tap #\(tapCount)")
+
+        switch tab {
+        case 0: // Feed
+            handleFeedReselection(tapCount: tapCount)
+        case 1: // Discover
+            handleDiscoverReselection(tapCount: tapCount)
+        case 2: // Inbox
+            handleInboxReselection(tapCount: tapCount)
+        case 3: // Phlocks
+            handlePhlocksReselection(tapCount: tapCount)
+        default:
+            break
+        }
+    }
+
+    private func handleFeedReselection(tapCount: Int) {
+        if feedNavigationPath.count > 0 {
+            feedNavigationPath = NavigationPath()
+            print("✅ Feed navigation path reset")
+        } else {
+            switch tapCount {
+            case 1:
+                scrollFeedToTopTrigger += 1
+                print("⬆️ Scrolling feed to top")
+            default:
+                refreshFeedTrigger += 1
+                print("🔄 Refreshing feed")
+            }
+        }
+    }
+
+    private func handleDiscoverReselection(tapCount: Int) {
+        if discoverNavigationPath.count > 0 {
+            discoverNavigationPath = NavigationPath()
+            print("✅ Discover navigation path reset")
+        } else {
+            clearDiscoverSearchTrigger += 1
+            print("🔍 Clearing search")
+        }
+    }
+
+    private func handleInboxReselection(tapCount: Int) {
+        if inboxNavigationPath.count > 0 {
+            inboxNavigationPath = NavigationPath()
+            print("✅ Inbox navigation path reset")
+        } else {
+            switch tapCount {
+            case 1:
+                scrollInboxToTopTrigger += 1
+                print("⬆️ Scrolling inbox to top")
+            default:
+                refreshInboxTrigger += 1
+                print("🔄 Refreshing inbox")
+            }
+        }
+    }
+
+    private func handlePhlocksReselection(tapCount: Int) {
+        if phlocksNavigationPath.count > 0 {
+            phlocksNavigationPath = NavigationPath()
+            print("✅ Phlocks navigation path reset")
+        } else {
+            switch tapCount {
+            case 1:
+                scrollPhlocksToTopTrigger += 1
+                print("⬆️ Scrolling phlocks to top")
+            default:
+                refreshPhlocksTrigger += 1
+                print("🔄 Refreshing phlocks")
+            }
+        }
+    }
+}
+
+// MARK: - Custom Tab Bar
+
+struct CustomTabBar: View {
+    @Binding var selectedTab: Int
+    let onTabTapped: (Int) -> Void
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        HStack(spacing: 0) {
+            TabBarButton(
+                icon: "house",
+                selectedIcon: "house.fill",
+                title: "feed",
+                tag: 0,
+                isSelected: selectedTab == 0,
+                onTap: { onTabTapped(0) }
+            )
+
+            TabBarButton(
+                icon: "magnifyingglass",
+                selectedIcon: "magnifyingglass",
+                title: "discover",
+                tag: 1,
+                isSelected: selectedTab == 1,
+                onTap: { onTabTapped(1) }
+            )
+
+            TabBarButton(
+                icon: "tray",
+                selectedIcon: "tray.fill",
+                title: "shares",
+                tag: 2,
+                isSelected: selectedTab == 2,
+                onTap: { onTabTapped(2) }
+            )
+
+            TabBarButton(
+                icon: "chart.line.uptrend.xyaxis",
+                selectedIcon: "chart.line.uptrend.xyaxis",
+                title: "phlocks",
+                tag: 3,
+                isSelected: selectedTab == 3 || selectedTab == 4, // Highlight when on Profile too
+                onTap: { onTabTapped(3) }
+            )
+        }
+        .frame(height: 49)
+        .background(colorScheme == .dark ? Color.black : Color.white)
+    }
+}
+
+// MARK: - Tab Bar Button
+
+struct TabBarButton: View {
+    let icon: String
+    let selectedIcon: String
+    let title: String
+    let tag: Int
+    let isSelected: Bool
+    let onTap: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 4) {
+                Image(systemName: isSelected ? selectedIcon : icon)
+                    .font(.system(size: 24))
+                    .foregroundColor(isSelected ? (colorScheme == .dark ? .white : .black) : .gray)
+
+                Text(title)
+                    .font(.system(size: 10))
+                    .foregroundColor(isSelected ? (colorScheme == .dark ? .white : .black) : .gray)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
     }
 }

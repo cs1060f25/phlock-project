@@ -13,7 +13,7 @@ struct phlockApp: App {
     @StateObject private var authState = AuthenticationState()
 
     init() {
-        // Hide the default refresh control spinner globally
+        // Hide the default refresh control spinner since we render our own
         UIRefreshControl.appearance().tintColor = .clear
         UIRefreshControl.appearance().backgroundColor = .clear
     }

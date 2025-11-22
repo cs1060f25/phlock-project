@@ -17,6 +17,7 @@ struct MyPhlocksView: View {
     @State private var phlocks: [GroupedPhlock] = []
     @State private var isLoading = true
     @State private var isRefreshing = false
+    @State private var pullProgress: CGFloat = 0
     @State private var errorMessage: String?
     @State private var hasLoadedOnce = false
 
@@ -42,40 +43,18 @@ struct MyPhlocksView: View {
                     PhlockGalleryView(
                         phlocks: phlocks,
                         navigationPath: $navigationPath,
-                        scrollToTopTrigger: $scrollToTopTrigger
+                        scrollToTopTrigger: $scrollToTopTrigger,
+                        onRefresh: {
+                            await loadPhlocks(forceRefresh: true)
+                        }
                     )
                 }
-            }
-            .overlay(alignment: .top) {
-                if isRefreshing && hasLoadedOnce {
-                    VStack(spacing: 8) {
-                        ProgressView()
-                            .scaleEffect(1.5)
-                        Text("Refreshing...")
-                            .font(.nunitoSans(size: 13))
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.top, 100)
-                    .background(
-                        Color(UIColor.systemBackground)
-                            .opacity(0.9)
-                            .cornerRadius(12)
-                            .padding(-12)
-                    )
-                }
-            }
-            .refreshable {
-                isRefreshing = true
-                await loadPhlocks(forceRefresh: true)
-                isRefreshing = false
             }
             .navigationTitle("phlocks")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        navigationPath.append(PhlocksDestination.profile)
-                    } label: {
+                    NavigationLink(value: PhlocksDestination.profile) {
                         ProfileIconView(user: authState.currentUser)
                     }
                 }
@@ -97,7 +76,7 @@ struct MyPhlocksView: View {
             }
             .onChange(of: refreshTrigger) { _, _ in
                 Task {
-                    // Scroll to top when refresh is triggered
+                    // Scroll to top and reload data
                     withAnimation {
                         scrollToTopTrigger += 1
                     }
@@ -107,6 +86,7 @@ struct MyPhlocksView: View {
                 }
             }
         }
+        .fullScreenSwipeBack()
     }
 
     private func loadPhlocks(forceRefresh: Bool = false) async {
@@ -153,8 +133,10 @@ struct PhlockGalleryView: View {
     let phlocks: [GroupedPhlock]
     @Binding var navigationPath: NavigationPath
     @Binding var scrollToTopTrigger: Int
-
-    @State private var isNavigating = false
+    var onRefresh: () async -> Void
+    @Environment(\.colorScheme) var colorScheme
+    @State private var isRefreshing = false
+    @State private var pullProgress: CGFloat = 0
 
     var body: some View {
         ScrollViewReader { scrollProxy in
@@ -174,26 +156,25 @@ struct PhlockGalleryView: View {
                     }
 
                     ForEach(phlocks) { phlock in
-                        Button {
-                            guard !isNavigating else { return }
-                            isNavigating = true
-                            navigationPath.append(PhlocksDestination.phlockDetail(phlock))
-                            // Reset after a short delay
-                            Task {
-                                try? await Task.sleep(nanoseconds: 500_000_000)
-                                isNavigating = false
-                            }
-                        } label: {
+                        NavigationLink(value: PhlocksDestination.phlockDetail(phlock)) {
                             PhlockCardView(phlock: phlock)
                         }
                         .buttonStyle(.plain)
-                        .disabled(isNavigating)
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 100)
             }
             .scrollIndicators(.visible)
+            .pullToRefreshWithSpinner(
+                isRefreshing: $isRefreshing,
+                pullProgress: $pullProgress,
+                colorScheme: colorScheme
+            ) {
+                isRefreshing = true
+                await onRefresh()
+                isRefreshing = false
+            }
             .onChange(of: scrollToTopTrigger) { _, _ in
                 withAnimation {
                     scrollProxy.scrollTo("phlocksTop", anchor: .top)

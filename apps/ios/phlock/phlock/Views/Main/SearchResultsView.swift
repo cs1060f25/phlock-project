@@ -8,10 +8,9 @@ struct SearchResultsList: View {
     let platformType: PlatformType
     let searchQuery: String
     @Binding var navigationPath: NavigationPath
-    @Binding var showQuickSendBar: Bool
-    @Binding var trackToShare: MusicItem?
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
+    @EnvironmentObject var navigationState: NavigationState
 
     var displayedTracks: [MusicItem] {
         filter == .artists ? [] : results.tracks
@@ -106,11 +105,10 @@ struct SearchResultsList: View {
                         TrackResultRow(
                             track: result.item,
                             platformType: platformType,
-                            showType: true,
-                            showQuickSendBar: $showQuickSendBar,
-                            trackToShare: $trackToShare
+                            showType: true
                         )
                         .environmentObject(authState)
+                        .environmentObject(navigationState)
                     } else {
                         Button {
                             navigationPath.append(DiscoverDestination.artist(result.item, platformType))
@@ -127,11 +125,10 @@ struct SearchResultsList: View {
                         TrackResultRow(
                             track: track,
                             platformType: platformType,
-                            showType: false,
-                            showQuickSendBar: $showQuickSendBar,
-                            trackToShare: $trackToShare
+                            showType: false
                         )
                         .environmentObject(authState)
+                        .environmentObject(navigationState)
                     }
                 }
 
@@ -166,10 +163,9 @@ struct TrackResultRow: View {
     let track: MusicItem
     let platformType: PlatformType
     let showType: Bool
-    @Binding var showQuickSendBar: Bool
-    @Binding var trackToShare: MusicItem?
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
+    @EnvironmentObject var navigationState: NavigationState
     @Environment(\.colorScheme) var colorScheme
 
     @State private var showToast = false
@@ -238,8 +234,8 @@ struct TrackResultRow: View {
             // Share Button
             Button {
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    trackToShare = track
-                    showQuickSendBar = true
+                    navigationState.shareTrack = track
+                    navigationState.showShareSheet = true
                 }
             } label: {
                 Image(systemName: "paperplane")
@@ -399,9 +395,8 @@ struct ErrorView: View {
 struct RecentlyPlayedGridView: View {
     let tracks: [MusicItem]
     let platformType: PlatformType
-    @Binding var showQuickSendBar: Bool
-    @Binding var trackToShare: MusicItem?
     @EnvironmentObject var playbackService: PlaybackService
+    @EnvironmentObject var navigationState: NavigationState
     @Environment(\.colorScheme) var colorScheme
 
     // 3 columns grid
@@ -416,11 +411,10 @@ struct RecentlyPlayedGridView: View {
             LazyVGrid(columns: columns, spacing: 12, pinnedViews: []) {
                 ForEach(tracks, id: \.id) { track in
                     RecentTrackCard(
-                        track: track,
-                        showQuickSendBar: $showQuickSendBar,
-                        trackToShare: $trackToShare
+                        track: track
                     )
                     .environmentObject(playbackService)
+                    .environmentObject(navigationState)
                     .id(track.id) // Ensure stable view identity
                 }
             }
@@ -433,9 +427,8 @@ struct RecentlyPlayedGridView: View {
 
 struct RecentTrackCard: View {
     let track: MusicItem
-    @Binding var showQuickSendBar: Bool
-    @Binding var trackToShare: MusicItem?
     @EnvironmentObject var playbackService: PlaybackService
+    @EnvironmentObject var navigationState: NavigationState
     @Environment(\.colorScheme) var colorScheme
 
     var isCurrentTrack: Bool {
@@ -480,8 +473,8 @@ struct RecentTrackCard: View {
                         Spacer()
                         Button {
                             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                trackToShare = track
-                                showQuickSendBar = true
+                                navigationState.shareTrack = track
+                                navigationState.showShareSheet = true
                             }
                         } label: {
                             ZStack {

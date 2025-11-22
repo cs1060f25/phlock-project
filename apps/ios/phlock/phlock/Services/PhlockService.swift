@@ -216,15 +216,25 @@ class PhlockService {
     func fetchPhlockPreviews(userId: UUID) async throws -> [PhlockPreview] {
         let phlocks = try await fetchUserPhlocks(userId: userId)
 
-        var previews: [PhlockPreview] = []
+        // Fetch node data concurrently to avoid sequential network calls
+        let previews: [PhlockPreview] = try await withThrowingTaskGroup(of: (Int, PhlockPreview).self) { group in
+            for (index, phlock) in phlocks.enumerated() {
+                group.addTask {
+                    let nodes = try await self.fetchPhlockNodes(phlockId: phlock.id)
+                    let metrics = self.calculateMetrics(nodes: nodes, phlock: phlock)
+                    return (index, PhlockPreview(from: phlock, metrics: metrics))
+                }
+            }
 
-        for phlock in phlocks {
-            // Fetch nodes to calculate metrics
-            let nodes = try await fetchPhlockNodes(phlockId: phlock.id)
-            let metrics = calculateMetrics(nodes: nodes, phlock: phlock)
+            var results: [(Int, PhlockPreview)] = []
+            for try await preview in group {
+                results.append(preview)
+            }
 
-            let preview = PhlockPreview(from: phlock, metrics: metrics)
-            previews.append(preview)
+            // Preserve original ordering of phlocks
+            return results
+                .sorted { $0.0 < $1.0 }
+                .map { $0.1 }
         }
 
         return previews

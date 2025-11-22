@@ -44,6 +44,7 @@ class PlaybackService: ObservableObject {
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
     @Published var shouldShowMiniPlayer = true // Controls whether mini player appears
+    @Published var isShareOverlayPresented = false
 
     nonisolated private init() {
         Task { @MainActor in

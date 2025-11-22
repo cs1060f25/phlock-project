@@ -103,6 +103,8 @@ struct ProfileSetupView: View {
         } message: {
             Text(errorMessage)
         }
+        .dismissKeyboardOnTouch()
+        .keyboardResponsive()
     }
 
     private func completeSetup() async {

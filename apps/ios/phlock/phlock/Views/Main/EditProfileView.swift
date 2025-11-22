@@ -155,6 +155,9 @@ struct EditProfileView: View {
                 }
             }
         }
+        .dismissKeyboardOnTouch()
+        .keyboardResponsive()
+        .fullScreenSwipeBack()
     }
 
     private func saveProfile() async {

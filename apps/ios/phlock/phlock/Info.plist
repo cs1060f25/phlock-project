@@ -35,5 +35,7 @@
 		<string>NunitoSans-VariableFont_YTLC,opsz,wdth,wght.ttf</string>
 		<string>NunitoSans-Italic-VariableFont_YTLC,opsz,wdth,wght.ttf</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Phlock uses the microphone so you can identify music and send it to friends.</string>
 </dict>
 </plist>

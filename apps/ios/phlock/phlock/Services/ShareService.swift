@@ -145,12 +145,13 @@ class ShareService {
     /// Get all shares received by a user
     /// - Parameter userId: The user's ID
     /// - Returns: Array of shares ordered by most recent first
-    func getReceivedShares(userId: UUID) async throws -> [Share] {
+    func getReceivedShares(userId: UUID, limit: Int = 200) async throws -> [Share] {
         let shares: [Share] = try await supabase
             .from("shares")
             .select("*")
             .eq("recipient_id", value: userId.uuidString)
             .order("created_at", ascending: false)
+            .limit(limit)
             .execute()
             .value
 
@@ -161,12 +162,13 @@ class ShareService {
     /// Get all shares sent by a user
     /// - Parameter userId: The user's ID
     /// - Returns: Array of shares ordered by most recent first
-    func getSentShares(userId: UUID) async throws -> [Share] {
+    func getSentShares(userId: UUID, limit: Int = 200) async throws -> [Share] {
         let shares: [Share] = try await supabase
             .from("shares")
             .select("*")
             .eq("sender_id", value: userId.uuidString)
             .order("created_at", ascending: false)
+            .limit(limit)
             .execute()
             .value
 

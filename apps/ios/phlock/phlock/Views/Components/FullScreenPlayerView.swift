@@ -210,6 +210,9 @@ struct FullScreenPlayerView: View {
                 }
             }
         }
+        .dismissKeyboardOnTouch()
+        .keyboardResponsive()
+        .fullScreenSwipeBack()
     }
 
     // MARK: - Friend Selector Section

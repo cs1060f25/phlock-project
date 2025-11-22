@@ -12,6 +12,7 @@ enum FeedDestination: Hashable {
 struct FeedView: View {
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var playbackService: PlaybackService
+    @EnvironmentObject var navigationState: NavigationState
     @Binding var navigationPath: NavigationPath
     @Binding var refreshTrigger: Int
     @Binding var scrollToTopTrigger: Int
@@ -21,11 +22,7 @@ struct FeedView: View {
     @State private var networkShares: [NetworkShare] = []
     @State private var isLoading = true
     @State private var isRefreshing = false
-    // Commented out waveform-related state for potential future use
-    // @State private var pullProgress: CGFloat = 0
-    // @State private var isSimulatedPull = false
-    @State private var showQuickSendBar = false
-    @State private var trackToShare: MusicItem? = nil
+    @State private var pullProgress: CGFloat = 0
 
     // private let waveformReservedHeight: CGFloat = 26
 
@@ -70,30 +67,6 @@ struct FeedView: View {
             }
             .navigationTitle("feed")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        navigationPath.append(FeedDestination.profile)
-                    } label: {
-                        if let profilePhotoUrl = authState.currentUser?.profilePhotoUrl,
-                           let url = URL(string: profilePhotoUrl) {
-                            AsyncImage(url: url) { image in
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                            } placeholder: {
-                                Image(systemName: "person.circle.fill")
-                                    .font(.system(size: 22))
-                            }
-                            .frame(width: 28, height: 28)
-                            .clipShape(Circle())
-                        } else {
-                            Image(systemName: "person.circle")
-                                .font(.system(size: 22))
-                        }
-                    }
-                }
-            }
             .navigationDestination(for: FeedDestination.self) { destination in
                 switch destination {
                 case .profile:
@@ -107,43 +80,22 @@ struct FeedView: View {
                 }
             }
         }
-        .overlay(
-            ZStack {
-                if showQuickSendBar, let track = trackToShare {
-                    QuickSendBar(
-                        track: track,
-                        onDismiss: {
-                            withAnimation(.easeOut(duration: 0.3)) {
-                                showQuickSendBar = false
-                                trackToShare = nil
-                            }
-                        },
-                        onSendComplete: { sentToFriends in
-                            // Show toast if shares were sent
-                            if !sentToFriends.isEmpty {
-                                // Note: We can't show toast from here, need to pass it to child view
-                                print("✅ Sent to \(sentToFriends.count) friend\(sentToFriends.count == 1 ? "" : "s")")
-                            }
-                        },
-                        additionalBottomInset: QuickSendBar.Layout.overlayInset
-                    )
-                    .environmentObject(authState)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(999) // Ensure it's above everything
-                }
-            }
-            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showQuickSendBar)
-        )
+        .fullScreenSwipeBack()
         .task {
             await loadNetworkActivity()
         }
         .onChange(of: refreshTrigger) { oldValue, newValue in
+            print("🔄 Feed refreshTrigger changed from \(oldValue) to \(newValue)")
             Task {
-                // Scroll to top when refresh is triggered
+                // Scroll to top and reload data
                 withAnimation {
                     scrollToTopTrigger += 1
                 }
+                isRefreshing = true
+                print("🔄 Loading network activity...")
                 await loadNetworkActivity()
+                isRefreshing = false
+                print("🔄 Network activity loaded")
             }
         }
     }
@@ -222,18 +174,11 @@ struct FeedView: View {
         ScrollViewReader { scrollProxy in
             List {
                 // Top anchor for scroll-to-top functionality
-                // Commented out waveform spacer for potential future use
-                // Color.clear
-                //     .frame(height: refreshSpacerHeight)
-                //     .animation(.easeOut(duration: 0.4), value: pullProgress)
-                //     .animation(.easeOut(duration: 0.4), value: isRefreshing)
-                //     .listRowSeparator(.hidden)
-                //     .listRowInsets(EdgeInsets())
-                //     .id("feedTop")
                 Color.clear
                     .frame(height: 1)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
                     .id("feedTop")
 
                 ForEach(Array(cachedSortedSections.enumerated()), id: \.element) { index, date in
@@ -241,12 +186,11 @@ struct FeedView: View {
                         ForEach(sortedShares(for: date), id: \.share.id) { networkShare in
                             NetworkShareRowView(
                                 networkShare: networkShare,
-                                navigationPath: $navigationPath,
-                                showQuickSendBar: $showQuickSendBar,
-                                trackToShare: $trackToShare
+                                navigationPath: $navigationPath
                             )
                             .environmentObject(playbackService)
                             .environmentObject(authState)
+                            .environmentObject(navigationState)
                         }
                     }
                 }
@@ -267,32 +211,20 @@ struct FeedView: View {
             //     try? await Task.sleep(nanoseconds: 1_300_000_000)
             //     isRefreshing = false
             // }
-            .refreshable {
+            .pullToRefreshWithSpinner(
+                isRefreshing: $isRefreshing,
+                pullProgress: $pullProgress,
+                colorScheme: colorScheme
+            ) {
                 isRefreshing = true
                 await loadNetworkActivity()
                 isRefreshing = false
             }
-            .overlay(alignment: .top) {
-                if isRefreshing {
-                    VStack(spacing: 8) {
-                        ProgressView()
-                            .scaleEffect(1.5)
-                        Text("Refreshing...")
-                            .font(.nunitoSans(size: 13))
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.top, 100)
-                    .background(
-                        Color(UIColor.systemBackground)
-                            .opacity(0.9)
-                            .cornerRadius(12)
-                            .padding(-12)
-                    )
-                }
-            }
-            .onChange(of: scrollToTopTrigger) { _, _ in
+            .onChange(of: scrollToTopTrigger) { oldValue, newValue in
+                print("📜 Feed scrollToTopTrigger changed from \(oldValue) to \(newValue)")
                 withAnimation {
                     scrollProxy.scrollTo("feedTop", anchor: .top)
+                    print("📜 Scrolled to feedTop")
                 }
             }
             // .offset(y: simulatedPullOffset)
@@ -315,7 +247,7 @@ struct FeedView: View {
             .font(.nunitoSans(size: 13, weight: .bold))
             .foregroundColor(.secondary)
             .textCase(.uppercase)
-            .padding(.top, isFirst ? 0 : 4)
+            .padding(.top, isFirst ? 8 : 4) // Add more padding for first section
     }
 
     // MARK: - Grouped Shares
@@ -456,13 +388,14 @@ struct FeedView: View {
         do {
             let shares = try await ShareService.shared.getNetworkActivity(userId: currentUser.id)
 
-            // Fetch sender and recipient info for each share
-            var sharesWithUsers: [NetworkShare] = []
-            for share in shares {
-                if let sender = try? await UserService.shared.getUser(userId: share.senderId),
-                   let recipient = try? await UserService.shared.getUser(userId: share.recipientId) {
-                    sharesWithUsers.append(NetworkShare(share: share, sender: sender, recipient: recipient))
-                }
+            // Fetch sender and recipient info in a single batch to avoid N+1 calls
+            let userIds = Array(Set(shares.flatMap { [ $0.senderId, $0.recipientId ] }))
+            let userMap = try await UserService.shared.getUsers(userIds: userIds)
+
+            let sharesWithUsers: [NetworkShare] = shares.compactMap { share in
+                guard let sender = userMap[share.senderId],
+                      let recipient = userMap[share.recipientId] else { return nil }
+                return NetworkShare(share: share, sender: sender, recipient: recipient)
             }
 
             await MainActor.run {
@@ -518,10 +451,9 @@ struct NetworkShare: Identifiable {
 struct NetworkShareRowView: View {
     let networkShare: NetworkShare
     @Binding var navigationPath: NavigationPath
-    @Binding var showQuickSendBar: Bool
-    @Binding var trackToShare: MusicItem?
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
+    @EnvironmentObject var navigationState: NavigationState
     @Environment(\.colorScheme) var colorScheme
 
     @State private var showToast = false
@@ -633,8 +565,8 @@ struct NetworkShareRowView: View {
                         // Share Button
                         Button {
                             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                trackToShare = createMusicItem()
-                                showQuickSendBar = true
+                                navigationState.shareTrack = createMusicItem()
+                                navigationState.showShareSheet = true
                             }
                         } label: {
                             Image(systemName: "paperplane")

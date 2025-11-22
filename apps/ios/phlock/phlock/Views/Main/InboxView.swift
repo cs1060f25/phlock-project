@@ -17,30 +17,6 @@ struct TheCrateView: View {
             InboxView(navigationPath: $navigationPath, refreshTrigger: $refreshTrigger, scrollToTopTrigger: $scrollToTopTrigger)
                 .navigationTitle("shares")
                 .navigationBarTitleDisplayMode(.large)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button {
-                            navigationPath.append(InboxDestination.profile)
-                        } label: {
-                            if let profilePhotoUrl = authState.currentUser?.profilePhotoUrl,
-                               let url = URL(string: profilePhotoUrl) {
-                                AsyncImage(url: url) { image in
-                                    image
-                                        .resizable()
-                                        .scaledToFill()
-                                } placeholder: {
-                                    Image(systemName: "person.circle.fill")
-                                        .font(.system(size: 22))
-                                }
-                                .frame(width: 28, height: 28)
-                                .clipShape(Circle())
-                            } else {
-                                Image(systemName: "person.circle")
-                                    .font(.system(size: 22))
-                            }
-                        }
-                    }
-                }
                 .navigationDestination(for: InboxDestination.self) { destination in
                     switch destination {
                     case .profile:
@@ -51,6 +27,7 @@ struct TheCrateView: View {
                     }
                 }
         }
+        .fullScreenSwipeBack()
     }
 }
 
@@ -69,9 +46,7 @@ struct InboxView: View {
     @State private var savedShares: [ShareWithSender] = []
     @State private var isLoading = true
     @State private var isRefreshing = false
-    // Commented out waveform-related state for potential future use
-    // @State private var pullProgress: CGFloat = 0
-    // @State private var isSimulatedPull = false
+    @State private var pullProgress: CGFloat = 0
     @State private var showQuickSendBar = false
     @State private var trackToShare: MusicItem? = nil
 
@@ -110,11 +85,6 @@ struct InboxView: View {
                     sharesList
                 }
             }
-            .refreshable {
-                isRefreshing = true
-                await loadShares()
-                isRefreshing = false
-            }
         }
         .overlay(
             ZStack {
@@ -136,7 +106,7 @@ struct InboxView: View {
                     )
                     .environmentObject(authState)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(999)
+                    .zIndex(QuickSendBar.Layout.overlayZ)
                 }
             }
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showQuickSendBar)
@@ -146,11 +116,13 @@ struct InboxView: View {
         }
         .onChange(of: refreshTrigger) { oldValue, newValue in
             Task {
-                // Scroll to top when refresh is triggered
+                // Scroll to top and reload data
                 withAnimation {
                     scrollToTopTrigger += 1
                 }
+                isRefreshing = true
                 await loadShares()
+                isRefreshing = false
             }
         }
     }
@@ -322,43 +294,20 @@ struct InboxView: View {
             .listStyle(.plain)
             .environment(\.defaultMinListRowHeight, 0)
             .scrollDismissesKeyboard(.interactively)
-            // Commented out waveform refresh for potential future use
-            // .hideRefreshControl()
-            // .pullToRefreshWithWaveform(
-            //     isRefreshing: $isRefreshing,
-            //     pullProgress: $pullProgress,
-            //     colorScheme: colorScheme,
-            //     overlayCompensation: simulatedPullOffset
-            // ) {
-            //     isRefreshing = true
-            //     await loadShares()
-            //     try? await Task.sleep(nanoseconds: 1_300_000_000)
-            //     isRefreshing = false
-            // }
-            .overlay(alignment: .top) {
-                if isRefreshing {
-                    VStack(spacing: 8) {
-                        ProgressView()
-                            .scaleEffect(1.5)
-                        Text("Refreshing...")
-                            .font(.nunitoSans(size: 13))
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.top, 100)
-                    .background(
-                        Color(UIColor.systemBackground)
-                            .opacity(0.9)
-                            .cornerRadius(12)
-                            .padding(-12)
-                    )
-                }
+            .pullToRefreshWithSpinner(
+                isRefreshing: $isRefreshing,
+                pullProgress: $pullProgress,
+                colorScheme: colorScheme
+            ) {
+                isRefreshing = true
+                await loadShares()
+                isRefreshing = false
             }
             .onChange(of: scrollToTopTrigger) { _, _ in
                 withAnimation {
                     scrollProxy.scrollTo("inboxTop", anchor: .top)
                 }
             }
-            // .offset(y: simulatedPullOffset)
         }
     }
 
@@ -499,20 +448,22 @@ struct InboxView: View {
         do {
             // Load received shares
             let receivedSharesData = try await ShareService.shared.getReceivedShares(userId: currentUser.id)
-            var sharesWithSenders: [ShareWithSender] = []
-            for share in receivedSharesData {
-                if let sender = try? await UserService.shared.getUser(userId: share.senderId) {
-                    sharesWithSenders.append(ShareWithSender(share: share, sender: sender))
-                }
-            }
 
             // Load saved shares
             let savedSharesData = try await ShareService.shared.getSavedShares(userId: currentUser.id)
-            var savedSharesWithSenders: [ShareWithSender] = []
-            for share in savedSharesData {
-                if let sender = try? await UserService.shared.getUser(userId: share.senderId) {
-                    savedSharesWithSenders.append(ShareWithSender(share: share, sender: sender))
-                }
+
+            // Batch fetch senders once to avoid N+1 user lookups
+            let senderIds = Array(Set(receivedSharesData.map { $0.senderId } + savedSharesData.map { $0.senderId }))
+            let userMap = try await UserService.shared.getUsers(userIds: senderIds)
+
+            let sharesWithSenders: [ShareWithSender] = receivedSharesData.compactMap { share in
+                guard let sender = userMap[share.senderId] else { return nil }
+                return ShareWithSender(share: share, sender: sender)
+            }
+
+            let savedSharesWithSenders: [ShareWithSender] = savedSharesData.compactMap { share in
+                guard let sender = userMap[share.senderId] else { return nil }
+                return ShareWithSender(share: share, sender: sender)
             }
 
             await MainActor.run {
@@ -889,6 +840,7 @@ struct SentShareRowView: View {
                     },
                     additionalBottomInset: QuickSendBar.Layout.embeddedInset
                 )
+                .environment(\.miniPlayerBottomInset, 0)
                 .environmentObject(authState)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .padding(.top, 8)

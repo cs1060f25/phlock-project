@@ -161,6 +161,15 @@ struct MiniPlayerView: View {
     }
 }
 
+extension MiniPlayerView {
+    enum Layout {
+        /// Approximate visible height of the mini player including chrome
+        static let height: CGFloat = 74
+        /// Spacing used to sit above the custom tab bar
+        static let tabBarOffset: CGFloat = 53
+    }
+}
+
 #Preview {
     VStack {
         Spacer()
