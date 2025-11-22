@@ -354,7 +354,12 @@ class UserService {
 
         // Check if user already has 5 phlock members
         let currentMembers = try await getPhlockMembers(for: userId)
-        if currentMembers.count >= 5 && !currentMembers.contains(where: { $0.user.id == friendId }) {
+
+        // If the friend is already a member, we're just updating position
+        let isAlreadyMember = currentMembers.contains(where: { $0.user.id == friendId })
+
+        // Only check if phlock is full if adding a new member
+        if !isAlreadyMember && currentMembers.count >= 5 {
             throw UserServiceError.phlockFull
         }
 

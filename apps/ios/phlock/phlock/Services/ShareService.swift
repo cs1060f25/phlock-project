@@ -665,8 +665,11 @@ class ShareService {
     ///   - date: The date to fetch songs for (defaults to today)
     /// - Returns: Array of daily songs
     func getDailySongs(from userIds: [UUID], for date: Date = Date()) async throws -> [Share] {
-        let targetDate = Calendar.current.startOfDay(for: date)
-        let dateString = ISO8601DateFormatter().string(from: targetDate)
+        // Format date as YYYY-MM-DD for database comparison
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        let dateString = formatter.string(from: date)
 
         guard !userIds.isEmpty else {
             return []
