@@ -9,7 +9,7 @@ Phlock transforms music discovery through daily curation. Each user selects one 
 - **Daily Song Selection**: Pick one song per day to share with your followers
 - **Your Phlock**: Choose 5 people whose daily songs become your playlist
 - **Social Currency**: Phlock count (how many people include you) = influence
-- **Swap Mechanism**: Change one phlock member per day to keep discovery fresh
+- **Swap Mechanism**: Adjust your phlock anytime - changes take effect at midnight
 - **Streaks**: Build momentum by selecting songs daily
 
 ## 📁 Repository Structure
@@ -100,8 +100,9 @@ We use **product-based branching** to explore different product directions:
 **Key Constraints:**
 - One song per user per day
 - Max 5 phlock members (free tier)
-- One swap per day limit
+- Unlimited swaps per day (take effect at midnight)
 - Streak tracking with auto-reset
+- Daily playlist generation at midnight user's timezone
 
 ### iOS App Structure
 
@@ -208,7 +209,7 @@ supabase db execute "SELECT username, phlock_count, daily_song_streak FROM users
 ### Phlock Management
 - Choose **5 curators** for your daily playlist
 - See each member's today's song
-- **Swap one member per day** to keep it fresh
+- **Make unlimited swaps** throughout the day - changes take effect at midnight
 - Position-based ordering (1-5)
 
 ### Daily Playlist
@@ -228,13 +229,13 @@ supabase db execute "SELECT username, phlock_count, daily_song_streak FROM users
 ### Simplicity
 - Minimal friction: reuse existing DiscoverView for selection
 - One decision per day (which song?)
-- Clear constraints (5 members, 1 swap)
+- Clear constraints (5 members, midnight refresh)
 
 ### Engagement
 - Daily habit formation
 - Streak tracking with visual rewards
 - Social proof through phlock counts
-- Meaningful swaps (limited to 1/day)
+- Thoughtful curation (swaps take effect next day)
 
 ### Monetization
 - **Free tier**: 5 phlock members, basic features
