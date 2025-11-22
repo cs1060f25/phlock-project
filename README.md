@@ -1,190 +1,355 @@
-# Phlock
+# Phlock - Daily Music Curation Platform
 
-> A social layer for music discovery that makes peer recommendations measurable and rewarding
+> A social music discovery app where users curate daily playlists for each other
 
-Phlock sits on top of Spotify and Apple Music to make music sharing frictionless, recognize fan influence, and give artists new ways to activate and reward their communities.
+Phlock transforms music discovery through daily curation. Each user selects one song per day, and their "phlock" (5 curators they follow) provides their daily personalized playlist. Social currency is built through being included in others' phlocks - the more phlocks you're in, the more influential you become.
+
+## 🎵 Core Concept
+
+- **Daily Song Selection**: Pick one song per day to share with your followers
+- **Your Phlock**: Choose 5 people whose daily songs become your playlist
+- **Social Currency**: Phlock count (how many people include you) = influence
+- **Swap Mechanism**: Change one phlock member per day to keep discovery fresh
+- **Streaks**: Build momentum by selecting songs daily
 
 ## 📁 Repository Structure
 
-This is a monorepo containing all Phlock applications and shared packages:
+This is a monorepo containing the Phlock iOS app and backend infrastructure:
 
 ```
-phlock/
+phlock-dev/
 ├── apps/
-│   ├── ios/                   # SwiftUI native iOS app
-│   ├── android/               # Kotlin native Android app (planned)
-│   ├── mobile-rn-archive/     # Archived React Native implementation
-│   └── artist-dashboard/      # Next.js web app for artists (Phase 5+)
+│   ├── ios/phlock/              # Native SwiftUI iOS app
+│   └── mobile-rn-archive/       # Archived React Native implementation
 ├── packages/
-│   ├── api/                   # Backend API & serverless functions
-│   ├── database/              # Supabase schemas & migrations
-│   ├── shared-types/          # Shared TypeScript types
-│   └── utils/                 # Shared utilities
+│   └── database/
+│       └── migrations/          # Supabase database migrations
+├── supabase/
+│   ├── functions/               # Edge Functions (auth, search)
+│   └── seed/                    # Test data
 ├── docs/
-│   ├── PHLOCK_ROADMAP.md        # Comprehensive 7-phase roadmap
-│   └── BRANCHING_STRATEGY.md    # Git workflow & branch structure
-└── package.json               # Workspace root configuration
+│   └── FEATURE_ROADMAP.md       # Future features
+├── CLAUDE.md                    # Complete project documentation
+└── README.md                    # This file
 ```
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- Node.js ≥ 18.0.0
-- npm ≥ 8.0.0
-- For mobile development: Expo CLI
+- **iOS Development:**
+  - Xcode 15+
+  - iOS 15+ deployment target
+- **Backend:**
+  - Supabase project
+  - Spotify Developer account (for OAuth)
+  - Apple Developer account (for Apple Music)
 
-### Installation
-
-```bash
-# Install all dependencies (root + all workspaces)
-npm install
-
-# Run mobile app
-npm run dev:mobile
-
-# Run artist dashboard (when available)
-npm run dev:dashboard
-```
-
-### iOS App Development
+### Running the iOS App
 
 ```bash
 # Open Xcode project
-open apps/ios/Phlock.xcodeproj
+open apps/ios/phlock/phlock.xcodeproj
 
-# Or use Xcode command line
-xcodebuild -project apps/ios/Phlock.xcodeproj -scheme Phlock -sdk iphonesimulator
+# Or use command line
+cd apps/ios/phlock
+xcodebuild -scheme phlock -sdk iphonesimulator
 ```
 
-> **Note:** Phlock has transitioned from React Native to native Swift/Kotlin development for optimal music platform API integration (Spotify SDK, MusicKit). The previous React Native implementation is archived in `apps/mobile-rn-archive/`.
-
-## 🎯 Phase-Based Development Roadmap
-
-Phlock is being built in 7 phases over 18-24 months. See [`docs/PHLOCK_ROADMAP.md`](docs/PHLOCK_ROADMAP.md) for the complete roadmap.
-
-### Current Phase: Phase 1 - Social MVP (Months 1-3)
-
-**Goal:** Transform musiclinkr from a utility into a social sharing platform
-
-**Key Features:**
-- User authentication & social graph
-- Transform link conversion into peer-to-peer sharing
-- The Crate - social discovery timeline
-- Daily send limits
-- In-app preview playback
-
-**Branch:** `phase/1-social-mvp`
-
-## 🌳 Branching Strategy
-
-We use **phase-based feature branching** aligned with our roadmap. See [`docs/BRANCHING_STRATEGY.md`](docs/BRANCHING_STRATEGY.md) for complete details.
-
-### Key Branches
-
-- **`main`** - Production releases
-- **`develop`** - Integration branch for current phase
-- **`phase/N-name`** - Long-running branches for each development phase
-- **`feature/N-name`** - Short-lived feature branches
-- **`release/vN-name`** - Release preparation branches
-
-### Example Workflow
+### Database Setup
 
 ```bash
-# Start working on a Phase 1 feature
-git checkout phase/1-social-mvp
-git checkout -b feature/1-firebase-auth
+# Run migrations
+supabase db push
 
-# ... make changes ...
-git commit -m "Add Firebase authentication"
-git push origin feature/1-firebase-auth
-
-# Create PR: feature/1-firebase-auth → phase/1-social-mvp
+# Or manually run each migration
+psql $DATABASE_URL < packages/database/migrations/001_initial_schema.sql
+# ... continue with subsequent migrations
 ```
 
-## 🏗️ Architecture
+## 🌳 Branch Structure
 
-### iOS App (`apps/ios/`)
+We use **product-based branching** to explore different product directions:
 
-- **Framework:** SwiftUI (native iOS)
-- **Backend:** Supabase (auth, database, storage)
-- **Music APIs:** Spotify iOS SDK, Apple MusicKit
-- **Foundation:** Built from musiclinkr-mobile foundation
-- **Key Features:** OAuth authentication with music platforms, native music playback
+### Active Branches
 
-### Android App (`apps/android/`) - Planned
+- **`main`** - Stable release branch
+- **`develop`** - Integration branch
+- **`product/viral-sharing`** - Original viral music sharing concept (complete)
+- **`product/daily-curation`** - **CURRENT** - Daily playlist curation model
 
-- **Framework:** Kotlin + Jetpack Compose (native Android)
-- **Music APIs:** Spotify Android SDK, MusicKit for Android
-- **Backend:** Shared Supabase infrastructure
+### Tags
 
-### Artist Dashboard (`apps/artist-dashboard/`)
+- `v1.0-viral-sharing` - Complete viral sharing implementation
+- `archive/daily-curation-ground-up` - Reference schema for ground-up rebuild
 
-- **Framework:** Next.js (Phase 5+)
-- **Purpose:** Analytics, fan engagement, influence scoring for artists
+## 🏗️ Current Architecture (Daily Curation Branch)
 
-### Shared Packages
+### Database Schema
 
-- **`packages/api/`** - Backend functions (authentication, shares, phlocks, influence scoring)
-- **`packages/database/`** - Supabase schemas (users, friendships, shares, engagements)
-- **`packages/shared-types/`** - TypeScript interfaces shared across apps
-- **`packages/utils/`** - Shared utility functions
+**Core Tables:**
+- `users` - User profiles with Spotify/Apple Music OAuth
+  - Extended fields: `username`, `phlock_count`, `daily_song_streak`, `last_daily_song_date`
+- `shares` - Music shares between users
+  - Extended fields: `is_daily_song`, `selected_date`, `preview_url`
+- `friendships` - Social connections
+  - Extended fields: `position`, `is_phlock_member`, `last_swapped_at`
+- `swap_history` - Track daily phlock member swaps
+- `platform_tokens` - Encrypted OAuth tokens
 
-## 📊 Development Phases
+**Key Constraints:**
+- One song per user per day
+- Max 5 phlock members (free tier)
+- One swap per day limit
+- Streak tracking with auto-reset
 
-| Phase | Timeline | Status | Key Features |
-|-------|----------|--------|--------------|
-| **Phase 1** | Months 1-3 | 🚧 In Progress | Social MVP: Auth, Friends, Sharing, Crate |
-| **Phase 2** | Months 3-5 | ⏳ Planned | Feedback Loops: Notifications, Metrics |
-| **Phase 3** | Months 5-7 | ⏳ Planned | Phlocks Visualization |
-| **Phase 4** | Months 7-9 | ⏳ Planned | Proof-of-Influence System |
-| **Phase 5** | Months 9-12 | ⏳ Planned | Artist Dashboard |
-| **Phase 6** | Months 12-18 | ⏳ Planned | Growth & Viral Mechanics |
-| **Phase 7** | Months 18-24 | ⏳ Planned | Monetization & Scale |
+### iOS App Structure
+
+```
+phlock/
+├── Models/
+│   ├── User.swift              # Extended with phlock fields
+│   ├── Share.swift             # Extended with daily song fields
+│   ├── Friendship.swift
+│   └── MusicItem.swift
+├── Services/
+│   ├── AuthService_v2.swift    # OAuth with Spotify/Apple Music
+│   ├── ShareService.swift      # Music sharing (will add daily song methods)
+│   ├── UserService.swift       # Friend/phlock management
+│   ├── SpotifyService.swift    # Spotify API integration
+│   └── AppleMusicService.swift # Apple Music API integration
+├── Views/
+│   ├── Auth/                   # Authentication flow
+│   ├── Main/
+│   │   ├── DiscoverView.swift  # Search + daily song selection
+│   │   ├── FriendsView.swift   # Will become "My Phlock"
+│   │   ├── InboxView.swift     # Will become "Daily Playlist"
+│   │   ├── FeedView.swift      # Activity feed
+│   │   └── ProfileView.swift   # User profiles
+│   └── Components/             # Reusable UI components
+└── ViewModels/                 # State management
+```
+
+## 🎯 Implementation Status (product/daily-curation)
+
+### ✅ Completed
+
+- [x] Branch restructuring and cleanup
+- [x] Incremental database migration (non-breaking)
+- [x] Extended Swift models (Share, User)
+- [x] Helper methods for daily songs and streaks
+- [x] Triggers for auto-maintaining phlock counts and streaks
+
+### 🚧 In Progress
+
+- [ ] ShareService methods for daily song selection
+- [ ] DiscoverView modifications (add daily song picker)
+- [ ] My Phlock management UI
+- [ ] Daily Playlist view
+- [ ] Testing migration on Supabase
+
+### 📋 Planned
+
+- [ ] Swap functionality UI
+- [ ] Streak display and notifications
+- [ ] Premium tier (10 phlock members)
+- [ ] Discovery/browse features
+- [ ] Artist pitch system (monetization)
+
+## 🔧 Development Workflow
+
+### Current Branch: `product/daily-curation`
+
+This branch uses a **hybrid approach**:
+- Starts from working viral-sharing code
+- Incrementally adds daily curation features
+- Non-breaking changes (both models can coexist)
+- Always shippable at every commit
+
+### Typical Development Flow
+
+```bash
+# Work on daily curation features
+git checkout product/daily-curation
+
+# Make changes incrementally
+# ... modify code ...
+
+# Commit frequently
+git add -A
+git commit -m "feat: Add daily song selection to DiscoverView"
+git push origin product/daily-curation
+
+# Test in Xcode - app should always compile and run
+```
+
+### Database Migration Strategy
+
+```bash
+# Run latest migration
+cd supabase
+supabase db push
+
+# Or run specific migration
+psql $DATABASE_URL < ../packages/database/migrations/007_add_daily_curation_fields.sql
+
+# Verify
+supabase db execute "SELECT username, phlock_count, daily_song_streak FROM users LIMIT 5;"
+```
+
+## 📊 Key Features
+
+### Daily Song Selection
+- Search your music library (Spotify/Apple Music)
+- Pick **one song per day** as your contribution
+- Add optional 280-character note
+- Builds streak counter (gamification)
+
+### Phlock Management
+- Choose **5 curators** for your daily playlist
+- See each member's today's song
+- **Swap one member per day** to keep it fresh
+- Position-based ordering (1-5)
+
+### Daily Playlist
+- Auto-generated every day from your 5 phlock members
+- Shows which curator contributed each song
+- Play directly with preview player
+- Track likes/skips for engagement
+
+### Social Currency
+- **Phlock count** = how many people include you
+- Public/private visibility options
+- Leaderboards for top curators
+- Discovery based on influence
+
+## 🎨 Design Principles
+
+### Simplicity
+- Minimal friction: reuse existing DiscoverView for selection
+- One decision per day (which song?)
+- Clear constraints (5 members, 1 swap)
+
+### Engagement
+- Daily habit formation
+- Streak tracking with visual rewards
+- Social proof through phlock counts
+- Meaningful swaps (limited to 1/day)
+
+### Monetization
+- **Free tier**: 5 phlock members, basic features
+- **Premium ($4.99/mo)**: 10 members, past playlists, analytics
+- **Artist tier ($19.99/mo)**: Pitch songs to influencers
 
 ## 🧪 Testing
 
+### Manual Testing
 ```bash
-# Run all tests
-npm test
+# Open in Xcode
+open apps/ios/phlock/phlock.xcodeproj
 
-# Run tests for specific app
-npm test --workspace=apps/mobile
+# Build and run on simulator
+# Sign in with Spotify/Apple Music OAuth
+# Test daily song selection
+# Test phlock management
 ```
 
-## 🚢 Deployment
+### Database Testing
+```bash
+# Check migration worked
+supabase db execute "SELECT * FROM shares WHERE is_daily_song = true;"
 
-- **Mobile:** Expo + EAS Build → App Store & Google Play
-- **Artist Dashboard:** Vercel
-- **API:** Supabase Edge Functions
+# Verify triggers
+supabase db execute "SELECT username, phlock_count FROM users ORDER BY phlock_count DESC LIMIT 10;"
+```
 
 ## 📚 Documentation
 
-- [Phlock Roadmap](docs/PHLOCK_ROADMAP.md) - Comprehensive 7-phase development plan
-- [Branching Strategy](docs/BRANCHING_STRATEGY.md) - Git workflow & conventions
-- [iOS App Documentation](apps/ios/README.md) - SwiftUI native app (coming soon)
+- **[CLAUDE.md](CLAUDE.md)** - Complete technical documentation
+- **[FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md)** - Future features and monetization
+- **Database Migrations** - See `packages/database/migrations/`
+- **Seed Data** - See `supabase/seed/`
+
+## 🔐 Environment Setup
+
+### Required Environment Variables
+
+Create `.env.local` in project root:
+
+```bash
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SPOTIFY_CLIENT_ID=your-spotify-client-id
+SPOTIFY_CLIENT_SECRET=your-spotify-client-secret
+```
+
+### iOS Config
+
+Update `apps/ios/phlock/phlock/Config.swift`:
+
+```swift
+static let supabaseURL = "https://your-project.supabase.co"
+static let supabaseAnonKey = "your-anon-key"
+static let spotifyClientId = "your-client-id"
+static let spotifyRedirectUri = "phlock://spotify-callback"
+```
+
+## 📈 Metrics & Success Criteria
+
+### Key Metrics (MVP)
+- **Daily Active Users**: % of users selecting a song daily (target: 60%+)
+- **Phlock Fill Rate**: Average phlock size (target: 4+ out of 5)
+- **Playlist Engagement**: % playing 3+ songs (target: 70%+)
+- **Swap Rate**: Swaps per user per week (target: 1-2)
+- **7-Day Retention**: (target: 50%+)
+
+### Growth Indicators
+- **Average phlock count**: Distribution across users
+- **Streak retention**: % maintaining 7+ day streaks
+- **Discovery rate**: New songs discovered per user per week
+
+## 🚀 Deployment
+
+### iOS App
+```bash
+# TestFlight
+xcodebuild archive -scheme phlock -archivePath build/phlock.xcarchive
+xcodebuild -exportArchive -archivePath build/phlock.xcarchive -exportPath build/ipa
+
+# Upload to App Store Connect
+# Deploy to TestFlight beta testers
+```
+
+### Database
+```bash
+# Deploy migrations
+supabase db push
+
+# Deploy edge functions
+supabase functions deploy exchange-auth-token
+supabase functions deploy search-spotify-tracks
+```
 
 ## 🤝 Contributing
 
-This is a private development repository. Branching strategy:
+This is a private development repository. For internal development:
 
-1. Create feature branch from relevant phase branch
-2. Make changes and commit
-3. Push and create pull request to phase branch
-4. After review, merge to phase branch
-5. When phase complete, create release branch → merge to main
-
-## 📄 License
-
-MIT License - see LICENSE file for details
+1. Check out `product/daily-curation` branch
+2. Make incremental, testable changes
+3. Commit frequently with clear messages
+4. Push to remote regularly
+5. Keep app functional at every commit
 
 ## 🔗 Links
 
-- **GitHub:** https://github.com/woon-1/phlock
-- **Roadmap:** [docs/PHLOCK_ROADMAP.md](docs/PHLOCK_ROADMAP.md)
+- **GitHub**: https://github.com/woon-1/phlock
+- **Supabase Dashboard**: (your project URL)
+- **Spotify Developer Console**: https://developer.spotify.com/dashboard
 
 ---
 
-**Current Phase:** Phase 1 - Social MVP
-**Active Branch:** `phase/1-social-mvp`
-**Last Updated:** October 2025
+**Current Product Direction**: Daily Curation
+**Active Branch**: `product/daily-curation`
+**Status**: MVP Development
+**Last Updated**: November 22, 2025
