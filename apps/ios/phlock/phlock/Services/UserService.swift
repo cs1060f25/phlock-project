@@ -411,6 +411,57 @@ class UserService {
         clearCache(for: userId)
     }
 
+    /// Schedule a swap for midnight
+    func scheduleSwap(oldMemberId: UUID, newMemberId: UUID, for userId: UUID) async throws {
+        // Check friendship exists and is accepted
+        let friendship = try await getFriendship(currentUserId: userId, otherUserId: newMemberId)
+        guard let friendship = friendship, friendship.status == .accepted else {
+            throw UserServiceError.notFriends
+        }
+
+        // Calculate next midnight
+        let calendar = Calendar.current
+        let now = Date()
+        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: now),
+              let midnight = calendar.date(bySettingHour: 0, minute: 0, second: 0, of: tomorrow) else {
+            throw UserServiceError.schedulingFailed
+        }
+
+        struct ScheduledSwapInsert: Encodable {
+            let user_id: String
+            let old_member_id: String
+            let new_member_id: String
+            let scheduled_for: String
+            let status: String
+        }
+
+        let insert = ScheduledSwapInsert(
+            user_id: userId.uuidString,
+            old_member_id: oldMemberId.uuidString,
+            new_member_id: newMemberId.uuidString,
+            scheduled_for: ISO8601DateFormatter().string(from: midnight),
+            status: "pending"
+        )
+
+        try await supabase
+            .from("scheduled_swaps")
+            .insert(insert)
+            .execute()
+    }
+
+    /// Get pending scheduled swaps for a user
+    func getPendingSwaps(for userId: UUID) async throws -> [ScheduledSwap] {
+        let swaps: [ScheduledSwap] = try await supabase
+            .from("scheduled_swaps")
+            .select("*")
+            .eq("user_id", value: userId.uuidString)
+            .eq("status", value: "pending")
+            .execute()
+            .value
+
+        return swaps
+    }
+
     /// Reorder phlock members by updating positions
     /// Takes an array of friend IDs in desired order (position 1-5)
     func reorderPhlockMembers(friendIds: [UUID], for userId: UUID) async throws {
@@ -513,6 +564,25 @@ struct FriendWithPosition: Identifiable {
     var id: UUID { user.id }
 }
 
+/// Represents a scheduled swap
+struct ScheduledSwap: Decodable {
+    let id: UUID
+    let userId: UUID
+    let oldMemberId: UUID
+    let newMemberId: UUID
+    let scheduledFor: Date
+    let status: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case oldMemberId = "old_member_id"
+        case newMemberId = "new_member_id"
+        case scheduledFor = "scheduled_for"
+        case status
+    }
+}
+
 // MARK: - Errors
 
 enum UserServiceError: LocalizedError {
@@ -521,6 +591,7 @@ enum UserServiceError: LocalizedError {
     case invalidPhlockPosition
     case phlockFull
     case notFriends
+    case schedulingFailed
 
     var errorDescription: String? {
         switch self {
@@ -534,6 +605,8 @@ enum UserServiceError: LocalizedError {
             return "Your phlock is full (max 5 members)"
         case .notFriends:
             return "You must be friends to add them to your phlock"
+        case .schedulingFailed:
+            return "Failed to schedule swap"
         }
     }
 }

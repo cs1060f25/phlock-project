@@ -49,8 +49,8 @@ struct Share: Codable, Identifiable {
     }
 
     // Helper: Format selected date for display
-    var formattedDate: String? {
-        guard let date = selectedDate else { return nil }
+    var formattedDate: String {
+        guard let date = selectedDate else { return "" }
         let formatter = DateFormatter()
         if isToday {
             return "Today"
@@ -60,6 +60,67 @@ struct Share: Codable, Identifiable {
             formatter.dateFormat = "MMM d"
             return formatter.string(from: date)
         }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        senderId = try container.decode(UUID.self, forKey: .senderId)
+        recipientId = try container.decode(UUID.self, forKey: .recipientId)
+        trackId = try container.decode(String.self, forKey: .trackId)
+        trackName = try container.decode(String.self, forKey: .trackName)
+        artistName = try container.decode(String.self, forKey: .artistName)
+        albumArtUrl = try container.decodeIfPresent(String.self, forKey: .albumArtUrl)
+        message = try container.decodeIfPresent(String.self, forKey: .message)
+        status = try container.decode(ShareStatus.self, forKey: .status)
+        isDailySong = try container.decode(Bool.self, forKey: .isDailySong)
+        previewUrl = try container.decodeIfPresent(String.self, forKey: .previewUrl)
+
+        // Custom date decoding to handle various formats
+        let dateStrategies: [(String) -> Date?] = [
+            { ISO8601DateFormatter().date(from: $0) },
+            {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd"
+                formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                return formatter.date(from: $0)
+            },
+            {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+                return formatter.date(from: $0)
+            },
+            {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+                return formatter.date(from: $0)
+            }
+        ]
+
+        func decodeDate(forKey key: CodingKeys) throws -> Date? {
+            if let dateString = try? container.decode(String.self, forKey: key) {
+                for strategy in dateStrategies {
+                    if let date = strategy(dateString) {
+                        return date
+                    }
+                }
+                throw DecodingError.dataCorruptedError(forKey: key, in: container, debugDescription: "Invalid date format: \(dateString)")
+            }
+            return nil
+        }
+        
+        func decodeDateRequired(forKey key: CodingKeys) throws -> Date {
+             if let date = try decodeDate(forKey: key) {
+                 return date
+             }
+             throw DecodingError.dataCorruptedError(forKey: key, in: container, debugDescription: "Missing or invalid required date")
+        }
+
+        createdAt = try decodeDateRequired(forKey: .createdAt)
+        updatedAt = try decodeDate(forKey: .updatedAt)
+        playedAt = try decodeDate(forKey: .playedAt)
+        savedAt = try decodeDate(forKey: .savedAt)
+        selectedDate = try decodeDate(forKey: .selectedDate)
     }
 }
 

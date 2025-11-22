@@ -29,6 +29,12 @@ final class SongRecognitionManager: NSObject, ObservableObject {
         session.delegate = self
     }
 
+    private enum InternalRecordPermission {
+        case granted
+        case denied
+        case undetermined
+    }
+
     func startListening() {
         guard state != .listening else {
             stopListening()
@@ -38,10 +44,29 @@ final class SongRecognitionManager: NSObject, ObservableObject {
         matchedTrack = nil
         lastErrorMessage = nil
 
-        handlePermissionStatus(AVAudioSession.sharedInstance().recordPermission)
+        // Check permission status
+        let permissionStatus: InternalRecordPermission
+        if #available(iOS 17.0, *) {
+            let status = AVAudioApplication.shared.recordPermission
+            switch status {
+            case .granted: permissionStatus = .granted
+            case .denied: permissionStatus = .denied
+            case .undetermined: permissionStatus = .undetermined
+            @unknown default: permissionStatus = .undetermined
+            }
+        } else {
+            let status = AVAudioSession.sharedInstance().recordPermission
+            switch status {
+            case .granted: permissionStatus = .granted
+            case .denied: permissionStatus = .denied
+            case .undetermined: permissionStatus = .undetermined
+            @unknown default: permissionStatus = .undetermined
+            }
+        }
+        handlePermissionStatus(permissionStatus)
     }
 
-    private func handlePermissionStatus(_ status: AVAudioSession.RecordPermission) {
+    private func handlePermissionStatus(_ status: InternalRecordPermission) {
         switch status {
         case .granted:
             beginCapture()
@@ -61,9 +86,6 @@ final class SongRecognitionManager: NSObject, ObservableObject {
                     self.beginCapture()
                 }
             }
-        @unknown default:
-            state = .failed
-            lastErrorMessage = "Unable to access microphone."
         }
     }
 
@@ -185,8 +207,14 @@ final class SongRecognitionManager: NSObject, ObservableObject {
         }
     }
     private func requestMicrophonePermission(completion: @escaping (Bool) -> Void) {
-        AVAudioSession.sharedInstance().requestRecordPermission { granted in
-            completion(granted)
+        if #available(iOS 17.0, *) {
+            AVAudioApplication.requestRecordPermission { granted in
+                completion(granted)
+            }
+        } else {
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                completion(granted)
+            }
         }
     }
 

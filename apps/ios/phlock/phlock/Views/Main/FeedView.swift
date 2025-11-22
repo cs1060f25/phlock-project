@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 // Navigation destination types for Feed
 enum FeedDestination: Hashable {
@@ -7,7 +8,7 @@ enum FeedDestination: Hashable {
     case conversation(User)
 }
 
-// MARK: - Daily Playlist View (replaces Feed) - PLACEHOLDER
+// MARK: - Daily Playlist View (replaces Feed)
 
 struct FeedView: View {
     @EnvironmentObject var authState: AuthenticationState
@@ -18,32 +19,44 @@ struct FeedView: View {
     @Binding var scrollToTopTrigger: Int
     @Environment(\.colorScheme) var colorScheme
 
+    @State private var phlockMembers: [FriendWithPosition] = []
+    @State private var dailySongs: [Share] = []
+    @State private var isLoading = true
+    @State private var isRefreshing = false
+    @State private var errorMessage: String?
+    @State private var showSwapSheet = false
+    @State private var selectedMemberToSwap: User?
+    @State private var showAddSheet = false
+    @State private var selectedPositionToAdd: Int?
+    @State private var showToast = false
+    @State private var toastMessage = ""
+    @State private var toastType: ShareToast.ToastType = .success
+    @State private var pullProgress: CGFloat = 0
+
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            VStack(spacing: 20) {
-                Spacer()
-
-                // Placeholder icon
-                Image(systemName: "music.note.list")
-                    .font(.system(size: 60))
-                    .foregroundColor(.gray)
-
-                Text("Daily Playlist")
-                    .font(.nunitoSans(size: 28, weight: .bold))
-
-                Text("Your daily playlist feature is coming soon!")
-                    .font(.nunitoSans(size: 16, weight: .regular))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-
-                Text("This will show your 5 daily songs from your phlock members")
-                    .font(.nunitoSans(size: 14, weight: .regular))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-
-                Spacer()
+            VStack(spacing: 0) {
+                if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let error = errorMessage {
+                    FeedErrorStateView(
+                        error: error,
+                        onRetry: {
+                            Task { await loadDailyPlaylist() }
+                        }
+                    )
+                } else if dailySongs.isEmpty {
+                    EmptyDailyPlaylistView(
+                        phlockMembers: phlockMembers,
+                        onAddMemberTapped: { position in
+                            selectedPositionToAdd = position
+                            showAddSheet = true
+                        }
+                    )
+                } else {
+                    dailyPlaylistList
+                }
             }
             .navigationTitle("today's playlist")
             .navigationBarTitleDisplayMode(.large)
@@ -59,12 +72,838 @@ struct FeedView: View {
                         .environmentObject(playbackService)
                 }
             }
+            .sheet(isPresented: $showSwapSheet) {
+                if let memberToSwap = selectedMemberToSwap {
+                    SwapMemberView(
+                        currentMember: memberToSwap,
+                        phlockMembers: phlockMembers,
+                        onSwapCompleted: { newMember in
+                            handleSwapCompleted(oldMember: memberToSwap, newMember: newMember)
+                        }
+                    )
+                    .environmentObject(authState)
+                }
+            }
+            .sheet(isPresented: $showAddSheet) {
+                AddMemberView(
+                    phlockMembers: phlockMembers,
+                    onAddCompleted: { user in
+                        if let position = selectedPositionToAdd {
+                            handleAddMember(user: user, position: position)
+                        }
+                    }
+                )
+                .environmentObject(authState)
+            }
         }
         .fullScreenSwipeBack()
+        .toast(isPresented: $showToast, message: toastMessage, type: toastType)
+        .task {
+            await loadDailyPlaylist()
+        }
         .onChange(of: refreshTrigger) { oldValue, newValue in
             print("🔄 Playlist refreshTrigger changed from \(oldValue) to \(newValue)")
-            // Refresh will be implemented when phlock system is ready
+            Task {
+                if newValue == 0 {
+                    scrollToTopTrigger += 1
+                }
+                isRefreshing = true
+                print("🔄 Loading daily playlist...")
+                await loadDailyPlaylist()
+                isRefreshing = false
+                print("🔄 Daily playlist loaded")
+            }
         }
+    }
+
+    // MARK: - Daily Playlist List
+
+    private var dailyPlaylistList: some View {
+        ScrollViewReader { scrollProxy in
+            List {
+                // Top anchor for scroll-to-top functionality
+                Color.clear
+                    .frame(height: 1)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .id("playlistTop")
+
+                ForEach(Array(dailySongs.enumerated()), id: \.element.id) { index, song in
+                    DailyPlaylistRow(
+                        song: song,
+                        position: index + 1,
+                        member: phlockMembers.first(where: { $0.user.id == song.senderId })?.user,
+                        onSwapTapped: {
+                            if let member = phlockMembers.first(where: { $0.user.id == song.senderId })?.user {
+                                selectedMemberToSwap = member
+                                showSwapSheet = true
+                            }
+                        },
+                        onAddToLibrary: {
+                            addToLibrary(song)
+                        },
+                        onProfileTapped: {
+                            if let member = phlockMembers.first(where: { $0.user.id == song.senderId })?.user {
+                                navigationPath.append(FeedDestination.userProfile(member))
+                            }
+                        }
+                    )
+                    .environmentObject(playbackService)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                }
+            }
+            .listStyle(.plain)
+            .environment(\.defaultMinListRowHeight, 0)
+            .scrollDismissesKeyboard(.interactively)
+            .pullToRefreshWithSpinner(
+                isRefreshing: $isRefreshing,
+                pullProgress: $pullProgress,
+                colorScheme: colorScheme
+            ) {
+                await loadDailyPlaylist()
+            }
+            .onChange(of: scrollToTopTrigger) { oldValue, newValue in
+                print("📜 Playlist scrollToTopTrigger changed from \(oldValue) to \(newValue)")
+                withAnimation {
+                    scrollProxy.scrollTo("playlistTop", anchor: .top)
+                    print("📜 Scrolled to playlistTop")
+                }
+            }
+        }
+    }
+
+    // MARK: - Actions
+
+    @MainActor
+    private func loadDailyPlaylist() async {
+        guard let userId = authState.currentUser?.id else {
+            isLoading = false
+            errorMessage = "No user logged in"
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            // Get phlock members
+            phlockMembers = try await UserService.shared.getPhlockMembers(for: userId)
+            
+            if phlockMembers.isEmpty {
+                dailySongs = []
+                isLoading = false
+                return
+            }
+
+            // Get their daily songs
+            let memberIds = phlockMembers.map { $0.user.id }
+            dailySongs = try await ShareService.shared.getDailySongs(from: memberIds) 
+            
+            // Sort by position
+            dailySongs.sort { song1, song2 in
+                let pos1 = phlockMembers.firstIndex(where: { $0.user.id == song1.senderId }) ?? Int.max
+                let pos2 = phlockMembers.firstIndex(where: { $0.user.id == song2.senderId }) ?? Int.max
+                return pos1 < pos2
+            }
+
+            print("✅ Loaded \(dailySongs.count) daily songs from \(phlockMembers.count) phlock members")
+        } catch {
+            errorMessage = error.localizedDescription
+            print("❌ Error loading daily playlist: \(error)")
+        }
+
+        isLoading = false
+    }
+
+    private func addToLibrary(_ song: Share) {
+        Task {
+            do {
+                let platformType = authState.currentUser?.platformType ?? .spotify
+
+                if platformType == .spotify {
+                    try await SpotifyService.shared.addToLibrary(trackId: song.trackId)
+                } else {
+                    try await AppleMusicService.shared.addToLibrary(trackId: song.trackId)
+                }
+
+                toastMessage = "Added to library"
+                toastType = .success
+                showToast = true
+            } catch {
+                toastMessage = "Failed to add to library"
+                toastType = .error
+                showToast = true
+                print("❌ Error adding to library: \(error)")
+            }
+        }
+    }
+
+    private func handleSwapCompleted(oldMember: User, newMember: User) {
+        showSwapSheet = false
+        selectedMemberToSwap = nil
+
+        Task {
+            do {
+                guard let userId = authState.currentUser?.id else { return }
+                try await UserService.shared.scheduleSwap(
+                    oldMemberId: oldMember.id,
+                    newMemberId: newMember.id,
+                    for: userId
+                )
+
+                toastMessage = "Swapping \(oldMember.displayName) for \(newMember.displayName) at midnight"
+                toastType = .info
+                showToast = true
+
+                // Refresh to show pending state if we implement UI for it
+                await loadDailyPlaylist()
+            } catch {
+                toastMessage = "Failed to schedule swap"
+                toastType = .error
+                showToast = true
+                print("❌ Error scheduling swap: \(error)")
+            }
+        }
+    }
+
+    private func handleAddMember(user: User, position: Int) {
+        showAddSheet = false
+        selectedPositionToAdd = nil
+
+        Task {
+            do {
+                guard let userId = authState.currentUser?.id else { return }
+                try await UserService.shared.addToPhlockAtPosition(
+                    friendId: user.id,
+                    position: position,
+                    for: userId
+                )
+
+                toastMessage = "Added \(user.displayName) to phlock"
+                toastType = .success
+                showToast = true
+
+                // Refresh playlist
+                await loadDailyPlaylist()
+            } catch {
+                toastMessage = "Failed to add member"
+                toastType = .error
+                showToast = true
+                print("❌ Error adding member: \(error)")
+            }
+        }
+    }
+}
+
+// MARK: - Daily Playlist Row
+
+struct DailyPlaylistRow: View {
+    let song: Share
+    let position: Int
+    let member: User?
+    let onSwapTapped: () -> Void
+    let onAddToLibrary: () -> Void
+    let onProfileTapped: () -> Void
+
+    @EnvironmentObject var playbackService: PlaybackService
+    @Environment(\.colorScheme) var colorScheme
+    @State private var isPlaying = false
+
+    var body: some View {
+        HStack(spacing: 16) {
+            // Album artwork (Left)
+            Button {
+                togglePlayback()
+            } label: {
+                ZStack {
+                    if let albumArtUrl = song.albumArtUrl,
+                       let url = URL(string: albumArtUrl) {
+                        AsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } placeholder: {
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.2))
+                                .overlay(
+                                    Image(systemName: "music.note")
+                                        .foregroundColor(.gray)
+                                )
+                        }
+                        .frame(width: 56, height: 56)
+                        .cornerRadius(6)
+                    } else {
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.2))
+                            .overlay(
+                                Image(systemName: "music.note")
+                                    .foregroundColor(.gray)
+                            )
+                            .frame(width: 56, height: 56)
+                            .cornerRadius(6)
+                    }
+
+                    // Play indicator overlay
+                    if isPlaying && playbackService.currentTrack?.id == song.trackId {
+                        Color.black.opacity(0.4)
+                            .cornerRadius(6)
+                            .overlay(
+                                Image(systemName: "pause.fill")
+                                    .foregroundColor(.white)
+                                    .font(.system(size: 20))
+                            )
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+
+            // Song info (Middle)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(song.trackName)
+                    .font(.nunitoSans(size: 16, weight: .bold))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                
+                Text(song.artistName)
+                    .font(.nunitoSans(size: 14, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            
+            Spacer()
+            
+            // Actions (Right)
+            HStack(spacing: 12) {
+                Button {
+                    onSwapTapped()
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 20))
+                        .foregroundColor(.primary)
+                }
+                .buttonStyle(.plain)
+                
+                Button {
+                    onAddToLibrary()
+                } label: {
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: 22))
+                        .foregroundColor(.primary)
+                }
+                .buttonStyle(.plain)
+                
+                Button {
+                    onProfileTapped()
+                } label: {
+                    if let member = member,
+                       let photoUrl = member.profilePhotoUrl,
+                       let url = URL(string: photoUrl) {
+                        AsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } placeholder: {
+                            Circle()
+                                .fill(Color.gray.opacity(0.3))
+                                .overlay(
+                                    Text(String(member.displayName.prefix(1)))
+                                        .font(.system(size: 12))
+                                )
+                        }
+                        .frame(width: 32, height: 32)
+                        .clipShape(Circle())
+                        .overlay(
+                            Circle()
+                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                        )
+                    } else {
+                        Circle()
+                            .fill(Color.gray.opacity(0.3))
+                            .overlay(
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.gray)
+                            )
+                            .frame(width: 32, height: 32)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(UIColor.systemBackground))
+        .onAppear {
+            updatePlayingState()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { _ in
+            updatePlayingState()
+        }
+    }
+
+    private func togglePlayback() {
+        if playbackService.currentTrack?.id == song.trackId && playbackService.isPlaying {
+            playbackService.pause()
+        } else {
+            // Create MusicItem from Share
+            let track = MusicItem(
+                id: song.trackId,
+                name: song.trackName,
+                artistName: song.artistName,
+                previewUrl: song.previewUrl,
+                albumArtUrl: song.albumArtUrl,
+                isrc: nil,
+                playedAt: nil,
+                spotifyId: nil,
+                appleMusicId: nil,
+                popularity: nil,
+                followerCount: nil
+            )
+            
+            playbackService.play(
+                track: track,
+                sourceId: song.id.uuidString,
+                showMiniPlayer: true
+            )
+        }
+    }
+
+    private func updatePlayingState() {
+        isPlaying = playbackService.isPlaying && playbackService.currentTrack?.id == song.trackId
+    }
+}
+
+// MARK: - Empty State
+
+struct EmptyDailyPlaylistView: View {
+    let phlockMembers: [FriendWithPosition]
+    let onAddMemberTapped: (Int) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Position 1
+            emptySlotRow(for: 1)
+
+            // Position 2
+            emptySlotRow(for: 2)
+
+            // Position 3
+            emptySlotRow(for: 3)
+
+            // Position 4
+            emptySlotRow(for: 4)
+
+            // Position 5
+            emptySlotRow(for: 5)
+        }
+        .background(Color(UIColor.systemBackground))
+    }
+
+    @ViewBuilder
+    private func emptySlotRow(for position: Int) -> some View {
+        VStack(spacing: 0) {
+                    HStack(spacing: 16) {
+                        if let member = phlockMembers.first(where: { $0.position == position })?.user {
+                            // Existing Member (Waiting for song)
+                            if let photoUrl = member.profilePhotoUrl,
+                               let url = URL(string: photoUrl) {
+                                AsyncImage(url: url) { image in
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                } placeholder: {
+                                    Circle()
+                                        .fill(Color.gray.opacity(0.3))
+                                }
+                                .frame(width: 56, height: 56)
+                                .clipShape(Circle())
+                            } else {
+                                Circle()
+                                    .fill(Color.gray.opacity(0.3))
+                                    .overlay(
+                                        Image(systemName: "person.fill")
+                                            .foregroundColor(.gray)
+                                    )
+                                    .frame(width: 56, height: 56)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(member.displayName)
+                                    .font(.nunitoSans(size: 16, weight: .semiBold))
+                                    .foregroundColor(.primary)
+                                
+                                Text("Waiting for daily song...")
+                                    .font(.nunitoSans(size: 14, weight: .regular))
+                                    .italic()
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                        } else {
+                            // Empty Slot (Add Member)
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.1))
+                                .frame(width: 56, height: 56)
+                                .cornerRadius(6)
+                                .overlay(
+                                    Image(systemName: "plus")
+                                        .foregroundColor(.gray)
+                                        .font(.system(size: 20))
+                                )
+
+                            Text("Add a member to your phlock")
+                                .font(.nunitoSans(size: 16, weight: .semiBold))
+                                .foregroundColor(.secondary)
+
+                            Spacer()
+
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(.blue)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 16)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        // Only allow adding if slot is empty
+                        if !phlockMembers.contains(where: { $0.position == position }) {
+                            onAddMemberTapped(position)
+                        }
+                    }
+                    
+                    if position < 5 {
+                        Divider()
+                            .padding(.leading, 88) // Align with text start
+                    }
+        }
+    }
+}
+
+// MARK: - Error State
+
+struct FeedErrorStateView: View {
+    let error: String
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 50))
+                .foregroundColor(.orange)
+
+            Text("Unable to load playlist")
+                .font(.nunitoSans(size: 20, weight: .bold))
+
+            Text(error)
+                .font(.nunitoSans(size: 14, weight: .regular))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+
+            Button {
+                onRetry()
+            } label: {
+                Text("Try Again")
+                    .font(.nunitoSans(size: 16, weight: .semiBold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(Color.blue)
+                    .cornerRadius(20)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Swap Member View
+
+struct SwapMemberView: View {
+    let currentMember: User
+    let phlockMembers: [FriendWithPosition]
+    let onSwapCompleted: (User) -> Void
+
+    @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var authState: AuthenticationState
+    @State private var friends: [User] = []
+    @State private var selectedFriend: User?
+    @State private var isLoading = true
+
+    var body: some View {
+        NavigationStack {
+            VStack {
+                // Current member info
+                VStack(spacing: 8) {
+                    Text("Replacing")
+                        .font(.nunitoSans(size: 14, weight: .regular))
+                        .foregroundColor(.secondary)
+
+                    HStack(spacing: 12) {
+                        if let photoUrl = currentMember.profilePhotoUrl,
+                           let url = URL(string: photoUrl) {
+                            AsyncImage(url: url) { image in
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            } placeholder: {
+                                Circle()
+                                    .fill(Color.gray.opacity(0.3))
+                            }
+                            .frame(width: 50, height: 50)
+                            .clipShape(Circle())
+                        } else {
+                            Circle()
+                                .fill(Color.gray.opacity(0.3))
+                                .frame(width: 50, height: 50)
+                        }
+
+                        Text(currentMember.displayName)
+                            .font(.nunitoSans(size: 18, weight: .bold))
+                    }
+                }
+                .padding()
+                .background(Color.gray.opacity(0.1))
+
+                Divider()
+
+                if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if friends.isEmpty {
+                    VStack(spacing: 12) {
+                        Text("No available friends")
+                            .font(.nunitoSans(size: 16, weight: .semiBold))
+                        Text("All your friends are already in your phlock")
+                            .font(.nunitoSans(size: 14, weight: .regular))
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List(friends) { friend in
+                        HStack {
+                            // Profile photo
+                            if let photoUrl = friend.profilePhotoUrl,
+                               let url = URL(string: photoUrl) {
+                                AsyncImage(url: url) { image in
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                } placeholder: {
+                                    Circle()
+                                        .fill(Color.gray.opacity(0.3))
+                                }
+                                .frame(width: 40, height: 40)
+                                .clipShape(Circle())
+                            } else {
+                                Circle()
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(width: 40, height: 40)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(friend.displayName)
+                                    .font(.nunitoSans(size: 16, weight: .semiBold))
+
+                                if friend.username != nil {
+                                    Text("@\(friend.username ?? "")")
+                                        .font(.nunitoSans(size: 12, weight: .regular))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+
+                            Spacer()
+
+                            if selectedFriend?.id == friend.id {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedFriend = friend
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Swap Member")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Confirm Swap") {
+                        if let friend = selectedFriend {
+                            onSwapCompleted(friend)
+                            dismiss()
+                        }
+                    }
+                    .disabled(selectedFriend == nil)
+                    .font(.nunitoSans(size: 16, weight: .semiBold))
+                }
+            }
+            .task {
+                await loadAvailableFriends()
+            }
+        }
+    }
+
+    private func loadAvailableFriends() async {
+        guard let userId = authState.currentUser?.id else {
+            isLoading = false
+            return
+        }
+
+        do {
+            // Get all friends
+            let allFriends = try await UserService.shared.getFriends(for: userId)
+
+            // Filter out current phlock members
+            let phlockMemberIds = phlockMembers.map { $0.user.id }
+            friends = allFriends.filter { friend in
+                !phlockMemberIds.contains(friend.id)
+            }
+
+            print("✅ Found \(friends.count) available friends for swapping")
+        } catch {
+            print("❌ Error loading friends: \(error)")
+            friends = []
+        }
+
+        isLoading = false
+    }
+}
+
+// MARK: - Add Member View
+
+struct AddMemberView: View {
+    let phlockMembers: [FriendWithPosition]
+    let onAddCompleted: (User) -> Void
+
+    @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var authState: AuthenticationState
+    @State private var friends: [User] = []
+    @State private var selectedFriend: User?
+    @State private var isLoading = true
+
+    var body: some View {
+        NavigationStack {
+            VStack {
+                if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if friends.isEmpty {
+                    VStack(spacing: 12) {
+                        Text("No available friends")
+                            .font(.nunitoSans(size: 16, weight: .semiBold))
+                        Text("Add more friends to build your phlock")
+                            .font(.nunitoSans(size: 14, weight: .regular))
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List(friends) { friend in
+                        HStack {
+                            // Profile photo
+                            if let photoUrl = friend.profilePhotoUrl,
+                               let url = URL(string: photoUrl) {
+                                AsyncImage(url: url) { image in
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                } placeholder: {
+                                    Circle()
+                                        .fill(Color.gray.opacity(0.3))
+                                }
+                                .frame(width: 40, height: 40)
+                                .clipShape(Circle())
+                            } else {
+                                Circle()
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(width: 40, height: 40)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(friend.displayName)
+                                    .font(.nunitoSans(size: 16, weight: .semiBold))
+
+                                if friend.username != nil {
+                                    Text("@\(friend.username ?? "")")
+                                        .font(.nunitoSans(size: 12, weight: .regular))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+
+                            Spacer()
+
+                            if selectedFriend?.id == friend.id {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedFriend = friend
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Add Member")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Add") {
+                        if let friend = selectedFriend {
+                            onAddCompleted(friend)
+                            dismiss()
+                        }
+                    }
+                    .disabled(selectedFriend == nil)
+                    .font(.nunitoSans(size: 16, weight: .semiBold))
+                }
+            }
+            .task {
+                await loadAvailableFriends()
+            }
+        }
+    }
+
+    private func loadAvailableFriends() async {
+        guard let userId = authState.currentUser?.id else {
+            isLoading = false
+            return
+        }
+
+        do {
+            // Get all friends
+            let allFriends = try await UserService.shared.getFriends(for: userId)
+
+            // Filter out current phlock members
+            let phlockMemberIds = phlockMembers.map { $0.user.id }
+            friends = allFriends.filter { friend in
+                !phlockMemberIds.contains(friend.id)
+            }
+
+            print("✅ Found \(friends.count) available friends for adding")
+        } catch {
+            print("❌ Error loading friends: \(error)")
+            friends = []
+        }
+
+        isLoading = false
     }
 }
 

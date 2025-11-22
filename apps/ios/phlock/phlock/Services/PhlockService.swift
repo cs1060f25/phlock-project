@@ -160,7 +160,7 @@ class PhlockService {
         }
 
         // Calculate metrics
-        let metrics = calculateMetrics(nodes: nodes, phlock: phlock)
+        let metrics = PhlockService.calculateMetrics(nodes: nodes, phlock: phlock)
 
         // Assemble final visualization data
         return PhlockVisualizationData(
@@ -179,7 +179,7 @@ class PhlockService {
     // MARK: - Metrics Calculation
 
     /// Calculate engagement metrics for a phlock
-    func calculateMetrics(nodes: [PhlockNode], phlock: Phlock) -> PhlockMetrics {
+    nonisolated static func calculateMetrics(nodes: [PhlockNode], phlock: Phlock) -> PhlockMetrics {
         let totalReach = phlock.totalReach
         let generations = phlock.maxDepth
 
@@ -221,8 +221,13 @@ class PhlockService {
             for (index, phlock) in phlocks.enumerated() {
                 group.addTask {
                     let nodes = try await self.fetchPhlockNodes(phlockId: phlock.id)
-                    let metrics = self.calculateMetrics(nodes: nodes, phlock: phlock)
-                    return (index, PhlockPreview(from: phlock, metrics: metrics))
+                    // Calculate metrics (static helper)
+                    let metrics = PhlockService.calculateMetrics(nodes: nodes, phlock: phlock)
+                    
+                    // PhlockPreview init might be isolated, so run on MainActor
+                    return await MainActor.run {
+                        (index, PhlockPreview(from: phlock, metrics: metrics))
+                    }
                 }
             }
 
