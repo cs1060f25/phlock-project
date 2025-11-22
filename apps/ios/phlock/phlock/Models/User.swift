@@ -23,6 +23,12 @@ struct User: Codable, Identifiable, Hashable {
     let spotifyUserId: String?
     let appleUserId: String?
 
+    // Daily curation fields
+    let username: String?
+    let phlockCount: Int
+    let dailySongStreak: Int
+    let lastDailySongDate: Date?
+
     enum CodingKeys: String, CodingKey {
         case id
         case displayName = "display_name"
@@ -41,6 +47,27 @@ struct User: Codable, Identifiable, Hashable {
         case musicPlatform = "music_platform"
         case spotifyUserId = "spotify_user_id"
         case appleUserId = "apple_user_id"
+        case username
+        case phlockCount = "phlock_count"
+        case dailySongStreak = "daily_song_streak"
+        case lastDailySongDate = "last_daily_song_date"
+    }
+
+    // Helper: Check if user selected a song today
+    var hasSelectedToday: Bool {
+        guard let lastSongDate = lastDailySongDate else { return false }
+        return Calendar.current.isDateInToday(lastSongDate)
+    }
+
+    // Helper: Streak emoji for display
+    var streakEmoji: String {
+        switch dailySongStreak {
+        case 0: return ""
+        case 1...6: return "🔥"
+        case 7...29: return "🔥🔥"
+        case 30...99: return "🔥🔥🔥"
+        default: return "🔥💎"
+        }
     }
 
     // Custom decoding to handle platform_data as either JSON object or string
@@ -65,6 +92,12 @@ struct User: Codable, Identifiable, Hashable {
         musicPlatform = try? container.decode(String.self, forKey: .musicPlatform)
         spotifyUserId = try? container.decode(String.self, forKey: .spotifyUserId)
         appleUserId = try? container.decode(String.self, forKey: .appleUserId)
+
+        // Daily curation fields
+        username = try? container.decode(String.self, forKey: .username)
+        phlockCount = try container.decodeIfPresent(Int.self, forKey: .phlockCount) ?? 0
+        dailySongStreak = try container.decodeIfPresent(Int.self, forKey: .dailySongStreak) ?? 0
+        lastDailySongDate = try? container.decode(Date.self, forKey: .lastDailySongDate)
 
         // Handle platform_data which might be a string or object
         if let platformDataString = try? container.decode(String.self, forKey: .platformData) {
@@ -102,6 +135,12 @@ struct User: Codable, Identifiable, Hashable {
         try container.encodeIfPresent(musicPlatform, forKey: .musicPlatform)
         try container.encodeIfPresent(spotifyUserId, forKey: .spotifyUserId)
         try container.encodeIfPresent(appleUserId, forKey: .appleUserId)
+
+        // Encode daily curation fields
+        try container.encodeIfPresent(username, forKey: .username)
+        try container.encode(phlockCount, forKey: .phlockCount)
+        try container.encode(dailySongStreak, forKey: .dailySongStreak)
+        try container.encodeIfPresent(lastDailySongDate, forKey: .lastDailySongDate)
 
         // Encode platform_data as object
         try container.encodeIfPresent(platformData, forKey: .platformData)

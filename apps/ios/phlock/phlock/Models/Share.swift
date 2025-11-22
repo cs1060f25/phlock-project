@@ -2,6 +2,7 @@ import Foundation
 
 /// Represents a music share transaction between two users
 /// Maps to the 'shares' table in Supabase
+/// Extended to support daily song curation
 struct Share: Codable, Identifiable {
     let id: UUID
     let senderId: UUID
@@ -17,6 +18,11 @@ struct Share: Codable, Identifiable {
     let playedAt: Date?
     let savedAt: Date?
 
+    // Daily curation fields
+    let isDailySong: Bool
+    let selectedDate: Date?
+    let previewUrl: String?
+
     enum CodingKeys: String, CodingKey {
         case id
         case senderId = "sender_id"
@@ -31,6 +37,29 @@ struct Share: Codable, Identifiable {
         case updatedAt = "updated_at"
         case playedAt = "played_at"
         case savedAt = "saved_at"
+        case isDailySong = "is_daily_song"
+        case selectedDate = "selected_date"
+        case previewUrl = "preview_url"
+    }
+
+    // Helper: Check if this is today's daily song
+    var isToday: Bool {
+        guard let date = selectedDate else { return false }
+        return Calendar.current.isDateInToday(date)
+    }
+
+    // Helper: Format selected date for display
+    var formattedDate: String? {
+        guard let date = selectedDate else { return nil }
+        let formatter = DateFormatter()
+        if isToday {
+            return "Today"
+        } else if Calendar.current.isDateInYesterday(date) {
+            return "Yesterday"
+        } else {
+            formatter.dateFormat = "MMM d"
+            return formatter.string(from: date)
+        }
     }
 }
 
