@@ -1,4 +1,5 @@
 import Foundation
+import MusicKit
 import Supabase
 
 enum SearchType {
@@ -21,18 +22,32 @@ class SearchService {
 
     private init() {}
 
-    /// Search for music based on user's authenticated platform
-    func search(query: String, type: SearchType = .all, platformType: PlatformType) async throws -> SearchResult {
+    /// Search for music using the user's preferred platform (Apple Music searches use MusicKit, otherwise Spotify)
+    /// Falls back to Spotify if Apple Music search fails (e.g., missing permission)
+    func search(query: String, type: SearchType = .all, platformType: PlatformType? = nil) async throws -> SearchResult {
         guard !query.isEmpty else {
             return SearchResult(tracks: [], artists: [])
         }
 
-        switch platformType {
-        case .spotify:
-            return try await searchSpotify(query: query, type: type)
-        case .appleMusic:
-            return try await searchAppleMusic(query: query, type: type)
+        let effectivePlatform: PlatformType
+        if let platformType {
+            effectivePlatform = platformType
+        } else if let userPlatform = try? await AuthServiceV2.shared.currentUser?.resolvedPlatformType {
+            effectivePlatform = userPlatform
+        } else {
+            effectivePlatform = .spotify
         }
+
+        if effectivePlatform == .appleMusic {
+            do {
+                return try await searchAppleMusic(query: query, type: type)
+            } catch {
+                // Fall back to Spotify if Apple Music search fails (e.g., missing MusicKit authorization)
+                print("⚠️ Apple Music search failed, falling back to Spotify: \(error.localizedDescription)")
+            }
+        }
+
+        return try await searchSpotify(query: query, type: type)
     }
 
     // MARK: - Spotify Search
@@ -191,31 +206,70 @@ class SearchService {
     // MARK: - Apple Music Search
 
     private func searchAppleMusic(query: String, type: SearchType) async throws -> SearchResult {
-        var tracks: [MusicItem] = []
-        let artists: [MusicItem] = []
-
-        // Use existing AppleMusicService search capabilities
-        if type == .all || type == .tracks {
-            // Search by track name (use existing search logic)
-            if let trackResult = try? await appleMusicService.searchTrack(name: query, artist: "", isrc: nil) {
-                // Convert AppleMusicTrack to MusicItem
-                let musicItem = MusicItem(
-                    id: trackResult.id,
-                    name: trackResult.title,
-                    artistName: trackResult.artistName,
-                    previewUrl: trackResult.previewURL,
-                    albumArtUrl: trackResult.artworkURL,
-                    isrc: nil,
-                    playedAt: nil,
-                    spotifyId: nil,
-                    appleMusicId: trackResult.id
-                )
-                tracks = [musicItem]
+        // Ensure MusicKit access
+        let currentStatus = await MusicAuthorization.currentStatus
+        if currentStatus != .authorized {
+            let newStatus = await MusicAuthorization.request()
+            guard newStatus == .authorized else {
+                throw AppleMusicError.authorizationDenied
             }
         }
 
-        // For artists, we'll need to add artist search to AppleMusicService
-        // For now, return empty artists array
+        var searchTypes: [MusicCatalogSearchable.Type] = []
+        switch type {
+        case .all:
+            searchTypes = [Song.self, Artist.self]
+        case .tracks:
+            searchTypes = [Song.self]
+        case .artists:
+            searchTypes = [Artist.self]
+        }
+
+        var request = MusicCatalogSearchRequest(term: query, types: searchTypes)
+        request.limit = 20
+
+        let response = try await request.response()
+
+        let tracks: [MusicItem]
+        if type == .artists {
+            tracks = []
+        } else {
+            tracks = response.songs.map { song in
+                MusicItem(
+                    id: song.id.rawValue,
+                    name: song.title,
+                    artistName: song.artistName,
+                    previewUrl: song.previewAssets?.first?.url?.absoluteString,
+                    albumArtUrl: song.artwork?.url(width: 300, height: 300)?.absoluteString,
+                    isrc: song.isrc,
+                    playedAt: nil,
+                    spotifyId: nil,
+                    appleMusicId: song.id.rawValue
+                )
+            }
+        }
+
+        let artists: [MusicItem]
+        if type == .tracks {
+            artists = []
+        } else {
+            artists = response.artists.map { artist in
+                MusicItem(
+                    id: artist.id.rawValue,
+                    name: artist.name,
+                    artistName: nil,
+                    previewUrl: nil,
+                    albumArtUrl: artist.artwork?.url(width: 300, height: 300)?.absoluteString,
+                    isrc: nil,
+                    playedAt: nil,
+                    spotifyId: nil,
+                    appleMusicId: artist.id.rawValue,
+                    popularity: nil,
+                    followerCount: nil,
+                    genres: artist.genreNames
+                )
+            }
+        }
 
         return SearchResult(tracks: tracks, artists: artists)
     }
@@ -444,13 +498,15 @@ class SearchService {
     // MARK: - Artist Top Tracks
 
     /// Fetch top tracks for a specific artist
-    func getArtistTopTracks(artistId: String, platformType: PlatformType) async throws -> [MusicItem] {
+    func getArtistTopTracks(artistId: String, artistName: String? = nil, platformType: PlatformType) async throws -> [MusicItem] {
         switch platformType {
         case .spotify:
             return try await getSpotifyArtistTopTracks(artistId: artistId)
         case .appleMusic:
-            // Apple Music doesn't have a direct "top tracks" API yet
-            return []
+            return try await appleMusicService.getArtistTopTracks(
+                artistId: artistId,
+                artistName: artistName
+            )
         }
     }
 

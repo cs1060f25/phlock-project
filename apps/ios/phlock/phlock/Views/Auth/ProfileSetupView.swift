@@ -18,10 +18,10 @@ struct ProfileSetupView: View {
                 // Header
                 VStack(spacing: 12) {
                     Text("set up your profile")
-                        .font(.nunitoSans(size: 32, weight: .bold))
+                        .font(.lora(size: 32, weight: .bold))
 
                     Text("let your friends know who you are")
-                        .font(.nunitoSans(size: 17))
+                        .font(.lora(size: 17))
                         .foregroundColor(.secondary)
                 }
                 .padding(.top, 40)
@@ -51,13 +51,13 @@ struct ProfileSetupView: View {
                                     .foregroundColor(.gray)
 
                                 Text("add photo")
-                                    .font(.nunitoSans(size: 13, weight: .semiBold))
+                                    .font(.lora(size: 13, weight: .semiBold))
                                     .foregroundColor(.gray)
                             }
                         }
                     }
                 }
-                .onChange(of: selectedPhoto) { oldValue, newValue in
+                .onChange(of: selectedPhoto) { newValue in
                     Task {
                         if let data = try? await newValue?.loadTransferable(type: Data.self),
                            let uiImage = UIImage(data: data) {

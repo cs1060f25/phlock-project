@@ -16,23 +16,19 @@ class NavigationState: ObservableObject {
 
     // MARK: - Navigation Paths for Each Tab
     @Published var feedNavigationPath = NavigationPath()
-    @Published var discoverNavigationPath = NavigationPath()
-    @Published var inboxNavigationPath = NavigationPath()
-    @Published var phlocksNavigationPath = NavigationPath()
+    @Published var friendsNavigationPath = NavigationPath()
+    @Published var notificationsNavigationPath = NavigationPath()
     @Published var profileNavigationPath = NavigationPath()
 
     // MARK: - Refresh Triggers
-    @Published var clearDiscoverSearchTrigger = 0
     @Published var refreshFeedTrigger = 0
-    @Published var refreshDiscoverTrigger = 0
-    @Published var refreshInboxTrigger = 0
-    @Published var refreshPhlocksTrigger = 0
+    @Published var refreshFriendsTrigger = 0
+    @Published var refreshNotificationsTrigger = 0
 
     // MARK: - Scroll Triggers
     @Published var scrollFeedToTopTrigger = 0
-    @Published var scrollDiscoverToTopTrigger = 0
-    @Published var scrollInboxToTopTrigger = 0
-    @Published var scrollPhlocksToTopTrigger = 0
+    @Published var scrollFriendsToTopTrigger = 0
+    @Published var scrollNotificationsToTopTrigger = 0
 
     // MARK: - Player State
     @Published var showFullPlayer = false
@@ -44,7 +40,26 @@ class NavigationState: ObservableObject {
 
     init() {
         // Initialize selectedTab with stored value after all properties are set
-        self.selectedTab = selectedTabStorage
+        let storedTab = selectedTabStorage
+        switch storedTab {
+        case 3:
+            // Old alerts tab (index 3) shifts to notifications at index 2
+            selectedTabStorage = 2
+            selectedTab = 2
+        case 4, 5:
+            // Legacy phlocks/profile tabs collapse into profile at index 3
+            selectedTabStorage = 3
+            selectedTab = 3
+        case 1:
+            // Legacy browse -> friends tab
+            selectedTab = 1
+        case 2:
+            // Legacy shares tab -> default to home
+            selectedTabStorage = 0
+            selectedTab = 0
+        default:
+            selectedTab = min(storedTab, 3)
+        }
     }
 
     // MARK: - Helper Methods
@@ -55,12 +70,10 @@ class NavigationState: ObservableObject {
         case 0:
             feedNavigationPath = NavigationPath()
         case 1:
-            discoverNavigationPath = NavigationPath()
+            friendsNavigationPath = NavigationPath()
         case 2:
-            inboxNavigationPath = NavigationPath()
+            notificationsNavigationPath = NavigationPath()
         case 3:
-            phlocksNavigationPath = NavigationPath()
-        case 4:
             profileNavigationPath = NavigationPath()
         default:
             break
@@ -74,22 +87,14 @@ class NavigationState: ObservableObject {
             refreshFeedTrigger += 1
             scrollFeedToTopTrigger += 1
         case 1:
-            refreshDiscoverTrigger += 1
-            scrollDiscoverToTopTrigger += 1
+            refreshFriendsTrigger += 1
+            scrollFriendsToTopTrigger += 1
         case 2:
-            refreshInboxTrigger += 1
-            scrollInboxToTopTrigger += 1
-        case 3:
-            refreshPhlocksTrigger += 1
-            scrollPhlocksToTopTrigger += 1
+            refreshNotificationsTrigger += 1
+            scrollNotificationsToTopTrigger += 1
         default:
             break
         }
-    }
-
-    /// Clear all search in Discover tab
-    func clearDiscoverSearch() {
-        clearDiscoverSearchTrigger += 1
     }
 
     /// Handle tab reselection (double tap)
@@ -111,10 +116,9 @@ class NavigationState: ObservableObject {
     private func navigationPath(for tab: Int) -> NavigationPath {
         switch tab {
         case 0: return feedNavigationPath
-        case 1: return discoverNavigationPath
-        case 2: return inboxNavigationPath
-        case 3: return phlocksNavigationPath
-        case 4: return profileNavigationPath
+        case 1: return friendsNavigationPath
+        case 2: return notificationsNavigationPath
+        case 3: return profileNavigationPath
         default: return NavigationPath()
         }
     }
@@ -124,25 +128,25 @@ class NavigationState: ObservableObject {
 
 enum AppTab: Int, CaseIterable {
     case feed = 0
-    case discover = 1
-    case inbox = 2
-    case phlocks = 3
+    case friends = 1
+    case notifications = 2
+    case profile = 3
 
     var title: String {
         switch self {
         case .feed: return "Feed"
-        case .discover: return "Discover"
-        case .inbox: return "Inbox"
-        case .phlocks: return "Phlocks"
+        case .friends: return "Friends"
+        case .notifications: return "Notifications"
+        case .profile: return "Profile"
         }
     }
 
     var systemImage: String {
         switch self {
         case .feed: return "house.fill"
-        case .discover: return "magnifyingglass"
-        case .inbox: return "envelope.fill"
-        case .phlocks: return "star.fill"
+        case .friends: return "person.2.fill"
+        case .notifications: return "bell.fill"
+        case .profile: return "person.fill"
         }
     }
 }

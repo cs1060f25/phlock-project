@@ -32,10 +32,16 @@
 		<string>Montserrat-SemiBold.ttf</string>
 		<string>Montserrat-Bold.ttf</string>
 		<string>Montserrat-Light.ttf</string>
-		<string>NunitoSans-VariableFont_YTLC,opsz,wdth,wght.ttf</string>
-		<string>NunitoSans-Italic-VariableFont_YTLC,opsz,wdth,wght.ttf</string>
+		<string>Lora-Regular.ttf</string>
+		<string>Lora-Medium.ttf</string>
+		<string>Lora-SemiBold.ttf</string>
+		<string>Lora-Bold.ttf</string>
 	</array>
+	<key>NSContactsUsageDescription</key>
+	<string>Phlock matches your contacts locally to help you find friends already on Phlock.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Phlock uses the microphone so you can identify music and send it to friends.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Phlock uses Apple Music to let you search, play, and share songs with your friends.</string>
 </dict>
 </plist>

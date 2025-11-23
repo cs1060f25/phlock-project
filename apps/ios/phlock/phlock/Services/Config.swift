@@ -22,7 +22,9 @@ enum Config {
         "playlist-read-private",
         "playlist-read-collaborative",
         "user-read-currently-playing",
-        "user-read-recently-played"
+        "user-read-recently-played",
+        "user-library-read",
+        "user-library-modify"
     ]
 
     // Apple Music Configuration

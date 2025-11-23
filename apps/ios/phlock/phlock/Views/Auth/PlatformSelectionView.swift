@@ -10,10 +10,10 @@ struct PlatformSelectionView: View {
             // Header
             VStack(spacing: 12) {
                 Text("connect your music")
-                    .font(.nunitoSans(size: 32, weight: .bold))
+                    .font(.lora(size: 32, weight: .bold))
 
                 Text("choose your streaming platform to get started")
-                    .font(.nunitoSans(size: 17))
+                    .font(.lora(size: 17))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -113,7 +113,7 @@ struct PlatformCard: View {
                     .clipShape(Circle())
 
                 Text("continue with \(platform)")
-                    .font(.nunitoSans(size: 17, weight: .semiBold))
+                    .font(.lora(size: 17, weight: .semiBold))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)

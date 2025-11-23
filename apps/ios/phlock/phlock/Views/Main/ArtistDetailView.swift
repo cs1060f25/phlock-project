@@ -5,6 +5,7 @@ struct ArtistDetailView: View {
     let platformType: PlatformType
 
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
     @State private var topTracks: [MusicItem] = []
@@ -68,7 +69,7 @@ struct ArtistDetailView: View {
 
                             // Artist Name
                             Text(artist.name)
-                                .font(.nunitoSans(size: 32, weight: .bold))
+                                .font(.lora(size: 32, weight: .bold))
                                 .multilineTextAlignment(.center)
                         }
                         .padding(.top, 20)
@@ -76,12 +77,12 @@ struct ArtistDetailView: View {
                         // Tracks Section
                         VStack(alignment: .leading, spacing: 16) {
                             Text(searchText.isEmpty ? "Top Tracks" : "Search Results")
-                                .font(.nunitoSans(size: 22, weight: .bold))
+                                .font(.lora(size: 22, weight: .bold))
                                 .padding(.horizontal)
 
                             if displayedTracks.isEmpty {
                                 Text(searchText.isEmpty ? "No tracks available" : "No tracks found")
-                                    .font(.nunitoSans(size: 15))
+                                    .font(.lora(size: 15))
                                     .foregroundColor(.secondary)
                                     .padding()
                             } else {
@@ -100,7 +101,7 @@ struct ArtistDetailView: View {
 
                                         // Track Number
                                         Text("\(index + 1)")
-                                            .font(.nunitoSans(size: 16, weight: .semiBold))
+                                            .font(.lora(size: 16, weight: .semiBold))
                                             .foregroundColor(.secondary)
                                             .frame(width: 30)
 
@@ -128,13 +129,13 @@ struct ArtistDetailView: View {
                                         // Track Info
                                         VStack(alignment: .leading, spacing: 4) {
                                             Text(track.name)
-                                                .font(.nunitoSans(size: 16, weight: isCurrentTrack ? .bold : .semiBold))
+                                                .font(.lora(size: 16, weight: isCurrentTrack ? .bold : .semiBold))
                                                 .lineLimit(1)
                                                 .foregroundColor(.primary)
 
                                             if let artistName = track.artistName {
                                                 Text(artistName)
-                                                    .font(.nunitoSans(size: 14, weight: isCurrentTrack ? .semiBold : .regular))
+                                                    .font(.lora(size: 14, weight: isCurrentTrack ? .semiBold : .regular))
                                                     .foregroundColor(.secondary)
                                                     .lineLimit(1)
                                             }
@@ -217,10 +218,10 @@ struct ArtistDetailView: View {
 
                                 TextField("search \(artist.name) tracks...", text: $searchText)
                                     .textFieldStyle(.plain)
-                                    .font(.nunitoSans(size: 14))
+                                    .font(.lora(size: 14))
                                     .autocorrectionDisabled()
                                     .focused($isSearchFieldFocused)
-                                    .onChange(of: searchText) { oldValue, newValue in
+                                    .onChange(of: searchText) { newValue in
                                         performDebouncedSearch()
                                     }
 
@@ -277,7 +278,7 @@ struct ArtistDetailView: View {
                                     Image(systemName: "magnifyingglass")
                                         .font(.system(size: 16, weight: .semibold))
                                     Text(artist.name)
-                                        .font(.nunitoSans(size: 14, weight: .semiBold))
+                                        .font(.lora(size: 14, weight: .semiBold))
                                         .lineLimit(1)
                                 }
                                 .foregroundColor(.white)
@@ -311,6 +312,19 @@ struct ArtistDetailView: View {
         }
         .navigationTitle("Artist")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundColor(.primary)
+                }
+            }
+        }
+        .navigationBarBackButtonHidden(true)
+        .fullScreenSwipeBack()
         .onAppear {
             loadTopTracks()
             // Subscribe to keyboard notifications and store observers for proper cleanup
@@ -402,6 +416,7 @@ struct ArtistDetailView: View {
             do {
                 topTracks = try await SearchService.shared.getArtistTopTracks(
                     artistId: artist.id,
+                    artistName: artist.name,
                     platformType: platformType
                 )
             } catch {

@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import MusicKit
 import Supabase
 
@@ -9,6 +10,13 @@ struct ProfileView: View {
     @State private var showEditProfile = false
     @State private var isRefreshing = false
     @State private var refreshCount = 0 // Force view refresh
+    @StateObject private var insightsViewModel = ProfileInsightsViewModel()
+    @State private var insightsLoadedForUser: UUID?
+    
+    // Daily Curation State
+    @State private var todaysPick: Share?
+    @State private var pastPicks: [Share] = []
+    @State private var phlockMembers: [FriendWithPosition] = []
 
     var body: some View {
         ScrollView {
@@ -35,7 +43,7 @@ struct ProfileView: View {
                             // Display Name with Platform Logo
                             HStack(spacing: 8) {
                                 Text(user.displayName)
-                                    .font(.nunitoSans(size: 28, weight: .bold))
+                                    .font(.lora(size: 28, weight: .bold))
 
                                 Image(user.platformType == .spotify ? "SpotifyLogo" : "AppleMusicLogo")
                                     .resizable()
@@ -46,7 +54,7 @@ struct ProfileView: View {
                             // Bio
                             if let bio = user.bio {
                                 Text(bio)
-                                    .font(.nunitoSans(size: 15))
+                                    .font(.lora(size: 15))
                                     .multilineTextAlignment(.center)
                                     .padding(.horizontal, 24)
                             }
@@ -60,7 +68,7 @@ struct ProfileView: View {
                                         Image(systemName: "pencil")
                                             .font(.system(size: 11))
                                         Text("edit profile")
-                                            .font(.nunitoSans(size: 13))
+                                            .font(.lora(size: 13))
                                     }
                                     .foregroundColor(.secondary)
                                 }
@@ -69,7 +77,7 @@ struct ProfileView: View {
                                     Image(systemName: "person.2")
                                         .font(.system(size: 11))
                                     Text("friends")
-                                        .font(.nunitoSans(size: 13))
+                                        .font(.lora(size: 13))
                                 }
                                 .foregroundColor(.secondary)
                                 .opacity(0.5)
@@ -77,12 +85,33 @@ struct ProfileView: View {
                             .padding(.top, 8)
                         }
                         .padding(.top, 24)
+                        
+                        // Today's Pick
+                        TodaysPickCard(
+                            share: todaysPick,
+                            isCurrentUser: true, // Since we are viewing own profile for now
+                            onPickSong: {
+                                // TODO: Navigate to song picker
+                                print("Navigate to song picker")
+                            }
+                        )
+                        
+                        // My Phlock
+                        PhlockMembersRow(members: phlockMembers)
 
-                        // Music Stats
+                        ProfileInsightsSection(
+                            user: user,
+                            viewModel: insightsViewModel
+                        )
+
+                        // Past Picks
+                        PastPicksView(shares: pastPicks)
+                        
+                        // Music Stats from Platform
                         if let platformData = user.platformData {
                             VStack(spacing: 16) {
                                 Text("your music")
-                                    .font(.nunitoSans(size: 20, weight: .bold))
+                                    .font(.lora(size: 20, weight: .bold))
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 24)
 
@@ -122,6 +151,21 @@ struct ProfileView: View {
                         )
                         .padding(.horizontal, 24)
                         .padding(.top, 16)
+
+                        // Version Information
+                        VStack(spacing: 4) {
+                            if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+                               let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
+                                Text("Phlock v\(version) (\(build))")
+                                    .font(.lora(size: 12))
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Text("TestFlight Beta")
+                                .font(.lora(size: 11))
+                                .foregroundColor(.secondary.opacity(0.7))
+                        }
+                        .padding(.top, 8)
                         .padding(.bottom, 40)
                     }
                 }
@@ -132,15 +176,49 @@ struct ProfileView: View {
             // Pull to refresh
             print("🔄 User initiated pull-to-refresh on ProfileView")
             await authState.refreshMusicData()
-            refreshCount += 1 // Force view to re-render
-            print("✅ Refresh completed. Current tracks count: \(authState.currentUser?.platformData?.topTracks?.count ?? 0)")
-            if let firstTrack = authState.currentUser?.platformData?.topTracks?.first {
-                print("   Latest track: \(firstTrack.name) - played at: \(firstTrack.playedAt?.description ?? "unknown")")
+            if let user = authState.currentUser {
+                await loadData(for: user)
             }
+            refreshCount += 1 // Force view to re-render
         }
         .id(refreshCount) // Force view refresh when refreshCount changes
         .sheet(isPresented: $showEditProfile) {
             EditProfileView()
+        }
+        .task {
+            if let user = authState.currentUser {
+                await loadData(for: user)
+            }
+        }
+        .onChange(of: authState.currentUser?.id) { newId in
+            guard let id = newId, let user = authState.currentUser else { return }
+            insightsLoadedForUser = id
+            Task {
+                await loadData(for: user)
+            }
+        }
+    }
+    
+    private func loadData(for user: User) async {
+        // Load insights
+        await insightsViewModel.load(for: user)
+        insightsLoadedForUser = user.id
+        
+        // Load daily curation data
+        do {
+            async let todaysPickTask = ShareService.shared.getTodaysDailySong(for: user.id)
+            async let pastPicksTask = ShareService.shared.getDailySongHistory(for: user.id)
+            async let phlockTask = UserService.shared.getPhlockMembers(for: user.id)
+            
+            let (today, past, phlock) = try await (todaysPickTask, pastPicksTask, phlockTask)
+            
+            await MainActor.run {
+                self.todaysPick = today
+                self.pastPicks = past
+                self.phlockMembers = phlock
+            }
+        } catch {
+            print("❌ Failed to load profile data: \(error)")
         }
     }
 
@@ -166,9 +244,463 @@ struct ProfilePhotoPlaceholder: View {
                 .fill(Color.black.opacity(0.1))
 
             Text(displayName.prefix(1).uppercased())
-                .font(.nunitoSans(size: 40, weight: .bold))
+                .font(.lora(size: 40, weight: .bold))
                 .foregroundColor(.black.opacity(0.4))
         }
+    }
+}
+
+// MARK: - Profile Insights
+
+struct ArtistSendStat: Identifiable, Hashable {
+    let name: String
+    let count: Int
+    var id: String { name }
+}
+
+struct GenreSendStat: Identifiable, Hashable {
+    let name: String
+    let count: Int
+    var id: String { name }
+}
+
+struct ProfileInsightsSnapshot {
+    let sendStreak: Int
+    let saveCount30d: Int
+    let topArtists: [ArtistSendStat]
+    let topGenres: [GenreSendStat]
+}
+
+@MainActor
+class ProfileInsightsViewModel: ObservableObject {
+    @Published var isLoading = false
+    @Published var sendStreak = 0
+    @Published var saveCount30d = 0
+    @Published var topArtists: [ArtistSendStat] = []
+    @Published var topGenres: [GenreSendStat] = []
+    @Published var errorMessage: String?
+
+    func load(for user: User) async {
+        guard !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let shares = try await ShareService.shared.getSentShares(userId: user.id, limit: 400)
+            let snapshot = ProfileInsightsCalculator.compute(
+                shares: shares,
+                knownArtists: user.platformData?.topArtists
+            )
+
+            sendStreak = snapshot.sendStreak
+            saveCount30d = snapshot.saveCount30d
+            topArtists = snapshot.topArtists
+            topGenres = snapshot.topGenres
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+            sendStreak = 0
+            saveCount30d = 0
+            topArtists = []
+            topGenres = []
+        }
+    }
+}
+
+enum ProfileInsightsCalculator {
+    static func compute(shares: [Share], knownArtists: [MusicItem]?) -> ProfileInsightsSnapshot {
+        let normalizedShares = shares.sorted { $0.createdAt > $1.createdAt }
+
+        return ProfileInsightsSnapshot(
+            sendStreak: sendStreak(from: normalizedShares),
+            saveCount30d: saveCount30d(from: normalizedShares),
+            topArtists: topArtists(from: normalizedShares, limit: 3),
+            topGenres: topGenres(from: normalizedShares, knownArtists: knownArtists ?? [])
+        )
+    }
+
+    private static func sendStreak(from shares: [Share]) -> Int {
+        guard !shares.isEmpty else { return 0 }
+        let calendar = Calendar.current
+        let shareDays = Set(shares.map { calendar.startOfDay(for: shareDate(for: $0)) })
+
+        var streak = 0
+        var currentDay = calendar.startOfDay(for: Date())
+
+        while shareDays.contains(currentDay) {
+            streak += 1
+            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: currentDay) else { break }
+            currentDay = previousDay
+        }
+
+        return streak
+    }
+
+    private static func saveCount30d(from shares: [Share]) -> Int {
+        let calendar = Calendar.current
+        guard let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) else { return 0 }
+        return shares.filter {
+            guard let savedAt = $0.savedAt else { return false }
+            return savedAt >= thirtyDaysAgo
+        }.count
+    }
+
+    private static func topArtists(from shares: [Share], limit: Int) -> [ArtistSendStat] {
+        var counts: [String: Int] = [:]
+        for share in shares {
+            let name = share.artistName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { continue }
+            counts[name, default: 0] += 1
+        }
+
+        return counts
+            .sorted { $0.value > $1.value }
+            .prefix(limit)
+            .map { ArtistSendStat(name: $0.key, count: $0.value) }
+    }
+
+    private static func topGenres(from shares: [Share], knownArtists: [MusicItem]) -> [GenreSendStat] {
+        guard !knownArtists.isEmpty else { return [] }
+        var genreCounts: [String: Int] = [:]
+        let genreLookup = Dictionary(
+            uniqueKeysWithValues: knownArtists.map {
+                ($0.name.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), $0.genres ?? [])
+            }
+        )
+
+        for share in shares {
+            let key = share.artistName.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let genres = genreLookup[key], !genres.isEmpty else { continue }
+            for genre in genres.prefix(3) { // avoid overweighting huge genre lists
+                genreCounts[genre, default: 0] += 1
+            }
+        }
+
+        return genreCounts
+            .sorted { $0.value > $1.value }
+            .prefix(5)
+            .map { GenreSendStat(name: $0.key, count: $0.value) }
+    }
+
+    private static func shareDate(for share: Share) -> Date {
+        share.selectedDate ?? share.createdAt
+    }
+}
+
+struct ProfileInsightsSection: View {
+    let user: User
+    @ObservedObject var viewModel: ProfileInsightsViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 8) {
+                Text("your activity")
+                    .font(.lora(size: 20, weight: .bold))
+                if viewModel.isLoading {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+            }
+
+            ProfileStatsRow(
+                sendStreak: viewModel.sendStreak,
+                phlockCount: user.phlockCount,
+                saveCount30d: viewModel.saveCount30d,
+                isLoading: viewModel.isLoading
+            )
+
+            TopArtistsSentCard(
+                artists: viewModel.topArtists,
+                isLoading: viewModel.isLoading
+            )
+
+            GenreBreakdownCard(
+                genres: viewModel.topGenres,
+                isLoading: viewModel.isLoading
+            )
+
+            if let error = viewModel.errorMessage {
+                Text(error)
+                    .font(.lora(size: 12))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.horizontal, 24)
+    }
+}
+
+struct ProfileStatsRow: View {
+    let sendStreak: Int
+    let phlockCount: Int
+    let saveCount30d: Int
+    let isLoading: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            StatPill(
+                title: "send streak",
+                value: "\(sendStreak)",
+                subtitle: "days in a row",
+                systemImage: "flame.fill",
+                customIcon: nil,
+                isLoading: isLoading
+            )
+
+            StatPill(
+                title: "phlocks",
+                value: "\(phlockCount)",
+                subtitle: "you're in",
+                systemImage: nil,
+                customIcon: AnyView(
+                    MiniPhlockGlyph()
+                        .frame(width: 14, height: 14)
+                ),
+                isLoading: isLoading
+            )
+
+            StatPill(
+                title: "saves (30d)",
+                value: "\(saveCount30d)",
+                subtitle: "from your shares",
+                systemImage: "plus.circle",
+                customIcon: nil,
+                isLoading: isLoading
+            )
+        }
+    }
+}
+
+struct StatPill: View {
+    let title: String
+    let value: String
+    let subtitle: String?
+    let systemImage: String?
+    let customIcon: AnyView?
+    let isLoading: Bool
+    @Environment(\.colorScheme) var colorScheme
+
+    private let titleFont = Font.lora(size: 11.5, weight: .medium)
+    private let valueFont = Font.lora(size: 21, weight: .bold).monospacedDigit()
+    private let subtitleFont = Font.lora(size: 11)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                if let customIcon {
+                    customIcon
+                        .foregroundColor(.secondary)
+                } else if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+                Text(title)
+                    .font(titleFont)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+
+            if isLoading {
+                ProgressView()
+                    .scaleEffect(0.8)
+            } else {
+                Text(value)
+                    .font(valueFont)
+                    .foregroundColor(.primary)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(subtitleFont)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
+        .background(Color.gray.opacity(colorScheme == .dark ? 0.25 : 0.1))
+        .cornerRadius(12)
+    }
+}
+
+/// Minimal phlock-like glyph for compact stat pills
+struct MiniPhlockGlyph: View {
+    private let radius: CGFloat = 7
+    private let dotSize: CGFloat = 3.5
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .frame(width: dotSize + 0.5, height: dotSize + 0.5)
+
+            ForEach(0..<6) { index in
+                let angle = -Double.pi / 2 + Double(index) * (2 * .pi / 6)
+                Circle()
+                    .frame(width: dotSize, height: dotSize)
+                    .offset(
+                        x: CGFloat(cos(angle)) * radius,
+                        y: CGFloat(sin(angle)) * radius
+                    )
+            }
+        }
+        .foregroundColor(.secondary)
+    }
+}
+
+struct TopArtistsSentCard: View {
+    let artists: [ArtistSendStat]
+    let isLoading: Bool
+    @Environment(\.colorScheme) var colorScheme
+    @State private var artistToOpen: ArtistSendStat?
+    @State private var showPlatformSheet = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("top artists you send (30d)")
+                .font(.lora(size: 16, weight: .semiBold))
+
+            if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if artists.isEmpty {
+                Text("share a track to surface your go-to artists.")
+                    .font(.lora(size: 13))
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(Array(artists.enumerated()), id: \.element.id) { index, artist in
+                    HStack(spacing: 10) {
+                        Text("\(index + 1).")
+                            .font(.lora(size: 14, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .frame(width: 24, alignment: .leading)
+
+                        Text(artist.name)
+                            .font(.lora(size: 15, weight: .medium))
+                            .lineLimit(1)
+                            .foregroundColor(.primary)
+
+                        Spacer()
+
+                        HStack(spacing: 12) {
+                            Button {
+                                artistToOpen = artist
+                                showPlatformSheet = true
+                            } label: {
+                                Image(systemName: "arrow.up.forward.square")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+
+                            Text("\(artist.count)")
+                                .font(.lora(size: 14, weight: .semiBold))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 6)
+
+                    if index < artists.count - 1 {
+                        Divider()
+                            .padding(.leading, 34)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.06))
+        .cornerRadius(12)
+        .confirmationDialog(
+            "Open artist in",
+            isPresented: $showPlatformSheet,
+            titleVisibility: .visible
+        ) {
+            if let artist = artistToOpen {
+                Button("Spotify") {
+                    openArtistInSpotifySearch(name: artist.name)
+                }
+                Button("Apple Music") {
+                    openArtistInAppleMusicSearch(name: artist.name)
+                }
+            }
+            Button("Cancel", role: .cancel) { artistToOpen = nil }
+        }
+    }
+
+    private func openArtistInSpotifySearch(name: String) {
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
+        if let url = URL(string: "https://open.spotify.com/search/\(encoded)") {
+            UIApplication.shared.open(url)
+        }
+    }
+
+    private func openArtistInAppleMusicSearch(name: String) {
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
+        if let url = URL(string: "https://music.apple.com/us/search?term=\(encoded)") {
+            UIApplication.shared.open(url)
+        }
+    }
+}
+
+struct GenreBreakdownCard: View {
+    let genres: [GenreSendStat]
+    let isLoading: Bool
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("top genres from your shares")
+                .font(.lora(size: 16, weight: .semiBold))
+
+            if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if genres.isEmpty {
+                Text("once you've shared a few tracks, we'll chart the genres you pass around.")
+                    .font(.lora(size: 13))
+                    .foregroundColor(.secondary)
+            } else {
+                let maxCount = max(genres.map { $0.count }.max() ?? 1, 1)
+
+                ForEach(genres) { genre in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(genre.name.capitalized)
+                                .font(.lora(size: 14, weight: .medium))
+                                .lineLimit(1)
+                            Spacer()
+                            Text("\(genre.count)")
+                                .font(.lora(size: 12, weight: .semiBold))
+                                .foregroundColor(.secondary)
+                        }
+
+                        GeometryReader { geometry in
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.gray.opacity(colorScheme == .dark ? 0.35 : 0.18))
+                                .frame(height: 8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(Color.primary.opacity(colorScheme == .dark ? 0.9 : 0.75))
+                                        .frame(
+                                            width: max(
+                                                CGFloat(genre.count) / CGFloat(maxCount) * geometry.size.width,
+                                                6
+                                            ),
+                                            height: 8
+                                        ),
+                                    alignment: .leading
+                                )
+                        }
+                        .frame(height: 8)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.06))
+        .cornerRadius(12)
     }
 }
 
@@ -226,7 +758,7 @@ struct MusicStatsCard: View {
         ZStack {
             VStack(alignment: .leading, spacing: 12) {
                 Text(title)
-                    .font(.nunitoSans(size: 17, weight: .semiBold))
+                    .font(.lora(size: 17, weight: .semiBold))
                     .padding(.horizontal, 24)
 
             VStack(spacing: 0) {
@@ -253,7 +785,7 @@ struct MusicStatsCard: View {
                             }
 
                             Text("\(index + 1).")
-                                .font(.nunitoSans(size: 15, weight: .medium))
+                                .font(.lora(size: 15, weight: .medium))
                                 .foregroundColor(.secondary)
                                 .frame(width: 24, alignment: .leading)
 
@@ -280,14 +812,14 @@ struct MusicStatsCard: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.name)
-                                    .font(.nunitoSans(size: 15, weight: isCurrentTrack ? .bold : .regular))
+                                    .font(.lora(size: 15, weight: isCurrentTrack ? .bold : .regular))
                                     .lineLimit(1)
                                     .foregroundColor(.primary)
 
                                 // Show timestamp for tracks only (not artists)
                                 if itemType == .track, let playedAt = item.playedAt {
                                     Text(playedAt.shortRelativeTimeString())
-                                        .font(.nunitoSans(size: 12, weight: isCurrentTrack ? .semiBold : .regular))
+                                        .font(.lora(size: 12, weight: isCurrentTrack ? .semiBold : .regular))
                                         .foregroundColor(.secondary)
                                 }
                             }
@@ -354,7 +886,7 @@ struct MusicStatsCard: View {
                             Spacer()
 
                             Text(isExpanded ? "show less" : "show more")
-                                .font(.nunitoSans(size: 13))
+                                .font(.lora(size: 13))
                                 .foregroundColor(.secondary)
 
                             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
@@ -549,4 +1081,276 @@ struct MusicStatsCard: View {
 #Preview {
     ProfileView()
         .environmentObject(AuthenticationState())
+}
+
+struct TodaysPickCard: View {
+    let share: Share?
+    let isCurrentUser: Bool
+    let onPickSong: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var playbackService: PlaybackService
+    
+    private var isCurrentTrack: Bool {
+        guard let share = share else { return false }
+        return playbackService.currentTrack?.id == share.trackId
+    }
+    
+    private var isPlaying: Bool {
+        isCurrentTrack && playbackService.isPlaying
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("today's pick")
+                .font(.lora(size: 17, weight: .semiBold))
+                .padding(.horizontal, 24)
+
+            if let share = share {
+                Button {
+                    let track = MusicItem(
+                        id: share.trackId,
+                        name: share.trackName,
+                        artistName: share.artistName,
+                        previewUrl: share.previewUrl,
+                        albumArtUrl: share.albumArtUrl
+                    )
+                    
+                    // Toggle play/pause if this track is current, otherwise play it
+                    if isCurrentTrack {
+                        if playbackService.isPlaying {
+                            PlaybackService.shared.pause()
+                        } else {
+                            PlaybackService.shared.resume()
+                        }
+                    } else {
+                        PlaybackService.shared.play(track: track)
+                    }
+                } label: {
+                    HStack(spacing: 16) {
+                        // Playing indicator bar
+                        if isPlaying {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color.primary)
+                                .frame(width: 4, height: 60)
+                        }
+                        
+                        // Album Art
+                        if let artworkUrl = share.albumArtUrl, let url = URL(string: artworkUrl) {
+                            AsyncImage(url: url) { image in
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            } placeholder: {
+                                Color.gray.opacity(0.2)
+                            }
+                            .frame(width: 80, height: 80)
+                            .cornerRadius(8)
+                        } else {
+                            Color.gray.opacity(0.2)
+                                .frame(width: 80, height: 80)
+                                .cornerRadius(8)
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(share.trackName)
+                                .font(.lora(size: 16, weight: .bold))
+                                .foregroundColor(.primary)
+                                .lineLimit(1)
+
+                            Text(share.artistName)
+                                .font(.lora(size: 14))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+
+                            if let message = share.message, !message.isEmpty {
+                                Text("\"\(message)\"")
+                                    .font(.lora(size: 13, weight: .regular))
+                                    .italic()
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(2)
+                                    .padding(.top, 4)
+                            }
+                        }
+                        
+                        Spacer()
+                        
+                        // Play/Pause Icon
+                        Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundColor(isCurrentTrack ? .primary : .secondary)
+                    }
+                    .padding(16)
+                    .background(
+                        isPlaying 
+                            ? Color.primary.opacity(colorScheme == .dark ? 0.2 : 0.1)
+                            : Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.06)
+                    )
+                    .cornerRadius(16)
+                    .padding(.horizontal, 24)
+                }
+                .buttonStyle(.plain)
+            } else if isCurrentUser {
+                Button(action: onPickSong) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("pick your song for today")
+                                .font(.lora(size: 16, weight: .bold))
+                                .foregroundColor(.primary)
+                            
+                            Text("keep your streak alive 🔥")
+                                .font(.lora(size: 13))
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundColor(.primary)
+                    }
+                    .padding(16)
+                    .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.06))
+                    .cornerRadius(16)
+                    .padding(.horizontal, 24)
+                }
+                .buttonStyle(.plain)
+            } else {
+                // Empty state for other users
+                Text("no pick for today yet.")
+                    .font(.lora(size: 14, weight: .regular))
+                    .italic()
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 24)
+            }
+        }
+    }
+}
+
+struct PastPicksView: View {
+    let shares: [Share]
+    @EnvironmentObject var playbackService: PlaybackService
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("past picks")
+                .font(.lora(size: 17, weight: .semiBold))
+                .padding(.horizontal, 24)
+            
+            if shares.isEmpty {
+                Text("no past picks yet.")
+                    .font(.lora(size: 14))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 24)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(shares.prefix(10).enumerated()), id: \.element.id) { index, share in
+                        Button {
+                            let track = MusicItem(
+                                id: share.trackId,
+                                name: share.trackName,
+                                artistName: share.artistName,
+                                previewUrl: share.previewUrl,
+                                albumArtUrl: share.albumArtUrl
+                            )
+                            PlaybackService.shared.play(track: track)
+                        } label: {
+                            HStack(spacing: 12) {
+                                // Artwork
+                                if let artworkUrl = share.albumArtUrl, let url = URL(string: artworkUrl) {
+                                    AsyncImage(url: url) { image in
+                                        image
+                                            .resizable()
+                                            .scaledToFill()
+                                    } placeholder: {
+                                        Color.gray.opacity(0.2)
+                                    }
+                                    .frame(width: 40, height: 40)
+                                    .cornerRadius(4)
+                                } else {
+                                    Color.gray.opacity(0.2)
+                                        .frame(width: 40, height: 40)
+                                        .cornerRadius(4)
+                                }
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(share.trackName)
+                                        .font(.lora(size: 15, weight: .medium))
+                                        .foregroundColor(.primary)
+                                        .lineLimit(1)
+                                    
+                                    Text(share.artistName)
+                                        .font(.lora(size: 13))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+                                
+                                Spacer()
+                                
+                                // Date on the right
+                                Text(share.formattedDate)
+                                    .font(.lora(size: 12, weight: .medium))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.plain)
+                        
+                        if index < min(shares.count, 10) - 1 {
+                            Divider()
+                                .padding(.leading, 86)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct PhlockMembersRow: View {
+    let members: [FriendWithPosition]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("my phlock")
+                .font(.lora(size: 17, weight: .semiBold))
+                .padding(.horizontal, 24)
+            
+            if members.isEmpty {
+                Text("no members in phlock yet.")
+                    .font(.lora(size: 14))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 24)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) {
+                        ForEach(members) { member in
+                            VStack(spacing: 8) {
+                                if let photoUrl = member.user.profilePhotoUrl, let url = URL(string: photoUrl) {
+                                    AsyncImage(url: url) { image in
+                                        image
+                                            .resizable()
+                                            .scaledToFill()
+                                    } placeholder: {
+                                        ProfilePhotoPlaceholder(displayName: member.user.displayName)
+                                    }
+                                    .frame(width: 60, height: 60)
+                                    .clipShape(Circle())
+                                } else {
+                                    ProfilePhotoPlaceholder(displayName: member.user.displayName)
+                                        .frame(width: 60, height: 60)
+                                }
+                                
+                                Text(member.user.displayName)
+                                    .font(.lora(size: 12))
+                                    .lineLimit(1)
+                                    .frame(width: 70)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                }
+            }
+        }
+    }
 }

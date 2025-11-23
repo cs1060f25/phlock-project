@@ -31,6 +31,22 @@ struct ShareToast: View {
     }
 
     var body: some View {
+        let background: Color = {
+            if colorScheme == .dark {
+                return Color(.tertiarySystemBackground).opacity(0.95)
+            } else {
+                return Color(.systemBackground).opacity(0.95)
+            }
+        }()
+
+        let textColor: Color = {
+            if colorScheme == .dark {
+                return .white
+            } else {
+                return .black
+            }
+        }()
+
         HStack(spacing: 12) {
             // Icon
             Image(systemName: type.icon)
@@ -39,8 +55,8 @@ struct ShareToast: View {
 
             // Message
             Text(message)
-                .font(.nunitoSans(size: 15))
-                .foregroundColor(.primary)
+                .font(.lora(size: 15))
+                .foregroundColor(textColor)
 
             Spacer()
 
@@ -49,7 +65,7 @@ struct ShareToast: View {
                 Button("undo") {
                     onUndo()
                 }
-                .font(.nunitoSans(size: 14, weight: .semiBold))
+                .font(.lora(size: 14, weight: .semiBold))
                 .foregroundColor(.blue)
             }
         }
@@ -57,7 +73,7 @@ struct ShareToast: View {
         .padding(.vertical, 14)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(colorScheme == .dark ? Color.white.opacity(0.15) : Color.black.opacity(0.85))
+                .fill(background)
                 .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 5)
         )
         .padding(.horizontal, 16)
@@ -73,29 +89,28 @@ struct ToastModifier: ViewModifier {
     let onUndo: (() -> Void)?
 
     func body(content: Content) -> some View {
-        ZStack(alignment: .top) {
+        ZStack {
             content
 
             if isPresented {
-                VStack {
-                    ShareToast(message: message, type: type, onUndo: onUndo)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                        .onAppear {
-                            // Auto-dismiss after duration
-                            DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    isPresented = false
-                                }
+                ShareToast(message: message, type: type, onUndo: onUndo)
+                    .frame(maxWidth: 360)
+                    .padding(.horizontal, 24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .transition(.scale.combined(with: .opacity))
+                    .allowsHitTesting(false)
+                    .onAppear {
+                        // Auto-dismiss after duration
+                        DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                isPresented = false
                             }
                         }
-
-                    Spacer()
-                }
-                .padding(.top, 8)
-                .zIndex(999)
-            }
+                    }
+                    .zIndex(999)
         }
     }
+}
 }
 
 extension View {

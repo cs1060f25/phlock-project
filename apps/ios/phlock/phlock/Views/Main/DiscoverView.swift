@@ -9,6 +9,7 @@ enum DiscoverDestination: Hashable {
 struct DiscoverView: View {
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var navigationState: NavigationState
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) var colorScheme
     @Binding var navigationPath: NavigationPath
     @Binding var clearSearchTrigger: Int
@@ -36,6 +37,7 @@ struct DiscoverView: View {
     @State private var dailySongError: String?
     @State private var showDailySongToast = false
     @State private var dailySongToastMessage = ""
+    @State private var selectedDailyTrackId: String?
 
     enum SearchFilter: String, CaseIterable {
         case all = "All"
@@ -72,7 +74,7 @@ struct DiscoverView: View {
                         .textFieldStyle(.plain)
                         .autocorrectionDisabled()
                         .focused($isSearchFieldFocused)
-                        .onChange(of: searchText) { oldValue, newValue in
+                        .onChange(of: searchText) { newValue in
                             performDebouncedSearch()
                         }
                         .onSubmit {
@@ -111,7 +113,7 @@ struct DiscoverView: View {
                 .opacity(!searchText.isEmpty || searchResults != nil ? 1 : 0)
                 .disabled(searchText.isEmpty && searchResults == nil)
                 .allowsHitTesting(!searchText.isEmpty || searchResults != nil)
-                .onChange(of: selectedFilter) { oldValue, newValue in
+                .onChange(of: selectedFilter) { newValue in
                     if !searchText.isEmpty {
                         performSearch()
                     }
@@ -121,62 +123,23 @@ struct DiscoverView: View {
                     Divider()
                 }
 
-                // Results
-                if isSearching {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = errorMessage {
-                    ErrorView(message: error) {
-                        performSearch()
-                    }
-                } else if searchText.isEmpty && searchResults == nil {
-                    // Show recently played grid when no search
-                    if isLoadingRecentTracks {
-                        ProgressView()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if let error = recentTracksError {
-                        ErrorView(message: error) {
-                            loadRecentlyPlayedTracks()
-                        }
-                    } else if recentlyPlayedTracks.isEmpty {
-                        EmptySearchView(isSearchFieldFocused: $isSearchFieldFocused)
-                    } else {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("recently played")
-                                .font(.lora(size: 20, weight: .bold))
-                                .padding(.horizontal, 16)
-                                .padding(.top, 4)
-
-                            RecentlyPlayedGridView(
-                                tracks: recentlyPlayedTracks,
-                                platformType: authState.currentUser?.platformType ?? .spotify,
-                                onSelectDailySong: { track in selectDailySong(track, note: nil) },
-                                todaysDailySong: todaysDailySong
-                            )
-                            .environmentObject(PlaybackService.shared)
-                            .environmentObject(navigationState)
-                        }
-                    }
-                } else if let results = searchResults {
-                    SearchResultsList(
-                        results: results,
-                        filter: selectedFilter,
-                        platformType: authState.currentUser?.platformType ?? .spotify,
-                        searchQuery: searchText,
-                        navigationPath: $navigationPath,
-                        onSelectDailySong: { track in selectDailySong(track, note: nil) },
-                        todaysDailySong: todaysDailySong
-                    )
-                    .environmentObject(navigationState)
-                }
+                resultsSection
             }
             .contentShape(Rectangle())
             .onTapGesture {
                 // Dismiss keyboard when tapping anywhere
                 isSearchFieldFocused = false
             }
-            .navigationTitle("discover")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("browse")
+                        .font(.lora(size: 28, weight: .bold))
+                        .foregroundColor(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
             .navigationDestination(for: DiscoverDestination.self) { destination in
                 switch destination {
                 case .artist(let artist, let platformType):
@@ -185,13 +148,13 @@ struct DiscoverView: View {
                     ProfileView()
                 }
             }
-            .onChange(of: clearSearchTrigger) { oldValue, newValue in
+            .onChange(of: clearSearchTrigger) { newValue in
                 // Clear search and focus field when trigger changes
                 searchText = ""
                 searchResults = nil
                 isSearchFieldFocused = true
             }
-            .onChange(of: navigationState.showShareSheet) { oldValue, newValue in
+            .onChange(of: navigationState.showShareSheet) { newValue in
                 // Dismiss keyboard when share sheet appears
                 if newValue {
                     isSearchFieldFocused = false
@@ -202,7 +165,7 @@ struct DiscoverView: View {
                 loadRecentlyPlayedTracks()
                 loadTodaysDailySong()
             }
-            .onChange(of: refreshTrigger) { oldValue, newValue in
+            .onChange(of: refreshTrigger) { newValue in
                 Task {
                     // Scroll to top and reload data
                     withAnimation {
@@ -214,7 +177,6 @@ struct DiscoverView: View {
                 }
             }
         }
-        .fullScreenSwipeBack()
         .toast(isPresented: $showDailySongToast, message: dailySongToastMessage, type: .success, duration: 3.0)
     }
 
@@ -241,10 +203,11 @@ struct DiscoverView: View {
     }
 
     private func performSearch() {
-        guard !searchText.isEmpty,
-              let platformType = authState.currentUser?.platformType else {
+        guard !searchText.isEmpty else {
             return
         }
+
+        print("🔍 Performing search for: '\(searchText)'")
 
         Task {
             isSearching = true
@@ -256,15 +219,17 @@ struct DiscoverView: View {
                     async let tracksResult = SearchService.shared.search(
                         query: searchText,
                         type: .tracks,
-                        platformType: platformType
+                        platformType: authState.currentUser?.resolvedPlatformType ?? .spotify
                     )
                     async let artistsResult = SearchService.shared.search(
                         query: searchText,
                         type: .artists,
-                        platformType: platformType
+                        platformType: authState.currentUser?.resolvedPlatformType ?? .spotify
                     )
 
                     let (tracks, artists) = try await (tracksResult, artistsResult)
+                    print("✅ Search results: \(tracks.tracks.count) tracks, \(artists.artists.count) artists")
+                    
                     searchResults = SearchResult(
                         tracks: tracks.tracks,
                         artists: artists.artists
@@ -273,13 +238,14 @@ struct DiscoverView: View {
                     let results = try await SearchService.shared.search(
                         query: searchText,
                         type: selectedFilter.searchType,
-                        platformType: platformType
+                        platformType: authState.currentUser?.resolvedPlatformType ?? .spotify
                     )
+                    print("✅ Search results: \(results.tracks.count + results.artists.count) items")
                     searchResults = results
                 }
             } catch {
                 errorMessage = "Search failed: \(error.localizedDescription)"
-                print("Search error: \(error)")
+                print("❌ Search error: \(error)")
             }
 
             isSearching = false
@@ -288,7 +254,7 @@ struct DiscoverView: View {
 
     private func loadRecentlyPlayedTracks() {
         guard let user = authState.currentUser,
-              let platformType = user.platformType else {
+              let platformType = user.resolvedPlatformType else {
             return
         }
 
@@ -311,6 +277,62 @@ struct DiscoverView: View {
         }
     }
 
+    @ViewBuilder
+    private var resultsSection: some View {
+        if isSearching {
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let error = errorMessage {
+            ErrorView(message: error) {
+                performSearch()
+            }
+        } else if searchText.isEmpty && searchResults == nil {
+            if isLoadingRecentTracks {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = recentTracksError {
+                ErrorView(message: error) {
+                    loadRecentlyPlayedTracks()
+                }
+            } else if recentlyPlayedTracks.isEmpty {
+                EmptySearchView(isSearchFieldFocused: $isSearchFieldFocused)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("recently played")
+                        .font(.lora(size: 20, weight: .bold))
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
+
+                    RecentlyPlayedGridView(
+                        tracks: recentlyPlayedTracks,
+                        platformType: authState.currentUser?.resolvedPlatformType ?? .spotify,
+                        onSelectDailySong: { track in selectDailySong(track, note: nil) },
+                        todaysDailySong: todaysDailySong,
+                        selectedDailyTrackId: $selectedDailyTrackId
+                    )
+                    .environmentObject(PlaybackService.shared)
+                    .environmentObject(navigationState)
+                }
+            }
+        } else if let results = searchResults {
+            SearchResultsList(
+                results: results,
+                filter: selectedFilter,
+                platformType: authState.currentUser?.resolvedPlatformType ?? .spotify,
+                searchQuery: searchText,
+                navigationPath: $navigationPath,
+                onSelectDailySong: { track in selectDailySong(track, note: nil) },
+                todaysDailySong: todaysDailySong,
+                selectedDailyTrackId: $selectedDailyTrackId,
+                scrollToTopTrigger: $scrollToTopTrigger,
+                isRefreshing: $isRefreshing,
+                pullProgress: $pullProgress,
+                onRefresh: { await refreshContent() }
+            )
+            .environmentObject(navigationState)
+        }
+    }
+
     private func loadTodaysDailySong() {
         guard let userId = authState.currentUser?.id else { return }
 
@@ -320,6 +342,7 @@ struct DiscoverView: View {
 
             do {
                 todaysDailySong = try await ShareService.shared.getTodaysDailySong(for: userId)
+                selectedDailyTrackId = todaysDailySong?.trackId
                 print("✅ Loaded today's daily song: \(todaysDailySong?.trackName ?? "none")")
             } catch {
                 dailySongError = "Failed to load daily song"
@@ -332,6 +355,7 @@ struct DiscoverView: View {
 
     func selectDailySong(_ track: MusicItem, note: String? = nil) {
         guard let userId = authState.currentUser?.id else { return }
+        selectedDailyTrackId = track.id
 
         Task {
             do {
@@ -347,6 +371,11 @@ struct DiscoverView: View {
                 dailySongToastMessage = "🔥 \(track.name) is your song today!"
                 showDailySongToast = true
                 print("✅ Selected daily song: \(track.name)")
+
+                await MainActor.run {
+                    selectedDailyTrackId = share.trackId
+                    dismiss()
+                }
             } catch {
                 dailySongToastMessage = "❌ \(error.localizedDescription)"
                 showDailySongToast = true

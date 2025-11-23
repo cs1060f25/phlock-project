@@ -154,12 +154,73 @@ struct User: Codable, Identifiable, Hashable {
     static func == (lhs: User, rhs: User) -> Bool {
         lhs.id == rhs.id
     }
+
+    // Convenience initializer for manual construction (e.g., placeholders)
+    init(
+        id: UUID = UUID(),
+        displayName: String,
+        profilePhotoUrl: String? = nil,
+        bio: String? = nil,
+        email: String? = nil,
+        phone: String? = nil,
+        platformType: PlatformType? = nil,
+        platformUserId: String? = nil,
+        platformData: PlatformUserData? = nil,
+        privacyWhoCanSend: String = "everyone",
+        createdAt: Date? = nil,
+        updatedAt: Date? = nil,
+        authUserId: UUID? = nil,
+        authProvider: String? = nil,
+        musicPlatform: String? = nil,
+        spotifyUserId: String? = nil,
+        appleUserId: String? = nil,
+        username: String? = nil,
+        phlockCount: Int = 0,
+        dailySongStreak: Int = 0,
+        lastDailySongDate: Date? = nil
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.profilePhotoUrl = profilePhotoUrl
+        self.bio = bio
+        self.email = email
+        self.phone = phone
+        self.platformType = platformType
+        self.platformUserId = platformUserId
+        self.platformData = platformData
+        self.privacyWhoCanSend = privacyWhoCanSend
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.authUserId = authUserId
+        self.authProvider = authProvider
+        self.musicPlatform = musicPlatform
+        self.spotifyUserId = spotifyUserId
+        self.appleUserId = appleUserId
+        self.username = username
+        self.phlockCount = phlockCount
+        self.dailySongStreak = dailySongStreak
+        self.lastDailySongDate = lastDailySongDate
+    }
 }
 
 /// The music streaming platform the user authenticated with
 enum PlatformType: String, Codable, Hashable {
     case spotify
     case appleMusic = "apple_music"
+}
+
+// Helper to smoothly bridge old platform_type and new music_platform fields
+extension User {
+    var resolvedPlatformType: PlatformType? {
+        if let platformType {
+            return platformType
+        }
+        if let musicPlatform,
+           let derivedType = PlatformType(rawValue: musicPlatform) {
+            return derivedType
+        }
+        return nil
+    }
 }
 
 /// Platform-specific user data stored as JSONB
@@ -236,6 +297,7 @@ struct MusicItem: Codable, Hashable {
     var appleMusicId: String? // Apple Music artist/track ID for cross-platform linking
     var popularity: Int? // Spotify popularity score (0-100)
     var followerCount: Int? // Follower count for artists
+    var genres: [String]? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -249,6 +311,7 @@ struct MusicItem: Codable, Hashable {
         case appleMusicId = "apple_music_id"
         case popularity
         case followerCount = "followers"
+        case genres
     }
 }
 

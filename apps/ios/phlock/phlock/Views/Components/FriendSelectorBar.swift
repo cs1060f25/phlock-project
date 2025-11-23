@@ -36,7 +36,7 @@ struct FriendSelectorBar: View {
                     .font(.system(size: 14))
 
                 TextField("Search friends", text: $searchText)
-                    .font(.nunitoSans(size: 14))
+                    .font(.lora(size: 14))
                     .textFieldStyle(.plain)
                     .focused($isSearchFocused)
                     .submitLabel(.search)
@@ -71,7 +71,7 @@ struct FriendSelectorBar: View {
                         .font(.system(size: 24))
                         .foregroundColor(.secondary)
                     Text(searchText.isEmpty ? "No friends yet" : "No friends found")
-                        .font(.nunitoSans(size: 14))
+                        .font(.lora(size: 14))
                         .foregroundColor(.secondary)
                 }
                 .padding(.vertical, 20)
@@ -202,7 +202,7 @@ struct FriendSelectorItem: View {
 
             // Name
             Text(friend.displayName)
-                .font(.nunitoSans(size: 12))
+                .font(.lora(size: 12))
                 .lineLimit(1)
                 .foregroundColor(.primary)
                 .frame(width: 60)

@@ -10,9 +10,15 @@ struct SearchResultsList: View {
     @Binding var navigationPath: NavigationPath
     let onSelectDailySong: ((MusicItem) -> Void)?
     let todaysDailySong: Share?
+    @Binding var selectedDailyTrackId: String?
+    @Binding var scrollToTopTrigger: Int
+    @Binding var isRefreshing: Bool
+    @Binding var pullProgress: CGFloat
+    let onRefresh: () async -> Void
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var navigationState: NavigationState
+    @Environment(\.colorScheme) var colorScheme
 
     init(
         results: SearchResult,
@@ -21,7 +27,12 @@ struct SearchResultsList: View {
         searchQuery: String,
         navigationPath: Binding<NavigationPath>,
         onSelectDailySong: ((MusicItem) -> Void)? = nil,
-        todaysDailySong: Share? = nil
+        todaysDailySong: Share? = nil,
+        selectedDailyTrackId: Binding<String?> = .constant(nil),
+        scrollToTopTrigger: Binding<Int>,
+        isRefreshing: Binding<Bool>,
+        pullProgress: Binding<CGFloat>,
+        onRefresh: @escaping () async -> Void
     ) {
         self.results = results
         self.filter = filter
@@ -30,6 +41,11 @@ struct SearchResultsList: View {
         self._navigationPath = navigationPath
         self.onSelectDailySong = onSelectDailySong
         self.todaysDailySong = todaysDailySong
+        self._selectedDailyTrackId = selectedDailyTrackId
+        self._scrollToTopTrigger = scrollToTopTrigger
+        self._isRefreshing = isRefreshing
+        self._pullProgress = pullProgress
+        self.onRefresh = onRefresh
     }
 
     var displayedTracks: [MusicItem] {
@@ -112,70 +128,96 @@ struct SearchResultsList: View {
             return $0.score > $1.score
         }
 
-        // Return without scores
+    // Return without scores
         return scoredItems.map { ($0.item, $0.type) }
     }
 
     var body: some View {
-        List {
-            if filter == .all {
-                // All tab - show combined results
-                ForEach(Array(allResults.enumerated()), id: \.offset) { index, result in
-                    if result.type == "Track" {
-                        TrackResultRow(
-                            track: result.item,
-                            platformType: platformType,
-                            showType: true,
-                            onSelectDailySong: onSelectDailySong,
-                            todaysDailySong: todaysDailySong
-                        )
-                        .environmentObject(authState)
-                        .environmentObject(navigationState)
-                    } else {
-                        Button {
-                            navigationPath.append(DiscoverDestination.artist(result.item, platformType))
-                        } label: {
-                            ArtistResultRow(artist: result.item, showType: true)
+        ScrollViewReader { scrollProxy in
+            List {
+                Color.clear
+                    .frame(height: 1)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
+                    .id("discoverTop")
+
+                if filter == .all {
+                    // All tab - show combined results
+                    ForEach(Array(allResults.enumerated()), id: \.offset) { index, result in
+                        if result.type == "Track" {
+                                TrackResultRow(
+                                    track: result.item,
+                                    platformType: platformType,
+                                    showType: true,
+                                    onSelectDailySong: onSelectDailySong,
+                                    todaysDailySong: todaysDailySong,
+                                    selectedDailyTrackId: $selectedDailyTrackId
+                                )
+                            .environmentObject(authState)
+                            .environmentObject(navigationState)
+                        } else {
+                            Button {
+                                navigationPath.append(DiscoverDestination.artist(result.item, platformType))
+                            } label: {
+                                ArtistResultRow(artist: result.item, showType: true)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
-                }
-            } else {
-                // Tracks Section
-                if !displayedTracks.isEmpty {
-                    ForEach(displayedTracks, id: \.id) { track in
-                        TrackResultRow(
-                            track: track,
-                            platformType: platformType,
-                            showType: false,
-                            onSelectDailySong: onSelectDailySong,
-                            todaysDailySong: todaysDailySong
-                        )
-                        .environmentObject(authState)
-                        .environmentObject(navigationState)
+                } else {
+                    // Tracks Section
+                    if !displayedTracks.isEmpty {
+                        ForEach(displayedTracks, id: \.id) { track in
+                            TrackResultRow(
+                                track: track,
+                                platformType: platformType,
+                                showType: false,
+                                onSelectDailySong: onSelectDailySong,
+                                todaysDailySong: todaysDailySong,
+                                selectedDailyTrackId: $selectedDailyTrackId
+                            )
+                            .environmentObject(authState)
+                            .environmentObject(navigationState)
+                        }
+                    }
+
+                    // Artists Section
+                    if !displayedArtists.isEmpty {
+                        ForEach(displayedArtists, id: \.id) { artist in
+                            Button {
+                                navigationPath.append(DiscoverDestination.artist(artist, platformType))
+                            } label: {
+                                ArtistResultRow(artist: artist, showType: false)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
 
-                // Artists Section
-                if !displayedArtists.isEmpty {
-                    ForEach(displayedArtists, id: \.id) { artist in
-                        Button {
-                            navigationPath.append(DiscoverDestination.artist(artist, platformType))
-                        } label: {
-                            ArtistResultRow(artist: artist, showType: false)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                // No Results
+                if displayedTracks.isEmpty && displayedArtists.isEmpty {
+                    NoResultsView()
                 }
             }
-
-            // No Results
-            if displayedTracks.isEmpty && displayedArtists.isEmpty {
-                NoResultsView()
+            .listStyle(.plain)
+            .scrollDismissesKeyboard(.interactively)
+            .pullToRefreshWithSpinner(
+                isRefreshing: $isRefreshing,
+                pullProgress: $pullProgress,
+                colorScheme: colorScheme
+            ) {
+                isRefreshing = true
+                await onRefresh()
+                await MainActor.run {
+                    isRefreshing = false
+                }
+            }
+            .onChange(of: scrollToTopTrigger) { _ in
+                withAnimation {
+                    scrollProxy.scrollTo("discoverTop", anchor: .top)
+                }
             }
         }
-        .listStyle(.plain)
-        .scrollDismissesKeyboard(.interactively)
     }
 
     private func playTrack(_ track: MusicItem) {
@@ -189,6 +231,7 @@ struct TrackResultRow: View {
     let showType: Bool
     let onSelectDailySong: ((MusicItem) -> Void)?
     let todaysDailySong: Share?
+    @Binding var selectedDailyTrackId: String?
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var navigationState: NavigationState
@@ -196,19 +239,22 @@ struct TrackResultRow: View {
 
     @State private var showToast = false
     @State private var toastMessage = ""
+    @State private var showDailyConfirm = false
 
     init(
         track: MusicItem,
         platformType: PlatformType,
         showType: Bool,
         onSelectDailySong: ((MusicItem) -> Void)? = nil,
-        todaysDailySong: Share? = nil
+        todaysDailySong: Share? = nil,
+        selectedDailyTrackId: Binding<String?> = .constant(nil)
     ) {
         self.track = track
         self.platformType = platformType
         self.showType = showType
         self.onSelectDailySong = onSelectDailySong
         self.todaysDailySong = todaysDailySong
+        self._selectedDailyTrackId = selectedDailyTrackId
     }
 
     var isCurrentTrack: Bool {
@@ -219,8 +265,12 @@ struct TrackResultRow: View {
         isCurrentTrack && playbackService.isPlaying
     }
 
-    var isSelectedAsDaily: Bool {
+    var isCommittedAsDaily: Bool {
         todaysDailySong?.trackId == track.id
+    }
+
+    var isPendingSelection: Bool {
+        selectedDailyTrackId == track.id
     }
 
     var body: some View {
@@ -246,7 +296,7 @@ struct TrackResultRow: View {
                 .clipShape(RoundedRectangle(cornerRadius: 4))
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
-                        .stroke(isCurrentTrack ? Color.primary : (isSelectedAsDaily ? Color.green : Color.clear), lineWidth: 2.5)
+                        .stroke(isCurrentTrack ? Color.primary : (isCommittedAsDaily ? Color.green : Color.clear), lineWidth: 2.5)
                 )
             } else {
                 Color.gray.opacity(0.2)
@@ -256,26 +306,18 @@ struct TrackResultRow: View {
 
             // Track Info
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 4) {
-                    Text(track.name)
-                        .font(.nunitoSans(size: 16, weight: isCurrentTrack ? .bold : .semiBold))
-                        .lineLimit(1)
-                        .foregroundColor(.primary)
-
-                    if isSelectedAsDaily {
-                        Text("✓")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.green)
-                    }
-                }
+                Text(track.name)
+                    .font(.lora(size: 16, weight: isCurrentTrack ? .bold : .semiBold))
+                    .lineLimit(1)
+                    .foregroundColor(.primary)
 
                 if showType {
                     Text("Track")
-                        .font(.nunitoSans(size: 13, weight: isCurrentTrack ? .semiBold : .regular))
+                        .font(.lora(size: 13, weight: isCurrentTrack ? .semiBold : .regular))
                         .foregroundColor(.secondary)
                 } else if let artist = track.artistName {
                     Text(artist)
-                        .font(.nunitoSans(size: 14, weight: isCurrentTrack ? .semiBold : .regular))
+                        .font(.lora(size: 14, weight: isCurrentTrack ? .semiBold : .regular))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
@@ -283,14 +325,26 @@ struct TrackResultRow: View {
 
             Spacer()
 
-            // Daily Song Button (only show if handler provided and not already selected)
-            if let selectHandler = onSelectDailySong, !isSelectedAsDaily {
+            // Daily Song Button (only show if handler provided)
+            if let _ = onSelectDailySong {
                 Button {
-                    selectHandler(track)
+                    selectedDailyTrackId = track.id
+                    showDailyConfirm = true
                 } label: {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(.orange)
+                    ZStack {
+                        Circle()
+                            .fill((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.white.opacity(0.65))
+                            .overlay(
+                                Circle()
+                                    .stroke((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.secondary, lineWidth: 2)
+                            )
+                            .frame(width: 24, height: 24)
+                        if isCommittedAsDaily || isPendingSelection {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
             }
@@ -332,6 +386,25 @@ struct TrackResultRow: View {
         .cornerRadius(8)
         }
         .toast(isPresented: $showToast, message: toastMessage, type: .success, duration: 3.0)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if onSelectDailySong != nil {
+                selectedDailyTrackId = track.id
+                showDailyConfirm = true
+            }
+        }
+        .confirmationDialog(
+            "Select \"\(track.name)\" as your daily song?",
+            isPresented: $showDailyConfirm,
+            titleVisibility: .visible
+        ) {
+            if let selectHandler = onSelectDailySong {
+                Button("Confirm") { selectHandler(track) }
+            }
+            Button("Cancel", role: .cancel) {
+                selectedDailyTrackId = todaysDailySong?.trackId
+            }
+        }
     }
 }
 
@@ -361,12 +434,12 @@ struct ArtistResultRow: View {
             // Artist Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(artist.name)
-                    .font(.nunitoSans(size: 16, weight: .semiBold))
+                    .font(.lora(size: 16, weight: .semiBold))
                     .lineLimit(1)
 
                 if showType {
                     Text("Artist")
-                        .font(.nunitoSans(size: 13))
+                        .font(.lora(size: 13))
                         .foregroundColor(.secondary)
                 }
             }
@@ -389,10 +462,10 @@ struct EmptySearchView: View {
                 .foregroundColor(.gray)
 
             Text("search for music")
-                .font(.nunitoSans(size: 20, weight: .semiBold))
+                .font(.lora(size: 20, weight: .semiBold))
 
             Text("find tracks and artists to send")
-                .font(.nunitoSans(size: 15))
+                .font(.lora(size: 15))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -411,10 +484,10 @@ struct NoResultsView: View {
                 .foregroundColor(.gray)
 
             Text("no results found")
-                .font(.nunitoSans(size: 20, weight: .semiBold))
+                .font(.lora(size: 20, weight: .semiBold))
 
             Text("try a different search term")
-                .font(.nunitoSans(size: 15))
+                .font(.lora(size: 15))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -432,10 +505,10 @@ struct ErrorView: View {
                 .foregroundColor(.orange)
 
             Text("search error")
-                .font(.nunitoSans(size: 20, weight: .semiBold))
+                .font(.lora(size: 20, weight: .semiBold))
 
             Text(message)
-                .font(.nunitoSans(size: 15))
+                .font(.lora(size: 15))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
@@ -443,7 +516,7 @@ struct ErrorView: View {
             Button("Try Again") {
                 retry()
             }
-            .font(.nunitoSans(size: 16, weight: .semiBold))
+            .font(.lora(size: 16, weight: .semiBold))
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
             .background(Color.black)
@@ -461,6 +534,7 @@ struct RecentlyPlayedGridView: View {
     let platformType: PlatformType
     let onSelectDailySong: ((MusicItem) -> Void)?
     let todaysDailySong: Share?
+    @Binding var selectedDailyTrackId: String?
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var navigationState: NavigationState
     @Environment(\.colorScheme) var colorScheme
@@ -469,12 +543,14 @@ struct RecentlyPlayedGridView: View {
         tracks: [MusicItem],
         platformType: PlatformType,
         onSelectDailySong: ((MusicItem) -> Void)? = nil,
-        todaysDailySong: Share? = nil
+        todaysDailySong: Share? = nil,
+        selectedDailyTrackId: Binding<String?> = .constant(nil)
     ) {
         self.tracks = tracks
         self.platformType = platformType
         self.onSelectDailySong = onSelectDailySong
         self.todaysDailySong = todaysDailySong
+        self._selectedDailyTrackId = selectedDailyTrackId
     }
 
     // 3 columns grid
@@ -491,7 +567,8 @@ struct RecentlyPlayedGridView: View {
                     RecentTrackCard(
                         track: track,
                         onSelectDailySong: onSelectDailySong,
-                        todaysDailySong: todaysDailySong
+                        todaysDailySong: todaysDailySong,
+                        selectedDailyTrackId: $selectedDailyTrackId
                     )
                     .environmentObject(playbackService)
                     .environmentObject(navigationState)
@@ -509,18 +586,22 @@ struct RecentTrackCard: View {
     let track: MusicItem
     let onSelectDailySong: ((MusicItem) -> Void)?
     let todaysDailySong: Share?
+    @Binding var selectedDailyTrackId: String?
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var navigationState: NavigationState
     @Environment(\.colorScheme) var colorScheme
+    @State private var showDailyConfirm = false
 
     init(
         track: MusicItem,
         onSelectDailySong: ((MusicItem) -> Void)? = nil,
-        todaysDailySong: Share? = nil
+        todaysDailySong: Share? = nil,
+        selectedDailyTrackId: Binding<String?> = .constant(nil)
     ) {
         self.track = track
         self.onSelectDailySong = onSelectDailySong
         self.todaysDailySong = todaysDailySong
+        self._selectedDailyTrackId = selectedDailyTrackId
     }
 
     var isCurrentTrack: Bool {
@@ -531,8 +612,12 @@ struct RecentTrackCard: View {
         isCurrentTrack && playbackService.isPlaying
     }
 
-    var isSelectedAsDaily: Bool {
+    var isCommittedAsDaily: Bool {
         todaysDailySong?.trackId == track.id
+    }
+
+    var isPendingSelection: Bool {
+        selectedDailyTrackId == track.id
     }
 
     var body: some View {
@@ -570,61 +655,53 @@ struct RecentTrackCard: View {
                 // Action buttons (top corners)
                 VStack {
                     HStack {
-                        // Daily song button (top-left corner) - only show if handler provided and not already selected
-                        if let selectHandler = onSelectDailySong, !isSelectedAsDaily {
+                        Spacer()
+
+                        // Top-right action: daily select button when in daily flow, otherwise share
+                        if let _ = onSelectDailySong {
                             Button {
-                                selectHandler(track)
+                                selectedDailyTrackId = track.id
+                                showDailyConfirm = true
                             } label: {
                                 ZStack {
                                     Circle()
-                                        .fill(Color.orange.opacity(0.9))
+                                        .fill((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.white.opacity(0.65))
+                                        .overlay(
+                                            Circle()
+                                                .stroke((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.secondary, lineWidth: 2)
+                                        )
+                                        .frame(width: 26, height: 26)
+                                    if isCommittedAsDaily || isPendingSelection {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 12, weight: .bold))
+                                            .foregroundColor(.white)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.trailing, 4)
+                            .padding(.top, 4)
+                        } else if onSelectDailySong == nil {
+                            Button {
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                    navigationState.shareTrack = track
+                                    navigationState.showShareSheet = true
+                                }
+                            } label: {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.black.opacity(0.65))
                                         .frame(width: 26, height: 26)
 
-                                    Image(systemName: "star.fill")
+                                    Image(systemName: "paperplane.fill")
                                         .font(.system(size: 11, weight: .bold))
                                         .foregroundColor(.white)
                                 }
                             }
                             .buttonStyle(.plain)
-                            .padding(.leading, 4)
-                            .padding(.top, 4)
-                        } else if isSelectedAsDaily {
-                            // Show check mark if selected
-                            ZStack {
-                                Circle()
-                                    .fill(Color.green.opacity(0.9))
-                                    .frame(width: 26, height: 26)
-
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.white)
-                            }
-                            .padding(.leading, 4)
+                            .padding(.trailing, 4)
                             .padding(.top, 4)
                         }
-
-                        Spacer()
-
-                        // Send button (top-right corner)
-                        Button {
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                navigationState.shareTrack = track
-                                navigationState.showShareSheet = true
-                            }
-                        } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(Color.black.opacity(0.65))
-                                    .frame(width: 26, height: 26)
-
-                                Image(systemName: "paperplane.fill")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.white)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.trailing, 4)
-                        .padding(.top, 4)
                     }
                     Spacer()
                 }
@@ -650,7 +727,7 @@ struct RecentTrackCard: View {
             // Track Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(track.name)
-                    .font(.nunitoSans(size: 13, weight: .semiBold))
+                    .font(.lora(size: 13, weight: .semiBold))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .foregroundColor(.primary)
@@ -658,7 +735,7 @@ struct RecentTrackCard: View {
 
                 if let artist = track.artistName {
                     Text(artist)
-                        .font(.nunitoSans(size: 11))
+                        .font(.lora(size: 11))
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .foregroundColor(.secondary)
@@ -666,6 +743,25 @@ struct RecentTrackCard: View {
                 }
             }
             .padding(.top, 6)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if onSelectDailySong != nil {
+                selectedDailyTrackId = track.id
+                showDailyConfirm = true
+            }
+        }
+        .confirmationDialog(
+            "Select \"\(track.name)\" as your daily song?",
+            isPresented: $showDailyConfirm,
+            titleVisibility: .visible
+        ) {
+            if let selectHandler = onSelectDailySong {
+                Button("Confirm") { selectHandler(track) }
+            }
+            Button("Cancel", role: .cancel) {
+                selectedDailyTrackId = todaysDailySong?.trackId
+            }
         }
     }
 }

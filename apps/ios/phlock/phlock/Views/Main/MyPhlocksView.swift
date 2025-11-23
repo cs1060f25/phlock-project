@@ -29,7 +29,7 @@ struct MyPhlocksView: View {
                         ProgressView()
                             .scaleEffect(1.5)
                         Text("Loading phlocks...")
-                            .font(.nunitoSans(size: 15))
+                            .font(.lora(size: 15))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -74,7 +74,7 @@ struct MyPhlocksView: View {
             .task {
                 await loadPhlocks()
             }
-            .onChange(of: refreshTrigger) { _, _ in
+            .onChange(of: refreshTrigger) { _ in
                 Task {
                     // Scroll to top and reload data
                     withAnimation {
@@ -82,11 +82,12 @@ struct MyPhlocksView: View {
                     }
                     isRefreshing = true
                     await loadPhlocks(forceRefresh: true)
-                    isRefreshing = false
+                    await MainActor.run {
+                        isRefreshing = false
+                    }
                 }
             }
         }
-        .fullScreenSwipeBack()
     }
 
     private func loadPhlocks(forceRefresh: Bool = false) async {
@@ -148,7 +149,7 @@ struct PhlockGalleryView: View {
 
                     VStack(spacing: 8) {
                         Text("Songs you've shared, organized by track")
-                            .font(.nunitoSans(size: 15))
+                            .font(.lora(size: 15))
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
@@ -173,9 +174,11 @@ struct PhlockGalleryView: View {
             ) {
                 isRefreshing = true
                 await onRefresh()
-                isRefreshing = false
+                await MainActor.run {
+                    isRefreshing = false
+                }
             }
-            .onChange(of: scrollToTopTrigger) { _, _ in
+            .onChange(of: scrollToTopTrigger) { _ in
                 withAnimation {
                     scrollProxy.scrollTo("phlocksTop", anchor: .top)
                 }
@@ -220,11 +223,11 @@ struct PhlockCardView: View {
                 // Track & Artist
                 VStack(alignment: .leading, spacing: 4) {
                     Text(phlock.trackName)
-                        .font(.nunitoSans(size: 18, weight: .bold))
+                        .font(.lora(size: 18, weight: .bold))
                         .lineLimit(1)
 
                     Text(phlock.artistName)
-                        .font(.nunitoSans(size: 15))
+                        .font(.lora(size: 15))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
@@ -252,7 +255,7 @@ struct PhlockCardView: View {
 
                 // Timestamp
                 Text("Last sent \(phlock.lastSentAt.shortRelativeTimeString())")
-                    .font(.nunitoSans(size: 13))
+                    .font(.lora(size: 13))
                     .foregroundColor(.secondary)
             }
             .padding(16)
@@ -283,10 +286,10 @@ struct MetricBadge: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 Text(value)
-                    .font(.nunitoSans(size: 14, weight: .semiBold))
+                    .font(.lora(size: 14, weight: .semiBold))
 
                 Text(label)
-                    .font(.nunitoSans(size: 10))
+                    .font(.lora(size: 10))
                     .foregroundColor(.secondary)
             }
         }
@@ -307,16 +310,16 @@ struct EmptyPhlocksView: View {
                     .font(.system(size: 64))
 
                 Text("No songs shared yet")
-                    .font(.nunitoSans(size: 28, weight: .bold))
+                    .font(.lora(size: 28, weight: .bold))
 
                 Text("see all the songs you've sent to friends,\ngrouped by track with engagement metrics")
-                    .font(.nunitoSans(size: 15))
+                    .font(.lora(size: 15))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
 
                 Text("discover music and start sharing\nto see your phlocks here!")
-                    .font(.nunitoSans(size: 13))
+                    .font(.lora(size: 13))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.top, 4)
@@ -345,10 +348,10 @@ struct ErrorStateView: View {
                 .foregroundColor(.orange)
 
             Text("Error Loading Phlocks")
-                .font(.nunitoSans(size: 20, weight: .semiBold))
+                .font(.lora(size: 20, weight: .semiBold))
 
             Text(message)
-                .font(.nunitoSans(size: 15))
+                .font(.lora(size: 15))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
@@ -356,7 +359,7 @@ struct ErrorStateView: View {
             Button("Try Again") {
                 retry()
             }
-            .font(.nunitoSans(size: 16, weight: .semiBold))
+            .font(.lora(size: 16, weight: .semiBold))
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
             .background(Color.black)

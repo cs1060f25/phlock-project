@@ -3,6 +3,7 @@ import SwiftUI
 struct UserProfileView: View {
     @EnvironmentObject var authState: AuthenticationState
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.dismiss) private var dismiss
     let user: User
 
     @State private var friendshipStatus: FriendshipStatus?
@@ -35,12 +36,12 @@ struct UserProfileView: View {
 
                     // Display Name
                     Text(user.displayName)
-                        .font(.nunitoSans(size: 28, weight: .bold))
+                        .font(.lora(size: 28, weight: .bold))
 
                     // Bio
                     if let bio = user.bio {
                         Text(bio)
-                            .font(.nunitoSans(size: 15))
+                            .font(.lora(size: 15))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
                     }
@@ -50,7 +51,7 @@ struct UserProfileView: View {
                         Image(systemName: user.platformType == .spotify ? "music.note" : "applelogo")
                             .font(.system(size: 12))
                         Text(user.platformType == .spotify ? "spotify" : "apple music")
-                            .font(.nunitoSans(size: 13, weight: .medium))
+                            .font(.lora(size: 13, weight: .medium))
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 12)
@@ -71,7 +72,7 @@ struct UserProfileView: View {
                                     Image(systemName: "checkmark.circle.fill")
                                         .foregroundColor(.green)
                                     Text("friends")
-                                        .font(.nunitoSans(size: 15, weight: .semiBold))
+                                        .font(.lora(size: 15, weight: .semiBold))
                                 }
                                 .foregroundColor(.primary)
                                 .frame(maxWidth: .infinity)
@@ -83,7 +84,7 @@ struct UserProfileView: View {
                                 if let friendship = friendship, friendship.userId1 == authState.currentUser?.id {
                                     // Current user sent the request
                                     Text("request sent")
-                                        .font(.nunitoSans(size: 15, weight: .semiBold))
+                                        .font(.lora(size: 15, weight: .semiBold))
                                         .foregroundColor(.secondary)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 12)
@@ -96,7 +97,7 @@ struct UserProfileView: View {
                                             Task { await rejectFriendRequest() }
                                         } label: {
                                             Text("reject")
-                                                .font(.nunitoSans(size: 15, weight: .semiBold))
+                                                .font(.lora(size: 15, weight: .semiBold))
                                                 .foregroundColor(.primary)
                                                 .frame(maxWidth: .infinity)
                                                 .padding(.vertical, 12)
@@ -108,7 +109,7 @@ struct UserProfileView: View {
                                             Task { await acceptFriendRequest() }
                                         } label: {
                                             Text("accept")
-                                                .font(.nunitoSans(size: 15, weight: .semiBold))
+                                                .font(.lora(size: 15, weight: .semiBold))
                                                 .foregroundColor(.white)
                                                 .frame(maxWidth: .infinity)
                                                 .padding(.vertical, 12)
@@ -132,7 +133,7 @@ struct UserProfileView: View {
                                         .padding(.vertical, 12)
                                 } else {
                                     Text("add friend")
-                                        .font(.nunitoSans(size: 15, weight: .semiBold))
+                                        .font(.lora(size: 15, weight: .semiBold))
                                         .foregroundColor(.white)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 12)
@@ -151,7 +152,7 @@ struct UserProfileView: View {
                 if let platformData = user.platformData {
                     VStack(spacing: 16) {
                         Text("music taste")
-                            .font(.nunitoSans(size: 20, weight: .bold))
+                            .font(.lora(size: 20, weight: .bold))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 24)
 
@@ -184,6 +185,19 @@ struct UserProfileView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundColor(.primary)
+                }
+            }
+        }
+        .navigationBarBackButtonHidden(true)
+        .fullScreenSwipeBack()
         .alert("Error", isPresented: $showError) {
             Button("OK") { }
         } message: {
@@ -234,7 +248,10 @@ struct UserProfileView: View {
               let currentUserId = authState.currentUser?.id else { return }
 
         do {
-            try await UserService.shared.acceptFriendRequest(friendshipId: friendship.id)
+            try await UserService.shared.acceptFriendRequest(
+                friendshipId: friendship.id,
+                currentUserId: currentUserId
+            )
 
             // Clear cache to ensure fresh data in friends list
             UserService.shared.clearCache(for: currentUserId)

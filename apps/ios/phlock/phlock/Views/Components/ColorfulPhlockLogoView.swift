@@ -87,7 +87,7 @@ struct ColorfulPhlockLogoView: View {
                 visibleOuterDots = outerRingDots.count
             }
         }
-        .onChange(of: animate) { _, newValue in
+        .onChange(of: animate) { newValue in
             // Start rotation when animate changes to true
             if newValue && innerRotation == 0 && outerRotation == 0 {
                 startRotationAnimation(duration: 3.0)

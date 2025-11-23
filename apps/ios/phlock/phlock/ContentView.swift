@@ -64,7 +64,7 @@ struct ContentView: View {
             print("📱 ContentView appeared")
             print("📱 Auth state - authenticated: \(authState.isAuthenticated), loading: \(authState.isLoading)")
         }
-        .onChange(of: authState.isAuthenticated) { _, newValue in
+        .onChange(of: authState.isAuthenticated) { newValue in
             print("📱 Auth state changed - authenticated: \(newValue)")
 
             if !newValue {

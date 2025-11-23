@@ -75,7 +75,7 @@ struct WaveformBar: View {
             .onAppear {
                 startAnimationIfNeeded()
             }
-            .onChange(of: isRefreshing) { _, newValue in
+            .onChange(of: isRefreshing) { newValue in
                 if newValue {
                     startAnimationIfNeeded()
                 } else {

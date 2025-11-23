@@ -337,7 +337,7 @@ class SpotifyService: NSObject {
         let body = ["ids": [trackId]]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SpotifyError.apiError("Invalid response")
@@ -347,6 +347,12 @@ class SpotifyService: NSObject {
             print("✅ Track saved to Spotify library")
         } else if httpResponse.statusCode == 401 {
             throw SpotifyError.apiError("Unauthorized - token may be expired")
+        } else if httpResponse.statusCode == 403 {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            if body.lowercased().contains("insufficient") || body.lowercased().contains("scope") {
+                throw SpotifyError.apiError("Missing permission to save tracks. Please relink Spotify to grant library access.")
+            }
+            throw SpotifyError.apiError("Forbidden - check Spotify scopes/permissions")
         } else {
             throw SpotifyError.apiError("Failed to save track (status: \(httpResponse.statusCode))")
         }

@@ -232,7 +232,7 @@ private struct SongRecognitionSheet: View {
                         proxy.scrollTo("top", anchor: .top)
                     }
                 }
-                .onChange(of: manager.state) { _, _ in
+                .onChange(of: manager.state) { _ in
                     withAnimation(.easeInOut) {
                         proxy.scrollTo("top", anchor: .top)
                     }
@@ -378,7 +378,7 @@ private struct ListeningIndicatorView: View {
         }
         .frame(maxWidth: .infinity)
         .onAppear { updateAnimationState(for: state) }
-        .onChange(of: state) { _, newValue in
+        .onChange(of: state) { newValue in
             updateAnimationState(for: newValue)
         }
     }

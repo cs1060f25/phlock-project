@@ -3,7 +3,12 @@ import SwiftUI
 extension Font {
     // Lora font family
     static func lora(size: CGFloat, weight: LoraWeight = .regular) -> Font {
-        return .custom(weight.fontName, size: size)
+        switch weight {
+        case .regular: return Font.custom("Lora-Regular", size: size)
+        case .medium: return Font.custom("Lora-Medium", size: size)
+        case .semiBold: return Font.custom("Lora-SemiBold", size: size)
+        case .bold: return Font.custom("Lora-Bold", size: size)
+        }
     }
 
     enum LoraWeight {
@@ -11,14 +16,5 @@ extension Font {
         case medium
         case semiBold
         case bold
-
-        var fontName: String {
-            switch self {
-            case .regular: return "Lora-Regular"
-            case .medium: return "Lora-Medium"
-            case .semiBold: return "Lora-SemiBold"
-            case .bold: return "Lora-Bold"
-            }
-        }
     }
 }

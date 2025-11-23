@@ -124,6 +124,16 @@ class AuthServiceV2 {
             // User already exists, linked accounts
             print("✅ Linked Spotify to existing user: \(existingUser.id)")
 
+            // Refresh platform token with latest scopes
+            try await storePlatformToken(
+                userId: existingUser.id,
+                platformType: .spotify,
+                accessToken: providerToken,
+                refreshToken: spotifyAuth.refreshToken,
+                expiresIn: spotifyAuth.expiresIn,
+                scope: spotifyAuth.scope
+            )
+
             // Update music data in background
             Task {
                 try? await updateSpotifyMusicData(
@@ -141,15 +151,21 @@ class AuthServiceV2 {
         let topArtistsResponse = try await SpotifyService.shared.getTopArtists(accessToken: providerToken)
 
         // Fetch Apple Music IDs for cross-platform linking
-        let topArtistsWithCrossPlatformIds = await withTaskGroup(of: (String, String, String?, String?).self) { group in
+        let topArtistsWithCrossPlatformIds = await withTaskGroup(of: (id: String, name: String, imageUrl: String?, genres: [String], appleMusicId: String?).self) { group in
             for artist in topArtistsResponse.items.prefix(10) {
                 group.addTask {
                     let appleMusicId = try? await AppleMusicService.shared.searchArtistId(artistName: artist.name)
-                    return (artist.id, artist.name, artist.images?.first?.url, appleMusicId)
+                    return (
+                        id: artist.id,
+                        name: artist.name,
+                        imageUrl: artist.images?.first?.url,
+                        genres: artist.genres ?? [],
+                        appleMusicId: appleMusicId
+                    )
                 }
             }
 
-            var results: [(String, String, String?, String?)] = []
+            var results: [(id: String, name: String, imageUrl: String?, genres: [String], appleMusicId: String?)] = []
             for await result in group {
                 results.append(result)
             }
@@ -167,15 +183,18 @@ class AuthServiceV2 {
             appleMusicStorefront: nil,
             topArtists: topArtistsWithCrossPlatformIds.map {
                 MusicItem(
-                    id: $0.0,
-                    name: $0.1,
+                    id: $0.id,
+                    name: $0.name,
                     artistName: nil,
                     previewUrl: nil,
-                    albumArtUrl: $0.2,
+                    albumArtUrl: $0.imageUrl,
                     isrc: nil,
                     playedAt: nil,
-                    spotifyId: $0.0,
-                    appleMusicId: $0.3
+                    spotifyId: $0.id,
+                    appleMusicId: $0.appleMusicId,
+                    popularity: nil,
+                    followerCount: nil,
+                    genres: $0.genres
                 )
             },
             topTracks: recentlyPlayed.items.prefix(20).map {
@@ -226,8 +245,8 @@ class AuthServiceV2 {
             platformType: .spotify,
             accessToken: providerToken,
             refreshToken: spotifyAuth.refreshToken,
-            expiresIn: 3600, // Spotify tokens expire in 1 hour
-            scope: "user-read-email user-read-private user-top-read"
+            expiresIn: spotifyAuth.expiresIn, // Use actual expiry from auth response
+            scope: spotifyAuth.scope
         )
 
         print("✅ Created new user with Spotify auth: \(newUser.id)")
@@ -469,6 +488,7 @@ class AuthServiceV2 {
             let profile_photo_url: String?
             let auth_provider: String
             let music_platform: String
+            let platform_type: String
             let spotify_user_id: String?
             let apple_user_id: String?
             let platform_data: String
@@ -483,6 +503,7 @@ class AuthServiceV2 {
             profile_photo_url: profilePhotoUrl,
             auth_provider: authProvider,
             music_platform: musicPlatform,
+            platform_type: musicPlatform,
             spotify_user_id: spotifyUserId,
             apple_user_id: appleUserId,
             platform_data: platformDataJSON,
@@ -555,7 +576,8 @@ class AuthServiceV2 {
                 spotifyId: artist.id,
                 appleMusicId: nil,
                 popularity: nil,
-                followerCount: nil
+                followerCount: nil,
+                genres: artist.genres ?? []
             )
         }
 

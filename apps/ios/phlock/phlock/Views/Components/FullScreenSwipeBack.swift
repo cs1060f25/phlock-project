@@ -16,7 +16,6 @@ struct FullScreenSwipeBack: UIViewControllerRepresentable {
 class FullScreenSwipeBackViewController: UIViewController, UINavigationControllerDelegate {
     private var fullScreenGesture: UIPanGestureRecognizer?
     private var interactiveTransition: UIPercentDrivenInteractiveTransition?
-    private var originalDelegate: UINavigationControllerDelegate?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -39,8 +38,7 @@ class FullScreenSwipeBackViewController: UIViewController, UINavigationControlle
               let window = view.window,
               fullScreenGesture == nil else { return }
 
-        // Store and replace delegate
-        originalDelegate = navController.delegate
+        // Don't modify delegate - just set ourselves as the transition provider
         navController.delegate = self
 
         // Disable edge gesture
@@ -51,8 +49,6 @@ class FullScreenSwipeBackViewController: UIViewController, UINavigationControlle
         pan.delegate = self
         window.addGestureRecognizer(pan)
         fullScreenGesture = pan
-
-        print("✅ Full-screen swipe gesture installed on window")
     }
 
     private func cleanupGesture() {
@@ -65,9 +61,8 @@ class FullScreenSwipeBackViewController: UIViewController, UINavigationControlle
         // Restore nav controller state
         if let navController = navigationController {
             navController.interactivePopGestureRecognizer?.isEnabled = true
-
             if navController.delegate === self {
-                navController.delegate = originalDelegate
+                navController.delegate = nil
             }
         }
     }
@@ -86,7 +81,7 @@ class FullScreenSwipeBackViewController: UIViewController, UINavigationControlle
 
         switch gesture.state {
         case .began:
-            print("🟡 Gesture began")
+            break
 
         case .changed:
             // Check if this is a valid rightward swipe
@@ -95,8 +90,6 @@ class FullScreenSwipeBackViewController: UIViewController, UINavigationControlle
 
             // Start transition once we've confirmed direction and moved enough
             if interactiveTransition == nil && isRightward && isHorizontal && translation.x > 20 {
-                print("🟢 Starting transition at \(Int(translation.x))px")
-
                 // Create transition that expects interactive start
                 let transition = UIPercentDrivenInteractiveTransition()
                 transition.wantsInteractiveStart = true
@@ -109,26 +102,21 @@ class FullScreenSwipeBackViewController: UIViewController, UINavigationControlle
 
                 // Immediately update to current position
                 transition.update(progress)
-                print("📊 Initial: \(Int(progress * 100))%")
             } else if let transition = interactiveTransition {
                 // Continue updating if transition is active
                 transition.update(progress)
-                print("📊 \(Int(progress * 100))% (\(Int(translation.x))px)")
             }
 
         case .ended, .cancelled:
             guard let transition = interactiveTransition else {
-                print("⚠️ Ended without transition")
                 return
             }
 
             let shouldComplete = progress > 0.35 || velocity.x > 1000
 
             if shouldComplete {
-                print("✅ Finishing at \(Int(progress * 100))%")
                 transition.finish()
             } else {
-                print("❌ Cancelling at \(Int(progress * 100))%")
                 transition.cancel()
             }
 

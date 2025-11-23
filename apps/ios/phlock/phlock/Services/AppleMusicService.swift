@@ -63,35 +63,76 @@ class AppleMusicService {
     /// Fetch user's recently played tracks with artist IDs
     func getRecentlyPlayed() async throws -> [(track: AppleMusicTrack, artistId: String?)] {
         print("🎵 Fetching recently played tracks from Apple Music...")
-        var request = MusicRecentlyPlayedRequest<Song>()
-        request.limit = 20
-        let response = try await request.response()
-
-        print("📀 Apple Music returned \(response.items.count) recently played tracks:")
-
-        let results = response.items.compactMap { song in
-            print("   🎧 '\(song.title)' by \(song.artistName)")
-
-            let track = AppleMusicTrack(
-                id: song.id.rawValue,
-                title: song.title,
-                artistName: song.artistName,
-                artworkURL: song.artwork?.url(width: 300, height: 300)?.absoluteString,
-                previewURL: song.previewAssets?.first?.url?.absoluteString
-            )
-            // Extract artist ID from the first artist
-            let artistId = song.artists?.first?.id.rawValue
-
-            if let artistId = artistId {
-                print("      ✅ Artist ID: \(artistId)")
-            } else {
-                print("      ⚠️ No artist ID available")
+        
+        var results: [(track: AppleMusicTrack, artistId: String?)] = []
+        var seenIds = Set<String>()
+        
+        // 1. Try MusicRecentlyPlayedRequest first
+        do {
+            var request = MusicRecentlyPlayedRequest<Song>()
+            request.limit = 20
+            let response = try await request.response()
+            print("📀 Apple Music returned \(response.items.count) recently played tracks")
+            
+            for song in response.items {
+                let id = song.id.rawValue
+                if !seenIds.contains(id) {
+                    seenIds.insert(id)
+                    let track = AppleMusicTrack(
+                        id: id,
+                        title: song.title,
+                        artistName: song.artistName,
+                        artworkURL: song.artwork?.url(width: 300, height: 300)?.absoluteString,
+                        previewURL: song.previewAssets?.first?.url?.absoluteString,
+                        url: song.url?.absoluteString
+                    )
+                    results.append((track: track, artistId: song.artists?.first?.id.rawValue))
+                }
             }
-
-            return (track: track, artistId: artistId)
+        } catch {
+            print("⚠️ Error fetching recently played: \(error)")
+            // Don't throw here, try fallback
         }
 
-        print("✅ Processed \(results.count) tracks from Apple Music")
+        // 2. If we don't have enough tracks, try fetching from Library sorted by lastPlayedDate
+        if results.count < 20 {
+            print("⚠️ Only found \(results.count) recently played tracks, fetching from Library...")
+            
+            do {
+                var libraryRequest = MusicLibraryRequest<Song>()
+                libraryRequest.limit = 20
+                libraryRequest.sort(by: \.lastPlayedDate, ascending: false)
+                
+                let libraryResponse = try await libraryRequest.response()
+                print("📚 Library returned \(libraryResponse.items.count) tracks")
+                
+                for song in libraryResponse.items {
+                    let id = song.id.rawValue
+                    if !seenIds.contains(id) {
+                        seenIds.insert(id)
+                        
+                        // Only add if it has a valid title (some local files might be weird)
+                        if !song.title.isEmpty {
+                            let track = AppleMusicTrack(
+                                id: id,
+                                title: song.title,
+                                artistName: song.artistName,
+                                artworkURL: song.artwork?.url(width: 300, height: 300)?.absoluteString,
+                                previewURL: song.previewAssets?.first?.url?.absoluteString,
+                                url: song.url?.absoluteString
+                            )
+                            results.append((track: track, artistId: song.artists?.first?.id.rawValue))
+                        }
+                    }
+                    
+                    if results.count >= 20 { break }
+                }
+            } catch {
+                print("⚠️ Error fetching from library: \(error)")
+            }
+        }
+        
+        print("✅ Final processed count: \(results.count)")
         return results
     }
 
@@ -142,7 +183,8 @@ class AppleMusicService {
                     title: song.title,
                     artistName: song.artistName,
                     artworkURL: song.artwork?.url(width: 300, height: 300)?.absoluteString,
-                    previewURL: song.previewAssets?.first?.url?.absoluteString
+                    previewURL: song.previewAssets?.first?.url?.absoluteString,
+                    url: song.url?.absoluteString
                 )
             }
 
@@ -291,7 +333,8 @@ class AppleMusicService {
                             title: song.title,
                             artistName: song.artistName,
                             artworkURL: song.artwork?.url(width: 300, height: 300)?.absoluteString,
-                            previewURL: song.previewAssets?.first?.url?.absoluteString
+                            previewURL: song.previewAssets?.first?.url?.absoluteString,
+                            url: song.url?.absoluteString
                         )
                     }
                 }
@@ -318,7 +361,8 @@ class AppleMusicService {
                             title: song.title,
                             artistName: song.artistName,
                             artworkURL: song.artwork?.url(width: 300, height: 300)?.absoluteString,
-                            previewURL: song.previewAssets?.first?.url?.absoluteString
+                            previewURL: song.previewAssets?.first?.url?.absoluteString,
+                            url: song.url?.absoluteString
                         )
                     }
                 }
@@ -340,6 +384,65 @@ class AppleMusicService {
         // For now, return nil to fall back to text search with validation
         return nil
     }
+
+    /// Fetch an artist's top songs from Apple Music (with fallback search)
+    func getArtistTopTracks(artistId: String, artistName: String? = nil, limit: Int = 10) async throws -> [MusicItem] {
+        let status = await MusicAuthorization.request()
+        guard status == .authorized else {
+            throw AppleMusicError.authorizationDenied
+        }
+
+        var resolvedArtistName = artistName
+        var songs: [Song] = []
+
+        // Primary: artist lookup with topSongs relationship
+        do {
+            var artistRequest = MusicCatalogResourceRequest<Artist>(matching: \.id, equalTo: MusicItemID(artistId))
+            artistRequest.properties = [.topSongs]
+            let response = try await artistRequest.response()
+
+            if let artist = response.items.first {
+                resolvedArtistName = resolvedArtistName ?? artist.name
+                if let topSongs = artist.topSongs {
+                    songs = Array(topSongs.prefix(limit))
+                }
+            }
+        } catch {
+            print("⚠️ Apple Music artist lookup failed: \(error)")
+        }
+
+        // Fallback: search songs by artist name if needed
+        if songs.isEmpty, let name = resolvedArtistName {
+            do {
+                var searchRequest = MusicCatalogSearchRequest(term: name, types: [Song.self])
+                searchRequest.limit = limit * 2
+                let searchResponse = try await searchRequest.response()
+                let filtered = searchResponse.songs.filter { song in
+                    song.artistName.lowercased().contains(name.lowercased())
+                }
+                songs = Array(filtered.prefix(limit))
+            } catch {
+                print("⚠️ Apple Music fallback search failed: \(error)")
+            }
+        }
+
+        return songs.map { song in
+            MusicItem(
+                id: song.id.rawValue,
+                name: song.title,
+                artistName: song.artistName,
+                previewUrl: song.previewAssets?.first?.url?.absoluteString,
+                albumArtUrl: song.artwork?.url(width: 300, height: 300)?.absoluteString,
+                isrc: song.isrc,
+                playedAt: nil,
+                spotifyId: nil,
+                appleMusicId: song.id.rawValue,
+                popularity: nil,
+                followerCount: nil
+            )
+        }
+    }
+
 
     /// Save a track to the user's Apple Music library
     /// - Parameter trackId: The Apple Music catalog track ID
@@ -415,6 +518,7 @@ struct AppleMusicTrack: Codable {
     let artistName: String
     let artworkURL: String?
     let previewURL: String?
+    let url: String?
 }
 
 struct AppleMusicPlaylist: Codable {

@@ -62,7 +62,7 @@ struct EditProfileView: View {
                                         .foregroundColor(.gray)
 
                                     Text("add photo")
-                                        .font(.nunitoSans(size: 13, weight: .semiBold))
+                                        .font(.lora(size: 13, weight: .semiBold))
                                         .foregroundColor(.gray)
                                 }
                             }
@@ -157,7 +157,6 @@ struct EditProfileView: View {
         }
         .dismissKeyboardOnTouch()
         .keyboardResponsive()
-        .fullScreenSwipeBack()
     }
 
     private func saveProfile() async {

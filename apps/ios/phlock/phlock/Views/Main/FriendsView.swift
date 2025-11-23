@@ -3,98 +3,391 @@ import SwiftUI
 struct FriendsView: View {
     @EnvironmentObject var authState: AuthenticationState
     @Environment(\.colorScheme) var colorScheme
-    @State private var selectedSegment = 0
+    @Binding var navigationPath: NavigationPath
+    @Binding var refreshTrigger: Int
+    @Binding var scrollToTopTrigger: Int
+
     @State private var searchText = ""
     @State private var searchResults: [User] = []
     @State private var friends: [User] = []
     @State private var pendingRequests: [FriendshipWithUser] = []
+    @State private var contactMatches: [ContactMatch] = []
     @State private var isSearching = false
-    @State private var isLoading = false
+    @State private var isLoading = true
+    @State private var isFetchingContacts = false
+    @State private var hasFetchedContacts = false
+    @State private var contactError: String?
     @State private var showError = false
     @State private var errorMessage = ""
 
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Segment Control
-                Picker("View", selection: $selectedSegment) {
-                    Text("friends").tag(0)
-                    Text("search").tag(1)
-                    Text("requests").tag(2)
-                }
-                .pickerStyle(.segmented)
-                .padding()
+    private var filteredFriends: [User] {
+        guard !searchText.isEmpty else { return friends }
+        return friends.filter { $0.displayName.localizedCaseInsensitiveContains(searchText) }
+    }
 
-                // Content
-                if selectedSegment == 0 {
-                    // Friends List
-                    FriendsListView(friends: friends, isLoading: isLoading)
-                } else if selectedSegment == 1 {
-                    // Search
-                    SearchUsersView(
-                        searchText: $searchText,
-                        searchResults: $searchResults,
-                        isSearching: $isSearching
-                    )
-                } else {
-                    // Pending Requests
-                    PendingRequestsView(
-                        pendingRequests: pendingRequests,
-                        isLoading: isLoading,
-                        onAccept: { friendship in
-                            Task { await acceptRequest(friendship) }
-                        },
-                        onReject: { friendship in
-                            Task { await rejectRequest(friendship) }
+    var body: some View {
+        NavigationStack(path: $navigationPath) {
+            ZStack(alignment: .top) {
+                // Background
+                (colorScheme == .dark ? Color.black : Color(uiColor: .systemGroupedBackground))
+                    .ignoresSafeArea()
+
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                            // Search Bar (Non-sticky, part of content)
+                            searchBar
+                                .id("friends-top")
+                                .padding(.top, 8)
+
+                            if !pendingRequests.isEmpty {
+                                requestsSection
+                            }
+
+                            if !searchText.isEmpty {
+                                peopleSection
+                            }
+
+                            friendsSection
+
+                            contactsSection
+                                .padding(.bottom, 100) // Extra padding at bottom
                         }
-                    )
+                    }
+                    .refreshable {
+                        await loadData()
+                        if !searchText.isEmpty {
+                            await performSearch()
+                        }
+                        if hasFetchedContacts {
+                            await fetchContacts()
+                        }
+                    }
+                    .onChange(of: scrollToTopTrigger) { _ in
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            proxy.scrollTo("friends-top", anchor: .top)
+                        }
+                    }
                 }
             }
-            .navigationTitle("Friends")
+            .navigationTitle("friends") // Standard navigation title
             .navigationBarTitleDisplayMode(.large)
+            .navigationDestination(for: User.self) { user in
+                UserProfileView(user: user)
+            }
             .alert("Error", isPresented: $showError) {
                 Button("OK") { }
             } message: {
                 Text(errorMessage)
             }
+            .onChange(of: refreshTrigger) { _ in
+                Task { await loadData() }
+            }
+            .onChange(of: searchText) { _ in
+                Task { await performSearch() }
+            }
             .task {
                 await loadData()
             }
-            .refreshable {
-                await loadData()
+        }
+    }
+
+    // MARK: - Sections
+
+    @ViewBuilder
+    private var searchBar: some View {
+        HStack(spacing: 12) {
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                
+                TextField("Search friends...", text: $searchText)
+                    .font(.lora(size: 16))
+                    .textFieldStyle(.plain)
+                    .autocorrectionDisabled()
+                
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                        searchResults = []
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(colorScheme == .dark ? Color(uiColor: .secondarySystemGroupedBackground) : Color.white)
+                    .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
+            )
+        }
+        .padding(.horizontal)
+        .padding(.bottom, 12)
+    }
+
+    @ViewBuilder
+    private var requestsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("requests")
+                .font(.lora(size: 20, weight: .bold))
+                .padding(.horizontal)
+                .padding(.top, 16)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(pendingRequests) { friendship in
+                        FriendRequestCard(
+                            friendshipWithUser: friendship,
+                            onAccept: { Task { await acceptRequest(friendship) } },
+                            onReject: { Task { await rejectRequest(friendship) } }
+                        )
+                    }
+                }
+                .padding(.horizontal)
             }
         }
-        .fullScreenSwipeBack()
+        .padding(.bottom, 24)
     }
+
+    @ViewBuilder
+    private var peopleSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("people on phlock")
+                .font(.lora(size: 14, weight: .bold))
+                .foregroundColor(.secondary)
+                .textCase(.uppercase)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+
+            if isSearching {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding(32)
+            } else if searchResults.isEmpty {
+                VStack(spacing: 16) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary)
+
+                    Text("No matches found")
+                        .font(.lora(size: 20, weight: .semiBold))
+
+                    Text("Try searching for a different name.")
+                        .font(.lora(size: 15))
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(32)
+            } else {
+                LazyVStack(spacing: 0) {
+                    ForEach(searchResults.filter { $0.id != authState.currentUser?.id }) { user in
+                        NavigationLink(value: user) {
+                            UserRow(user: user)
+                                .padding(.horizontal)
+                                .padding(.vertical, 8)
+                                .background(Color(uiColor: .systemBackground))
+                        }
+                        Divider().padding(.leading, 70)
+                    }
+                }
+                .background(Color(uiColor: .systemBackground))
+                .cornerRadius(16)
+                .padding(.horizontal)
+            }
+        }
+        .padding(.bottom, 24)
+    }
+
+    @ViewBuilder
+    private var friendsSection: some View {
+        LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+            Section {
+                if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(32)
+                } else if filteredFriends.isEmpty {
+                    if searchText.isEmpty {
+                        // Empty state for no friends
+                        VStack(spacing: 16) {
+                            Image(systemName: "person.2.slash")
+                                .font(.system(size: 48))
+                                .foregroundColor(.secondary)
+                            Text("No friends yet")
+                                .font(.lora(size: 20, weight: .semiBold))
+                            Text("Your crew starts here. Add friends to share music.")
+                                .font(.lora(size: 16))
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 40)
+                    }
+                } else {
+                    LazyVStack(spacing: 0) {
+                        ForEach(filteredFriends) { friend in
+                            NavigationLink(value: friend) {
+                                UserRow(user: friend)
+                                    .padding(.horizontal)
+                                    .padding(.vertical, 10)
+                                    .background(Color(uiColor: .systemBackground))
+                            }
+                            Divider().padding(.leading, 74)
+                        }
+                    }
+                    .background(Color(uiColor: .systemBackground))
+                    .cornerRadius(16)
+                    .padding(.horizontal)
+                }
+            } header: {
+                HStack {
+                    Text("your friends")
+                        .font(.lora(size: 20, weight: .bold))
+                    Spacer()
+                    Text("\(filteredFriends.count)")
+                        .font(.lora(size: 14, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Capsule())
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(
+                    (colorScheme == .dark ? Color.black : Color(uiColor: .systemGroupedBackground))
+                        .opacity(0.95)
+                )
+            }
+        }
+        .padding(.bottom, 24)
+    }
+
+    @ViewBuilder
+    private var contactsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("from contacts")
+                .font(.lora(size: 20, weight: .bold))
+                .padding(.horizontal)
+
+            if isFetchingContacts {
+                HStack {
+                    ProgressView()
+                    Text("Syncing contacts...")
+                        .font(.lora(size: 15))
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+            } else if let contactError {
+                VStack(spacing: 8) {
+                    Text("Could not access contacts")
+                        .font(.lora(size: 15, weight: .medium))
+                    Text(contactError)
+                        .font(.lora(size: 13))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("Try Again") {
+                        Task { await fetchContacts() }
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                .cornerRadius(12)
+                .padding(.horizontal)
+            } else if !contactMatches.isEmpty {
+                LazyVStack(spacing: 0) {
+                    ForEach(contactMatches) { match in
+                        NavigationLink(value: match.user) {
+                            HStack(spacing: 12) {
+                                UserRow(user: match.user)
+                                Spacer()
+                                Text("as \(match.contactName)")
+                                    .font(.lora(size: 12))
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.gray.opacity(0.1))
+                                    .cornerRadius(6)
+                            }
+                            .padding(.horizontal)
+                            .padding(.vertical, 10)
+                            .background(Color(uiColor: .systemBackground))
+                        }
+                        Divider().padding(.leading, 74)
+                    }
+                }
+                .background(Color(uiColor: .systemBackground))
+                .cornerRadius(16)
+                .padding(.horizontal)
+            } else {
+                ContactsBanner {
+                    Task { await fetchContacts() }
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+
+    // MARK: - Data Loading
 
     private func loadData() async {
         guard let currentUser = authState.currentUser else { return }
-
         isLoading = true
-
         do {
             async let friendsTask = UserService.shared.getFriends(for: currentUser.id)
             async let requestsTask = UserService.shared.getPendingRequests(for: currentUser.id)
-
             friends = try await friendsTask
             pendingRequests = try await requestsTask
         } catch {
             errorMessage = error.localizedDescription
             showError = true
         }
-
         isLoading = false
+    }
+
+    private func performSearch() async {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty, query.count >= 2 else {
+            searchResults = []
+            isSearching = false
+            return
+        }
+        isSearching = true
+        do {
+            searchResults = try await UserService.shared.searchUsers(query: query)
+        } catch {
+            print("Search error: \(error)")
+        }
+        isSearching = false
+    }
+
+    private func fetchContacts() async {
+        isFetchingContacts = true
+        contactError = nil
+        hasFetchedContacts = true
+        do {
+            contactMatches = try await ContactsService.shared.findPhlockUsersInContacts()
+        } catch ContactsServiceError.accessDenied {
+            contactError = "Enable Contacts access in Settings to find friends."
+        } catch {
+            contactError = error.localizedDescription
+        }
+        isFetchingContacts = false
     }
 
     private func acceptRequest(_ friendshipWithUser: FriendshipWithUser) async {
         guard let currentUser = authState.currentUser else { return }
-
         do {
-            try await UserService.shared.acceptFriendRequest(friendshipId: friendshipWithUser.friendship.id)
-
-            // Clear cache to ensure fresh data
+            try await UserService.shared.acceptFriendRequest(
+                friendshipId: friendshipWithUser.friendship.id,
+                currentUserId: currentUser.id
+            )
             UserService.shared.clearCache(for: currentUser.id)
-
             await loadData()
         } catch {
             errorMessage = error.localizedDescription
@@ -104,13 +397,9 @@ struct FriendsView: View {
 
     private func rejectRequest(_ friendshipWithUser: FriendshipWithUser) async {
         guard let currentUser = authState.currentUser else { return }
-
         do {
             try await UserService.shared.rejectFriendRequest(friendshipId: friendshipWithUser.friendship.id)
-
-            // Clear cache to ensure fresh data
             UserService.shared.clearCache(for: currentUser.id)
-
             await loadData()
         } catch {
             errorMessage = error.localizedDescription
@@ -119,300 +408,153 @@ struct FriendsView: View {
     }
 }
 
-// MARK: - Friends List View
+// MARK: - Subcomponents
 
-struct FriendsListView: View {
-    let friends: [User]
-    let isLoading: Bool
-
-    var body: some View {
-        Group {
-            if isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if friends.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "person.2.slash")
-                        .font(.system(size: 48))
-                        .foregroundColor(.gray)
-
-                    Text("no friends yet")
-                        .font(.nunitoSans(size: 20, weight: .semiBold))
-
-                    Text("search for users to add friends")
-                        .font(.nunitoSans(size: 15))
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List(friends) { friend in
-                    NavigationLink(destination: UserProfileView(user: friend)) {
-                        UserRow(user: friend)
-                    }
-                }
-                .listStyle(.plain)
-            }
-        }
-    }
-}
-
-// MARK: - Search Users View
-
-struct SearchUsersView: View {
-    @EnvironmentObject var authState: AuthenticationState
+struct FriendRequestCard: View {
+    let friendshipWithUser: FriendshipWithUser
+    let onAccept: () -> Void
+    let onReject: () -> Void
     @Environment(\.colorScheme) var colorScheme
-    @Binding var searchText: String
-    @Binding var searchResults: [User]
-    @Binding var isSearching: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Search Bar
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.gray)
-
-                TextField("search users...", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .autocorrectionDisabled()
-                    .onChange(of: searchText) { oldValue, newValue in
-                        Task {
-                            await performSearch()
-                        }
-                    }
-
-                if !searchText.isEmpty {
-                    Button {
-                        searchText = ""
-                        searchResults = []
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.gray)
-                    }
+        VStack(spacing: 12) {
+            if let photoUrl = friendshipWithUser.user.profilePhotoUrl, let url = URL(string: photoUrl) {
+                AsyncImage(url: url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    ProfilePhotoPlaceholder(displayName: friendshipWithUser.user.displayName)
                 }
-            }
-            .padding(12)
-            .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
-            .cornerRadius(12)
-            .padding()
-
-            // Results
-            if isSearching {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if searchText.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 48))
-                        .foregroundColor(.gray)
-
-                    Text("search for friends")
-                        .font(.nunitoSans(size: 20, weight: .semiBold))
-
-                    Text("enter a name to find users")
-                        .font(.nunitoSans(size: 15))
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if searchResults.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "person.slash")
-                        .font(.system(size: 48))
-                        .foregroundColor(.gray)
-
-                    Text("no users found")
-                        .font(.nunitoSans(size: 20, weight: .semiBold))
-
-                    Text("try a different search")
-                        .font(.nunitoSans(size: 15))
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(width: 60, height: 60)
+                .clipShape(Circle())
+                .shadow(radius: 2)
             } else {
-                List(searchResults.filter { $0.id != authState.currentUser?.id }) { user in
-                    NavigationLink(destination: UserProfileView(user: user)) {
-                        UserRow(user: user)
-                    }
+                ProfilePhotoPlaceholder(displayName: friendshipWithUser.user.displayName)
+                    .frame(width: 60, height: 60)
+            }
+
+            VStack(spacing: 2) {
+                Text(friendshipWithUser.user.displayName)
+                    .font(.lora(size: 16, weight: .bold))
+                    .lineLimit(1)
+                Text("wants to connect")
+                    .font(.lora(size: 12))
+                    .foregroundColor(.secondary)
+            }
+
+            HStack(spacing: 12) {
+                Button(action: onReject) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .frame(width: 32, height: 32)
+                        .background(Color.gray.opacity(0.1))
+                        .clipShape(Circle())
                 }
-                .listStyle(.plain)
+                
+                Button(action: onAccept) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Color.black)
+                        .clipShape(Circle())
+                }
             }
         }
-    }
-
-    private func performSearch() async {
-        guard !searchText.isEmpty else {
-            searchResults = []
-            return
-        }
-
-        isSearching = true
-
-        do {
-            searchResults = try await UserService.shared.searchUsers(query: searchText)
-        } catch {
-            print("Search error: \(error)")
-        }
-
-        isSearching = false
+        .padding(16)
+        .frame(width: 160)
+        .background(Color(uiColor: .systemBackground))
+        .cornerRadius(16)
+        .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 4)
     }
 }
 
-// MARK: - Pending Requests View
-
-struct PendingRequestsView: View {
-    let pendingRequests: [FriendshipWithUser]
-    let isLoading: Bool
-    let onAccept: (FriendshipWithUser) -> Void
-    let onReject: (FriendshipWithUser) -> Void
+struct ContactsBanner: View {
+    let action: () -> Void
+    @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
-        Group {
-            if isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if pendingRequests.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "envelope")
-                        .font(.system(size: 48))
-                        .foregroundColor(.gray)
+        Button(action: action) {
+            HStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .fill(Color.blue.opacity(0.1))
+                        .frame(width: 48, height: 48)
+                    Image(systemName: "person.crop.circle.badge.plus")
+                        .font(.system(size: 24))
+                        .foregroundColor(.blue)
+                }
 
-                    Text("no pending requests")
-                        .font(.nunitoSans(size: 20, weight: .semiBold))
-
-                    Text("friend requests will appear here")
-                        .font(.nunitoSans(size: 15))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("find friends")
+                        .font(.lora(size: 17, weight: .bold))
+                        .foregroundColor(.primary)
+                    Text("Sync contacts to find people you know")
+                        .font(.lora(size: 13))
                         .foregroundColor(.secondary)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List(pendingRequests) { friendshipWithUser in
-                    FriendRequestRow(
-                        friendshipWithUser: friendshipWithUser,
-                        onAccept: { onAccept(friendshipWithUser) },
-                        onReject: { onReject(friendshipWithUser) }
-                    )
-                }
-                .listStyle(.plain)
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.secondary)
             }
+            .padding(16)
+            .background(Color(uiColor: .systemBackground))
+            .cornerRadius(16)
+            .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
         }
     }
 }
-
-// MARK: - User Row Component
 
 struct UserRow: View {
     let user: User
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Profile Photo
+        HStack(spacing: 16) {
             if let photoUrl = user.profilePhotoUrl, let url = URL(string: photoUrl) {
                 AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
+                    image.resizable().scaledToFill()
                 } placeholder: {
                     ProfilePhotoPlaceholder(displayName: user.displayName)
                 }
-                .frame(width: 50, height: 50)
+                .frame(width: 48, height: 48)
                 .clipShape(Circle())
             } else {
                 ProfilePhotoPlaceholder(displayName: user.displayName)
-                    .frame(width: 50, height: 50)
+                    .frame(width: 48, height: 48)
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(user.displayName)
-                    .font(.nunitoSans(size: 17, weight: .semiBold))
+                    .font(.lora(size: 17, weight: .medium))
+                    .foregroundColor(.primary)
 
-                HStack(spacing: 4) {
-                    Image(systemName: user.platformType == .spotify ? "music.note" : "applelogo")
-                        .font(.system(size: 11))
-                    Text(user.platformType == .spotify ? "spotify" : "apple music")
-                        .font(.nunitoSans(size: 13))
+                if let username = user.username {
+                    Text("@\(username)")
+                        .font(.lora(size: 13))
+                        .foregroundColor(.secondary)
+                } else {
+                    HStack(spacing: 4) {
+                        Image(systemName: user.platformType == .spotify ? "music.note" : "applelogo")
+                            .font(.system(size: 10))
+                        Text(user.platformType == .spotify ? "Spotify" : "Apple Music")
+                            .font(.lora(size: 13))
+                    }
+                    .foregroundColor(.secondary)
                 }
-                .foregroundColor(.secondary)
             }
-
             Spacer()
         }
-        .padding(.vertical, 4)
-    }
-}
-
-// MARK: - Friend Request Row Component
-
-struct FriendRequestRow: View {
-    @Environment(\.colorScheme) var colorScheme
-    let friendshipWithUser: FriendshipWithUser
-    let onAccept: () -> Void
-    let onReject: () -> Void
-
-    var body: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                // Profile Photo
-                if let photoUrl = friendshipWithUser.user.profilePhotoUrl, let url = URL(string: photoUrl) {
-                    AsyncImage(url: url) { image in
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } placeholder: {
-                        ProfilePhotoPlaceholder(displayName: friendshipWithUser.user.displayName)
-                    }
-                    .frame(width: 50, height: 50)
-                    .clipShape(Circle())
-                } else {
-                    ProfilePhotoPlaceholder(displayName: friendshipWithUser.user.displayName)
-                        .frame(width: 50, height: 50)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(friendshipWithUser.user.displayName)
-                        .font(.nunitoSans(size: 17, weight: .semiBold))
-
-                    Text("wants to be friends")
-                        .font(.nunitoSans(size: 15))
-                        .foregroundColor(.secondary)
-                }
-
-                Spacer()
-            }
-
-            // Action Buttons
-            HStack(spacing: 12) {
-                Button {
-                    onReject()
-                } label: {
-                    Text("reject")
-                        .font(.nunitoSans(size: 15, weight: .semiBold))
-                        .foregroundColor(.primary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
-                        .cornerRadius(8)
-                }
-
-                Button {
-                    onAccept()
-                } label: {
-                    Text("accept")
-                        .font(.nunitoSans(size: 15, weight: .semiBold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.black)
-                        .cornerRadius(8)
-                }
-            }
-        }
-        .padding(.vertical, 8)
     }
 }
 
 #Preview {
-    NavigationStack {
-        FriendsView()
-            .environmentObject(AuthenticationState())
-    }
+    FriendsView(
+        navigationPath: .constant(NavigationPath()),
+        refreshTrigger: .constant(0),
+        scrollToTopTrigger: .constant(0)
+    )
+    .environmentObject(AuthenticationState())
 }

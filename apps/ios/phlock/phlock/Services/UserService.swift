@@ -31,6 +31,40 @@ class UserService {
         return users
     }
 
+    /// Find users whose phone numbers match the provided contact numbers
+    func findUsersByPhones(phoneNumbers: [String]) async throws -> [User] {
+        let normalizedPhones = Array(
+            Set(
+                phoneNumbers
+                    .map { ContactsService.normalizePhone($0) }
+                    .filter { !$0.isEmpty }
+            )
+        )
+
+        guard !normalizedPhones.isEmpty else { return [] }
+
+        var results: [User] = []
+        let chunkSize = 50
+        let chunks = stride(from: 0, to: normalizedPhones.count, by: chunkSize).map { index in
+            Array(normalizedPhones[index..<min(index + chunkSize, normalizedPhones.count)])
+        }
+
+        for chunk in chunks {
+            let users: [User] = try await supabase
+                .from("users")
+                .select("*")
+                .in("phone", values: chunk)
+                .execute()
+                .value
+
+            results.append(contentsOf: users)
+        }
+
+        // Deduplicate by user id
+        let unique = Dictionary(grouping: results, by: { $0.id }).compactMap { $0.value.first }
+        return unique
+    }
+
     /// Get a specific user by ID (with caching)
     func getUser(userId: UUID) async throws -> User? {
         // Check cache first
@@ -115,13 +149,40 @@ class UserService {
             .execute()
     }
 
-    /// Accept a friend request
-    func acceptFriendRequest(friendshipId: UUID) async throws {
+    /// Accept a friend request and notify the requester
+    func acceptFriendRequest(friendshipId: UUID, currentUserId: UUID) async throws {
+        // Fetch friendship to identify requester/recipient
+        let friendships: [Friendship] = try await supabase
+            .from("friendships")
+            .select("*")
+            .eq("id", value: friendshipId.uuidString)
+            .limit(1)
+            .execute()
+            .value
+
+        guard let friendship = friendships.first else {
+            throw UserServiceError.friendshipNotFound
+        }
+
         try await supabase
             .from("friendships")
             .update(["status": "accepted"])
             .eq("id", value: friendshipId.uuidString)
             .execute()
+
+        let requesterId = friendship.userId1 == currentUserId ? friendship.userId2 : friendship.userId1
+
+        // Best-effort notification to the requester
+        do {
+            try await NotificationService.shared.createNotification(
+                userId: requesterId,
+                actorId: currentUserId,
+                type: .friendRequestAccepted,
+                message: "accepted your friend request"
+            )
+        } catch {
+            print("⚠️ Failed to create friend acceptance notification: \(error)")
+        }
     }
 
     /// Reject/remove a friend request or friendship
@@ -300,8 +361,8 @@ class UserService {
             .or("user_id_1.eq.\(userId.uuidString),user_id_2.eq.\(userId.uuidString)")
             .eq("status", value: "accepted")
             .eq("is_phlock_member", value: true)
-            .order("position", ascending: true)
-            .limit(5)
+            .order("position", ascending: true, nullsFirst: false)
+            .order("last_swapped_at", ascending: false) // newest updates first within position
             .execute()
             .value
 
@@ -326,16 +387,28 @@ class UserService {
         // Create lookup dictionary
         let userDict = Dictionary(uniqueKeysWithValues: friends.map { ($0.id, $0) })
 
-        // Build result with positions
-        var result: [FriendWithPosition] = []
-        for (friendId, position) in friendIdsWithPositions {
-            if let user = userDict[friendId] {
-                result.append(FriendWithPosition(user: user, position: position ?? 0))
+        // Build result with positions, preferring the most recently updated per position
+        var positionMap: [Int: FriendWithPosition] = [:]
+        for (index, pair) in friendIdsWithPositions.enumerated() {
+            let (friendId, position) = pair
+            let resolvedPosition = position ?? 0
+            guard let user = userDict[friendId] else { continue }
+
+            // Keep the first encountered entry per position; ordering already has newest first
+            if positionMap[resolvedPosition] == nil {
+                positionMap[resolvedPosition] = FriendWithPosition(user: user, position: resolvedPosition)
+            } else {
+                print("⚠️ Duplicate phlock position \(resolvedPosition) detected, skipping older entry at index \(index)")
             }
         }
 
-        // Sort by position (1-5)
-        return result.sorted { $0.position < $1.position }
+        // Sort by position (1-5) and take first 5 if somehow more exist
+        return positionMap
+            .values
+            .filter { (1...5).contains($0.position) }
+            .sorted { $0.position < $1.position }
+            .prefix(5)
+            .map { $0 }
     }
 
     /// Add a friend to the user's phlock at a specific position (1-5)
@@ -359,8 +432,37 @@ class UserService {
         let isAlreadyMember = currentMembers.contains(where: { $0.user.id == friendId })
 
         // Only check if phlock is full if adding a new member
-        if !isAlreadyMember && currentMembers.count >= 5 {
+        // Count only valid, unique positions (1-5) to allow fixing bad data
+        let validOccupiedPositions = Set(
+            currentMembers
+                .filter { (1...5).contains($0.position) }
+                .map { $0.position }
+        )
+
+        if !isAlreadyMember && validOccupiedPositions.count >= 5 {
             throw UserServiceError.phlockFull
+        }
+
+        // If another friend currently occupies this position, clear them first
+        if let conflictingMember = currentMembers.first(where: { $0.position == position && $0.user.id != friendId }),
+           let conflictingFriendship = try await getFriendship(currentUserId: userId, otherUserId: conflictingMember.user.id) {
+            struct PhlockRemoveUpdate: Encodable {
+                let is_phlock_member: Bool
+                let position: Int?
+                let last_swapped_at: String
+            }
+
+            let removeUpdate = PhlockRemoveUpdate(
+                is_phlock_member: false,
+                position: nil,
+                last_swapped_at: ISO8601DateFormatter().string(from: Date())
+            )
+
+            try await supabase
+                .from("friendships")
+                .update(removeUpdate)
+                .eq("id", value: conflictingFriendship.id.uuidString)
+                .execute()
         }
 
         // Update the friendship to add as phlock member with position
@@ -416,8 +518,23 @@ class UserService {
         clearCache(for: userId)
     }
 
-    /// Schedule a swap for midnight
-    func scheduleSwap(oldMemberId: UUID, newMemberId: UUID, for userId: UUID) async throws {
+    /// Schedule a swap for midnight. Returns true if applied immediately, false if scheduled.
+    func scheduleSwap(oldMemberId: UUID, newMemberId: UUID, for userId: UUID) async throws -> Bool {
+        let currentMembers = try await getPhlockMembers(for: userId)
+
+        // If the new member hasn't picked a song today, swap immediately
+        let newMemberHasSongToday = (try? await ShareService.shared.getTodaysDailySong(for: newMemberId)) != nil
+        if !newMemberHasSongToday,
+           let oldPosition = currentMembers.first(where: { $0.user.id == oldMemberId })?.position {
+            try await performImmediateSwap(
+                userId: userId,
+                oldMemberId: oldMemberId,
+                newMemberId: newMemberId,
+                position: oldPosition
+            )
+            return true
+        }
+
         // Check friendship exists and is accepted
         let friendship = try await getFriendship(currentUserId: userId, otherUserId: newMemberId)
         guard let friendship = friendship, friendship.status == .accepted else {
@@ -452,6 +569,64 @@ class UserService {
             .from("scheduled_swaps")
             .insert(insert)
             .execute()
+
+        return false
+    }
+
+    /// Perform an immediate swap (used when new member hasn't selected today's song)
+    private func performImmediateSwap(userId: UUID, oldMemberId: UUID, newMemberId: UUID, position: Int) async throws {
+        guard (1...5).contains(position) else {
+            throw UserServiceError.invalidPhlockPosition
+        }
+
+        guard let oldFriendship = try await getFriendship(currentUserId: userId, otherUserId: oldMemberId),
+              let newFriendship = try await getFriendship(currentUserId: userId, otherUserId: newMemberId),
+              oldFriendship.status == .accepted,
+              newFriendship.status == .accepted else {
+            throw UserServiceError.notFriends
+        }
+
+        let nowString = ISO8601DateFormatter().string(from: Date())
+
+        struct PhlockRemoveUpdate: Encodable {
+            let is_phlock_member: Bool
+            let position: Int?
+            let last_swapped_at: String
+        }
+
+        struct PhlockUpdate: Encodable {
+            let is_phlock_member: Bool
+            let position: Int
+            let last_swapped_at: String
+        }
+
+        // Remove old member
+        let removeUpdate = PhlockRemoveUpdate(
+            is_phlock_member: false,
+            position: nil,
+            last_swapped_at: nowString
+        )
+
+        // Add/update new member at the position
+        let addUpdate = PhlockUpdate(
+            is_phlock_member: true,
+            position: position,
+            last_swapped_at: nowString
+        )
+
+        try await supabase
+            .from("friendships")
+            .update(removeUpdate)
+            .eq("id", value: oldFriendship.id.uuidString)
+            .execute()
+
+        try await supabase
+            .from("friendships")
+            .update(addUpdate)
+            .eq("id", value: newFriendship.id.uuidString)
+            .execute()
+
+        clearCache(for: userId)
     }
 
     /// Get pending scheduled swaps for a user
@@ -592,6 +767,7 @@ struct ScheduledSwap: Decodable {
 
 enum UserServiceError: LocalizedError {
     case friendshipAlreadyExists
+    case friendshipNotFound
     case userNotFound
     case invalidPhlockPosition
     case phlockFull
@@ -602,6 +778,8 @@ enum UserServiceError: LocalizedError {
         switch self {
         case .friendshipAlreadyExists:
             return "You are already friends or have a pending request with this user"
+        case .friendshipNotFound:
+            return "Friend request not found"
         case .userNotFound:
             return "User not found"
         case .invalidPhlockPosition:

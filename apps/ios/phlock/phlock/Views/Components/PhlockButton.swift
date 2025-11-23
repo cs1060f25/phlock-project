@@ -40,7 +40,7 @@ struct PhlockButton: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: variant.foregroundColor(for: colorScheme)))
                 } else {
                     Text(title)
-                        .font(.nunitoSans(size: 17, weight: .semiBold))
+                        .font(.lora(size: 17, weight: .semiBold))
                 }
             }
             .frame(maxWidth: fullWidth ? .infinity : nil)

@@ -75,7 +75,6 @@ struct SplashScreenView: View {
                 print("🎬 SplashScreenView appeared - starting fast 1.5s animation")
             }
         }
-        .fullScreenSwipeBack()
     }
 }
 

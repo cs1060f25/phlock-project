@@ -69,7 +69,7 @@ struct QuickSendBar: View {
                     ZStack {
                         // Centered title
                         Text("Share")
-                            .font(.nunitoSans(size: 17, weight: .semiBold))
+                            .font(.lora(size: 17, weight: .semiBold))
 
                         // X close button (positioned to trailing edge)
                         HStack {
@@ -111,13 +111,13 @@ struct QuickSendBar: View {
                         // Track Info
                         VStack(alignment: .leading, spacing: 2) {
                             Text(track.name)
-                                .font(.nunitoSans(size: 15, weight: .bold))
+                                .font(.lora(size: 15, weight: .bold))
                                 .lineLimit(1)
                                 .foregroundColor(.primary)
 
                             if let artist = track.artistName {
                                 Text(artist)
-                                    .font(.nunitoSans(size: 13))
+                                    .font(.lora(size: 13))
                                     .lineLimit(1)
                                     .foregroundColor(.secondary)
                             }
@@ -146,7 +146,7 @@ struct QuickSendBar: View {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle())
                                 Text("Loading friends...")
-                                    .font(.nunitoSans(size: 14))
+                                    .font(.lora(size: 14))
                                     .foregroundColor(.secondary)
                             }
                             .padding(.top, 50)
@@ -157,7 +157,7 @@ struct QuickSendBar: View {
                                     .font(.system(size: 40))
                                     .foregroundColor(.secondary)
                                 Text(searchText.isEmpty ? "No friends yet" : "No friends found")
-                                    .font(.nunitoSans(size: 16))
+                                    .font(.lora(size: 16))
                                     .foregroundColor(.secondary)
                             }
                             .padding(.top, 50)
@@ -246,7 +246,7 @@ struct QuickSendBar: View {
                 .font(.system(size: 16))
 
             TextField("Search", text: $searchText)
-                .font(.nunitoSans(size: 16))
+                .font(.lora(size: 16))
                 .textFieldStyle(.plain)
                 .focused($isSearchFocused)
                 .submitLabel(.search)
@@ -340,7 +340,7 @@ struct QuickSendBar: View {
                         : (colorScheme == .dark ? .white.opacity(0.5) : .black.opacity(0.5)))
 
                 TextField("Write a message...", text: $message)
-                    .font(.nunitoSans(size: 14, weight: .regular))
+                    .font(.lora(size: 14, weight: .regular))
                     .textFieldStyle(.plain)
                     .foregroundColor(.primary)
                     .focused($isMessageFieldFocused)
@@ -391,7 +391,7 @@ struct QuickSendBar: View {
                                 .tint(.white)
                         }
                         Text(isSending ? "Sending..." : "Send")
-                            .font(.nunitoSans(size: 16, weight: .semiBold))
+                            .font(.lora(size: 16, weight: .semiBold))
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 18)
@@ -422,7 +422,7 @@ struct QuickSendBar: View {
                         : (colorScheme == .dark ? .white.opacity(0.5) : .black.opacity(0.5)))
 
                 TextField("Write a message...", text: $message)
-                    .font(.nunitoSans(size: 14, weight: .regular))
+                    .font(.lora(size: 14, weight: .regular))
                     .textFieldStyle(.plain)
                     .foregroundColor(.primary)
                     .focused($isMessageFieldFocused)
@@ -473,7 +473,7 @@ struct QuickSendBar: View {
                             .tint(.white)
                     } else {
                         Text(selectedFriends.count > 1 ? "Send separately" : "Send")
-                            .font(.nunitoSans(size: 16, weight: .semiBold))
+                            .font(.lora(size: 16, weight: .semiBold))
                     }
                 }
                 .foregroundColor(.white)
@@ -665,7 +665,7 @@ struct FriendGridItem: View {
 
                 // Name
                 Text(friend.displayName)
-                    .font(.nunitoSans(size: 13))
+                    .font(.lora(size: 13))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .multilineTextAlignment(.center)
@@ -719,7 +719,7 @@ struct PlatformButton: View {
                 }
 
                 Text(title)
-                    .font(.nunitoSans(size: 11))
+                    .font(.lora(size: 11))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
@@ -739,7 +739,7 @@ struct FriendInitialsView: View {
                 .fill(Color.blue.opacity(0.3))
 
             Text(displayName.prefix(1).uppercased())
-                .font(.nunitoSans(size: 24, weight: .bold))
+                .font(.lora(size: 24, weight: .bold))
                 .foregroundColor(.blue)
         }
     }

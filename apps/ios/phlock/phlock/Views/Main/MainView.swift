@@ -10,20 +10,6 @@ struct MainView: View {
     @State private var recognitionTrackToShare: MusicItem? = nil
     @State private var showRecognitionQuickSend = false
 
-    private var refreshDiscoverTriggerBinding: Binding<Int> {
-        Binding(
-            get: { navigationState.refreshDiscoverTrigger },
-            set: { navigationState.refreshDiscoverTrigger = $0 }
-        )
-    }
-
-    private var scrollDiscoverToTopTriggerBinding: Binding<Int> {
-        Binding(
-            get: { navigationState.scrollDiscoverToTopTrigger },
-            set: { navigationState.scrollDiscoverToTopTrigger = $0 }
-        )
-    }
-
     var body: some View {
         let miniPlayerInset = playbackService.currentTrack != nil && playbackService.shouldShowMiniPlayer
             ? MiniPlayerView.Layout.height
@@ -35,19 +21,15 @@ struct MainView: View {
                 CustomTabBarView(
                     selectedTab: $navigationState.selectedTab,
                     feedNavigationPath: $navigationState.feedNavigationPath,
-                    discoverNavigationPath: $navigationState.discoverNavigationPath,
-                    inboxNavigationPath: $navigationState.inboxNavigationPath,
-                    phlocksNavigationPath: $navigationState.phlocksNavigationPath,
+                    friendsNavigationPath: $navigationState.friendsNavigationPath,
+                    notificationsNavigationPath: $navigationState.notificationsNavigationPath,
                     profileNavigationPath: $navigationState.profileNavigationPath,
-                    clearDiscoverSearchTrigger: $navigationState.clearDiscoverSearchTrigger,
                     refreshFeedTrigger: $navigationState.refreshFeedTrigger,
-                    refreshDiscoverTrigger: $navigationState.refreshDiscoverTrigger,
-                    refreshInboxTrigger: $navigationState.refreshInboxTrigger,
-                    refreshPhlocksTrigger: $navigationState.refreshPhlocksTrigger,
+                    refreshFriendsTrigger: $navigationState.refreshFriendsTrigger,
+                    refreshNotificationsTrigger: $navigationState.refreshNotificationsTrigger,
                     scrollFeedToTopTrigger: $navigationState.scrollFeedToTopTrigger,
-                    scrollDiscoverToTopTrigger: $navigationState.scrollDiscoverToTopTrigger,
-                    scrollInboxToTopTrigger: $navigationState.scrollInboxToTopTrigger,
-                    scrollPhlocksToTopTrigger: $navigationState.scrollPhlocksToTopTrigger,
+                    scrollFriendsToTopTrigger: $navigationState.scrollFriendsToTopTrigger,
+                    scrollNotificationsToTopTrigger: $navigationState.scrollNotificationsToTopTrigger,
                     feedView: AnyView(
                         FeedView(navigationPath: $navigationState.feedNavigationPath, refreshTrigger: $navigationState.refreshFeedTrigger, scrollToTopTrigger: $navigationState.scrollFeedToTopTrigger)
                             .environmentObject(authState)
@@ -55,27 +37,24 @@ struct MainView: View {
                             .environmentObject(navigationState)
                             .environment(\.colorScheme, colorScheme)
                     ),
-                    discoverView: AnyView(
-                        DiscoverView(
-                            navigationPath: $navigationState.discoverNavigationPath,
-                            clearSearchTrigger: $navigationState.clearDiscoverSearchTrigger,
-                            refreshTrigger: refreshDiscoverTriggerBinding,
-                            scrollToTopTrigger: scrollDiscoverToTopTriggerBinding
+                    friendsView: AnyView(
+                        FriendsView(
+                            navigationPath: $navigationState.friendsNavigationPath,
+                            refreshTrigger: $navigationState.refreshFriendsTrigger,
+                            scrollToTopTrigger: $navigationState.scrollFriendsToTopTrigger
                         )
-                            .environmentObject(authState)
-                            .environmentObject(playbackService)
-                            .environmentObject(navigationState)
+                        .environmentObject(authState)
+                        .environmentObject(navigationState)
+                        .environment(\.colorScheme, colorScheme)
                     ),
-                    inboxView: AnyView(
-                        TheCrateView(navigationPath: $navigationState.inboxNavigationPath, refreshTrigger: $navigationState.refreshInboxTrigger, scrollToTopTrigger: $navigationState.scrollInboxToTopTrigger)
-                            .environmentObject(authState)
-                            .environmentObject(playbackService)
-                            .environment(\.colorScheme, colorScheme)
-                    ),
-                    phlocksView: AnyView(
-                        MyPhlocksView(navigationPath: $navigationState.phlocksNavigationPath, refreshTrigger: $navigationState.refreshPhlocksTrigger, scrollToTopTrigger: $navigationState.scrollPhlocksToTopTrigger)
-                            .environmentObject(authState)
-                            .environmentObject(playbackService)
+                    notificationsView: AnyView(
+                        NotificationsView(
+                            navigationPath: $navigationState.notificationsNavigationPath,
+                            refreshTrigger: $navigationState.refreshNotificationsTrigger,
+                            scrollToTopTrigger: $navigationState.scrollNotificationsToTopTrigger
+                        )
+                        .environmentObject(authState)
+                        .environmentObject(navigationState)
                     ),
                     profileView: AnyView(
                         ProfileView()
@@ -117,29 +96,29 @@ struct MainView: View {
             }
 
             // QuickSendBar overlay - sits above everything including mini player
-                if showMiniPlayerShareSheet, let track = miniPlayerTrackToShare {
-                    QuickSendBar(
-                        track: track,
-                        onDismiss: {
-                            withAnimation(.easeOut(duration: 0.3)) {
-                                showMiniPlayerShareSheet = false
+            if showMiniPlayerShareSheet, let track = miniPlayerTrackToShare {
+                QuickSendBar(
+                    track: track,
+                    onDismiss: {
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            showMiniPlayerShareSheet = false
                             miniPlayerTrackToShare = nil
                         }
                     },
-                    onSendComplete: { sentToFriends in
+                    onSendComplete: { _ in
                         showMiniPlayerShareSheet = false
                         miniPlayerTrackToShare = nil
-                        },
-                        additionalBottomInset: QuickSendBar.Layout.overlayInset
-                    )
-                    .environmentObject(authState)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(QuickSendBar.Layout.overlayZ)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showMiniPlayerShareSheet)
-                }
+                    },
+                    additionalBottomInset: QuickSendBar.Layout.overlayInset
+                )
+                .environmentObject(authState)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(QuickSendBar.Layout.overlayZ)
+                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showMiniPlayerShareSheet)
+            }
 
-                if showRecognitionQuickSend, let track = recognitionTrackToShare {
-                    QuickSendBar(
+            if showRecognitionQuickSend, let track = recognitionTrackToShare {
+                QuickSendBar(
                     track: track,
                     onDismiss: {
                         withAnimation(.easeOut(duration: 0.3)) {
@@ -151,15 +130,15 @@ struct MainView: View {
                         showRecognitionQuickSend = false
                         recognitionTrackToShare = nil
                     },
-                        additionalBottomInset: QuickSendBar.Layout.overlayInset
-                    )
-                    .environmentObject(authState)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(QuickSendBar.Layout.overlayZ)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showRecognitionQuickSend)
-                }
+                    additionalBottomInset: QuickSendBar.Layout.overlayInset
+                )
+                .environmentObject(authState)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(QuickSendBar.Layout.overlayZ)
+                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showRecognitionQuickSend)
+            }
 
-            // Share sheet from Feed/Discover - presented at top level above tab bar
+            // Share sheet presented at top level above tab bar
             if navigationState.showShareSheet, let track = navigationState.shareTrack {
                 QuickSendBar(
                     track: track,

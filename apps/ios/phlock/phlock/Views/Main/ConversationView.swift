@@ -53,7 +53,7 @@ struct ConversationView: View {
                 VStack(spacing: 12) {
                     WaveformLoadingView(barCount: 5, color: .blue)
                     Text("Loading conversation...")
-                        .font(.nunitoSans(size: 15))
+                        .font(.lora(size: 15))
                 }
                 .frame(maxHeight: .infinity)
             } else if let error = errorMessage {
@@ -66,9 +66,9 @@ struct ConversationView: View {
                         if shares.isEmpty {
                             VStack(spacing: 12) {
                                 Text("No messages yet")
-                                    .font(.nunitoSans(size: 18, weight: .semiBold))
+                                    .font(.lora(size: 18, weight: .semiBold))
                                 Text("Search for a song below to start the conversation!")
-                                    .font(.nunitoSans(size: 14))
+                                    .font(.lora(size: 14))
                                     .foregroundColor(.secondary)
                                     .multilineTextAlignment(.center)
                             }
@@ -164,6 +164,18 @@ struct ConversationView: View {
         }
         .navigationTitle(otherUser.displayName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundColor(.primary)
+                }
+            }
+        }
+        .navigationBarBackButtonHidden(true)
         .fullScreenSwipeBack()
         .simultaneousGesture(
             DragGesture(minimumDistance: 0, coordinateSpace: .named("ConversationRoot"))
@@ -206,7 +218,7 @@ struct ConversationView: View {
         .onAppear {
             navigationState.isFabHidden = true
         }
-        .onChange(of: searchResults.count) { _, newCount in
+        .onChange(of: searchResults.count) { newCount in
             if newCount == 0 {
                 searchResultsFrame = nil
             }
@@ -332,11 +344,11 @@ struct ConversationSearchBar: View {
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(track.name)
-                                        .font(.nunitoSans(size: 14, weight: .semiBold))
+                                        .font(.lora(size: 14, weight: .semiBold))
                                         .foregroundColor(.primary)
                                         .lineLimit(1)
                                     Text(track.artistName ?? "Unknown")
-                                        .font(.nunitoSans(size: 12))
+                                        .font(.lora(size: 12))
                                         .foregroundColor(.secondary)
                                         .lineLimit(1)
                                 }
@@ -398,10 +410,10 @@ struct ConversationSearchBar: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(track.name)
-                            .font(.nunitoSans(size: 14, weight: .semiBold))
+                            .font(.lora(size: 14, weight: .semiBold))
                             .lineLimit(1)
                         Text(track.artistName ?? "Unknown")
-                            .font(.nunitoSans(size: 12))
+                            .font(.lora(size: 12))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
@@ -440,9 +452,9 @@ struct ConversationSearchBar: View {
                             .font(.system(size: 16))
 
                         TextField("search for music...", text: $searchQuery)
-                            .font(.nunitoSans(size: 15))
+                            .font(.lora(size: 15))
                             .focused($isSearchFocused)
-                            .onChange(of: searchQuery) { _, newValue in
+                            .onChange(of: searchQuery) { newValue in
                                 if newValue.count >= 2 {
                                     Task { await performSearch(query: newValue) }
                                 } else {
@@ -462,7 +474,7 @@ struct ConversationSearchBar: View {
                 } else {
                     // Message mode (track selected)
                     TextField("add a message (optional)...", text: $messageText, axis: .vertical)
-                        .font(.nunitoSans(size: 15))
+                        .font(.lora(size: 15))
                         .lineLimit(1...3)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
@@ -496,12 +508,15 @@ struct ConversationSearchBar: View {
 
     private func performSearch(query: String) async {
         guard query.count >= 2 else { return }
-        guard let platformType = authState.currentUser?.platformType else { return }
 
         isSearching = true
 
         do {
-            let result = try await SearchService.shared.search(query: query, type: .tracks, platformType: platformType)
+            let result = try await SearchService.shared.search(
+                query: query,
+                type: .tracks,
+                platformType: authState.currentUser?.resolvedPlatformType ?? .spotify
+            )
             await MainActor.run {
                 searchResults = result.tracks
             }
@@ -608,17 +623,17 @@ struct ConversationShareCard: View {
                 // Track Info
                 VStack(alignment: .leading, spacing: 4) {
                     Text(share.trackName)
-                        .font(.nunitoSans(size: 15, weight: .semiBold))
+                        .font(.lora(size: 15, weight: .semiBold))
                         .lineLimit(1)
 
                     Text(share.artistName)
-                        .font(.nunitoSans(size: 13))
+                        .font(.lora(size: 13))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
 
                     // Timestamp
                     Text(timeAgo(from: share.createdAt))
-                        .font(.nunitoSans(size: 11))
+                        .font(.lora(size: 11))
                         .foregroundColor(.secondary)
                 }
 
@@ -639,7 +654,7 @@ struct ConversationShareCard: View {
             // Message if present
             if let message = share.message, !message.isEmpty {
                 Text(message)
-                    .font(.nunitoSans(size: 14))
+                    .font(.lora(size: 14))
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 12)
                     .padding(.bottom, 8)
@@ -658,7 +673,7 @@ struct ConversationShareCard: View {
                     Image(systemName: "bubble.left")
                         .font(.system(size: 14))
                     Text("Comments")
-                        .font(.nunitoSans(size: 14))
+                        .font(.lora(size: 14))
                     Spacer()
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 12))
@@ -680,7 +695,7 @@ struct ConversationShareCard: View {
                             .padding()
                     } else if comments.isEmpty {
                         Text("No comments yet")
-                            .font(.nunitoSans(size: 13))
+                            .font(.lora(size: 13))
                             .foregroundColor(.secondary)
                             .padding()
                     } else {
@@ -698,7 +713,7 @@ struct ConversationShareCard: View {
                     // Add Comment Input
                     HStack(spacing: 8) {
                         TextField("Add a comment (280 char max)...", text: $commentText, axis: .vertical)
-                            .font(.nunitoSans(size: 14))
+                            .font(.lora(size: 14))
                             .lineLimit(1...3)
                             .textFieldStyle(.plain)
                             .disabled(isAddingComment)
@@ -850,15 +865,15 @@ struct CommentRowView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(comment.user?.displayName ?? "Unknown")
-                        .font(.nunitoSans(size: 14, weight: .semiBold))
+                        .font(.lora(size: 14, weight: .semiBold))
 
                     Text(timeAgo(from: comment.createdAt))
-                        .font(.nunitoSans(size: 12))
+                        .font(.lora(size: 12))
                         .foregroundColor(.secondary)
                 }
 
                 Text(comment.commentText)
-                    .font(.nunitoSans(size: 14))
+                    .font(.lora(size: 14))
                     .foregroundColor(.primary)
             }
 
@@ -905,10 +920,10 @@ struct EmptyConversationView: View {
                     .font(.system(size: 64))
 
                 Text("No conversation yet")
-                    .font(.nunitoSans(size: 28, weight: .bold))
+                    .font(.lora(size: 28, weight: .bold))
 
                 Text("Start sharing music with \(otherUserName)\nto begin your conversation!")
-                    .font(.nunitoSans(size: 15))
+                    .font(.lora(size: 15))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
@@ -936,10 +951,10 @@ struct ConversationErrorView: View {
                 .foregroundColor(.orange)
 
             Text("Error")
-                .font(.nunitoSans(size: 20, weight: .semiBold))
+                .font(.lora(size: 20, weight: .semiBold))
 
             Text(message)
-                .font(.nunitoSans(size: 15))
+                .font(.lora(size: 15))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
@@ -947,7 +962,7 @@ struct ConversationErrorView: View {
             Button("Try Again") {
                 retry()
             }
-            .font(.nunitoSans(size: 16, weight: .semiBold))
+            .font(.lora(size: 16, weight: .semiBold))
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
             .background(Color.blue)

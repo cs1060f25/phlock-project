@@ -27,13 +27,13 @@ struct CompactTrackInfoRow: View {
             // Track info (middle - takes available space)
             VStack(alignment: .leading, spacing: 4) {
                 Text(track.name)
-                    .font(.nunitoSans(size: 16, weight: .semiBold))
+                    .font(.lora(size: 16, weight: .semiBold))
                     .lineLimit(1)
                     .foregroundColor(.primary)
 
                 if let artistName = track.artistName {
                     Text(artistName)
-                        .font(.nunitoSans(size: 14))
+                        .font(.lora(size: 14))
                         .lineLimit(1)
                         .foregroundColor(.secondary)
                 }

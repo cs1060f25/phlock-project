@@ -24,7 +24,7 @@ struct WelcomeView: View {
 
                     // Wordmark
                     Text("phlock")
-                        .font(.nunitoSans(size: 48, weight: .semiBold))
+                        .font(.lora(size: 48, weight: .semiBold))
                         .foregroundColor(.primary)
                         .kerning(-1)
 
@@ -33,7 +33,7 @@ struct WelcomeView: View {
 
                     // Tagline
                     Text("discover music through your friends")
-                        .font(.nunitoSans(size: 18, weight: .regular))
+                        .font(.lora(size: 18, weight: .regular))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
@@ -43,7 +43,7 @@ struct WelcomeView: View {
                     // Get Started Button
                     NavigationLink(destination: PlatformSelectionView()) {
                         Text("get started")
-                            .font(.nunitoSans(size: 17, weight: .medium))
+                            .font(.lora(size: 17, weight: .medium))
                             .foregroundColor(colorScheme == .dark ? .black : .white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
@@ -55,7 +55,6 @@ struct WelcomeView: View {
                 }
             }
         }
-        .fullScreenSwipeBack()
     }
 }
 

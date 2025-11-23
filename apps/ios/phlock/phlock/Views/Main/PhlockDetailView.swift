@@ -17,7 +17,7 @@ struct PhlockDetailView: View {
         ZStack {
             if isLoading {
                 ProgressView("Loading recipients...")
-                    .font(.nunitoSans(size: 15))
+                    .font(.lora(size: 15))
             } else if let error = errorMessage {
                 PhlockErrorView(message: error) {
                     Task { await loadRecipients() }
@@ -34,7 +34,7 @@ struct PhlockDetailView: View {
 
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Recipients (\(recipients.count))")
-                                .font(.nunitoSans(size: 20, weight: .bold))
+                                .font(.lora(size: 20, weight: .bold))
                                 .padding(.horizontal, 16)
 
                             VStack(spacing: 0) {
@@ -58,6 +58,18 @@ struct PhlockDetailView: View {
         }
         .navigationTitle("Phlock Details")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundColor(.primary)
+                }
+            }
+        }
+        .navigationBarBackButtonHidden(true)
         .fullScreenSwipeBack()
         .task {
             await loadRecipients()
@@ -126,16 +138,16 @@ struct TrackHeaderView: View {
             // Track Info
             VStack(alignment: .leading, spacing: 6) {
                 Text(phlock.trackName)
-                    .font(.nunitoSans(size: 18, weight: .bold))
+                    .font(.lora(size: 18, weight: .bold))
                     .lineLimit(2)
 
                 Text(phlock.artistName)
-                    .font(.nunitoSans(size: 15))
+                    .font(.lora(size: 15))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
 
                 Text("Last sent \(phlock.lastSentAt.shortRelativeTimeString())")
-                    .font(.nunitoSans(size: 13))
+                    .font(.lora(size: 13))
                     .foregroundColor(.secondary)
             }
 
@@ -153,7 +165,7 @@ struct SummaryMetricsView: View {
     var body: some View {
         VStack(spacing: 16) {
             Text("Engagement Summary")
-                .font(.nunitoSans(size: 16, weight: .semiBold))
+                .font(.lora(size: 16, weight: .semiBold))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 16) {
@@ -195,10 +207,10 @@ struct MetricBox: View {
                 .foregroundColor(.blue)
 
             Text(value)
-                .font(.nunitoSans(size: 20, weight: .bold))
+                .font(.lora(size: 20, weight: .bold))
 
             Text(label)
-                .font(.nunitoSans(size: 12))
+                .font(.lora(size: 12))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -244,7 +256,7 @@ struct RecipientRowView: View {
                 // User Info
                 VStack(alignment: .leading, spacing: 4) {
                     Text(recipient.user.displayName)
-                        .font(.nunitoSans(size: 16, weight: .semiBold))
+                        .font(.lora(size: 16, weight: .semiBold))
                         .foregroundColor(.primary)
 
                     HStack(spacing: 6) {
@@ -252,13 +264,13 @@ struct RecipientRowView: View {
                             .font(.system(size: 12))
 
                         Text(recipient.statusText)
-                            .font(.nunitoSans(size: 13))
+                            .font(.lora(size: 13))
                     }
                     .foregroundColor(statusSwiftUIColor(recipient.statusColor))
 
                     if let message = recipient.message, !message.isEmpty {
                         Text("\"\(message)\"")
-                            .font(.nunitoSans(size: 13, weight: .medium))
+                            .font(.lora(size: 13, weight: .medium))
                             .foregroundColor(.secondary)
                             .lineLimit(2)
                             .padding(.top, 2)
@@ -298,10 +310,10 @@ struct PhlockErrorView: View {
                 .foregroundColor(.orange)
 
             Text("Error")
-                .font(.nunitoSans(size: 20, weight: .semiBold))
+                .font(.lora(size: 20, weight: .semiBold))
 
             Text(message)
-                .font(.nunitoSans(size: 15))
+                .font(.lora(size: 15))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
@@ -309,7 +321,7 @@ struct PhlockErrorView: View {
             Button("Try Again") {
                 retry()
             }
-            .font(.nunitoSans(size: 16, weight: .semiBold))
+            .font(.lora(size: 16, weight: .semiBold))
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
             .background(Color.blue)

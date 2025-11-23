@@ -27,7 +27,6 @@ struct TheCrateView: View {
                     }
                 }
         }
-        .fullScreenSwipeBack()
     }
 }
 
@@ -75,7 +74,7 @@ struct InboxView: View {
                         ProgressView()
                             .scaleEffect(1.5)
                         Text("Loading shares...")
-                            .font(.nunitoSans(size: 15))
+                            .font(.lora(size: 15))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxHeight: .infinity)
@@ -114,7 +113,7 @@ struct InboxView: View {
         .task {
             await loadShares()
         }
-        .onChange(of: refreshTrigger) { oldValue, newValue in
+        .onChange(of: refreshTrigger) { newValue in
             Task {
                 // Scroll to top and reload data
                 withAnimation {
@@ -146,7 +145,7 @@ struct InboxView: View {
                     }
                 } label: {
                     Text(filter.rawValue)
-                        .font(.nunitoSans(size: 15, weight: selectedFilter == filter ? .bold : .regular))
+                        .font(.lora(size: 15, weight: selectedFilter == filter ? .bold : .regular))
                         .foregroundColor(selectedFilter == filter ? .primary : .secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -180,26 +179,26 @@ struct InboxView: View {
                     .font(.system(size: 64))
 
                 Text(selectedFilter == .received ? "no shares yet" : "no saved songs yet")
-                    .font(.nunitoSans(size: 28, weight: .bold))
+                    .font(.lora(size: 28, weight: .bold))
 
                 Text(selectedFilter == .received
                     ? "when friends share songs with you,\nthey'll appear here"
                     : "songs you save from shares\nwill appear here")
-                    .font(.nunitoSans(size: 15))
+                    .font(.lora(size: 15))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
 
                 if selectedFilter == .received {
                     Text("start by discovering music and\nsharing it with your friends!")
-                        .font(.nunitoSans(size: 13))
+                        .font(.lora(size: 13))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.top, 4)
                         .padding(.horizontal, 24)
                 } else {
                     Text("swipe right on received shares\nto save them to your collection!")
-                        .font(.nunitoSans(size: 13))
+                        .font(.lora(size: 13))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.top, 4)
@@ -303,7 +302,7 @@ struct InboxView: View {
                 await loadShares()
                 isRefreshing = false
             }
-            .onChange(of: scrollToTopTrigger) { _, _ in
+            .onChange(of: scrollToTopTrigger) { _ in
                 withAnimation {
                     scrollProxy.scrollTo("inboxTop", anchor: .top)
                 }
@@ -324,7 +323,7 @@ struct InboxView: View {
 
     private func sectionHeader(for date: String, isFirst: Bool) -> some View {
         Text(date)
-            .font(.nunitoSans(size: 13, weight: .bold))
+            .font(.lora(size: 13, weight: .bold))
             .foregroundColor(.secondary)
             .textCase(.uppercase)
             .padding(.top, isFirst ? 0 : 4)
@@ -592,13 +591,13 @@ struct ShareRowView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     // Track Name
                     Text(share.trackName)
-                        .font(.nunitoSans(size: 15, weight: isCurrentTrack ? .bold : .regular))
+                        .font(.lora(size: 15, weight: isCurrentTrack ? .bold : .regular))
                         .foregroundColor(.primary)
                         .lineLimit(1)
 
                     // Artist Name
                     Text(share.artistName)
-                        .font(.nunitoSans(size: 13))
+                        .font(.lora(size: 13))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
 
@@ -629,7 +628,7 @@ struct ShareRowView: View {
                             }
 
                             Text(sender.displayName)
-                                .font(.nunitoSans(size: 12, weight: .semiBold))
+                                .font(.lora(size: 12, weight: .semiBold))
                                 .foregroundColor(.blue)
                         }
                     }
@@ -638,7 +637,7 @@ struct ShareRowView: View {
                     // Message on new line
                     if let message = share.message, !message.isEmpty {
                         Text(message)
-                            .font(.nunitoSans(size: 12, weight: .medium))
+                            .font(.lora(size: 12, weight: .medium))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
@@ -763,24 +762,24 @@ struct SentShareRowView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         // Track Name
                         Text(share.trackName)
-                            .font(.nunitoSans(size: 15, weight: isCurrentTrack ? .bold : .regular))
+                            .font(.lora(size: 15, weight: isCurrentTrack ? .bold : .regular))
                             .foregroundColor(.primary)
                             .lineLimit(1)
 
                         // Artist Name
                         Text(share.artistName)
-                            .font(.nunitoSans(size: 13))
+                            .font(.lora(size: 13))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
 
                         // Recipient Info
                         HStack(spacing: 4) {
                             Text("to")
-                                .font(.nunitoSans(size: 12))
+                                .font(.lora(size: 12))
                                 .foregroundColor(.secondary)
 
                             Text(recipient.displayName)
-                                .font(.nunitoSans(size: 12, weight: .semiBold))
+                                .font(.lora(size: 12, weight: .semiBold))
                                 .foregroundColor(.blue)
 
                             // Status indicator
@@ -788,7 +787,7 @@ struct SentShareRowView: View {
                                 Text("·")
                                     .foregroundColor(.secondary)
                                 Text(statusText)
-                                    .font(.nunitoSans(size: 12, weight: .medium))
+                                    .font(.lora(size: 12, weight: .medium))
                                     .foregroundColor(statusColor)
                             }
                         }

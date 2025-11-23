@@ -72,19 +72,32 @@ struct MiniPlayerView: View {
                         // Track Info
                         VStack(alignment: .leading, spacing: 4) {
                             Text(track.name)
-                                .font(.nunitoSans(size: 14, weight: .semiBold))
+                                .font(.lora(size: 14, weight: .semiBold))
                                 .lineLimit(1)
                                 .foregroundColor(.primary)
 
                             if let artistName = track.artistName {
                                 Text(artistName)
-                                    .font(.nunitoSans(size: 12))
+                                    .font(.lora(size: 12))
                                     .lineLimit(1)
                                     .foregroundColor(.secondary)
                             }
                         }
 
                         Spacer()
+
+                        // Open in App Button
+                        Button {
+                            if let platformType = authState.currentUser?.resolvedPlatformType {
+                                DeepLinkService.shared.openInNativeApp(track: track, platform: platformType)
+                            }
+                        } label: {
+                            Image(systemName: "arrow.up.right.square")
+                                .font(.system(size: 18))
+                                .foregroundColor(.secondary)
+                                .frame(width: 44, height: 44)
+                        }
+                        .buttonStyle(.plain)
 
                         // Share Button
                         Button {

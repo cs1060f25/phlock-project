@@ -16,6 +16,37 @@ struct phlockApp: App {
         // Hide the default refresh control spinner since we render our own
         UIRefreshControl.appearance().tintColor = .clear
         UIRefreshControl.appearance().backgroundColor = .clear
+
+        // Configure navigation bar to use Lora font
+        configureNavigationBarAppearance()
+    }
+
+    private func configureNavigationBarAppearance() {
+        // Create Lora fonts for navigation bar titles
+        let loraRegular = UIFont(name: "Lora-Regular", size: 17) ?? UIFont.systemFont(ofSize: 17)
+        let loraBold = UIFont(name: "Lora-Bold", size: 34) ?? UIFont.boldSystemFont(ofSize: 34)
+
+        // Configure standard navigation bar appearance (inline titles)
+        let standardAppearance = UINavigationBarAppearance()
+        standardAppearance.configureWithDefaultBackground()
+        standardAppearance.titleTextAttributes = [
+            .font: loraRegular
+        ]
+
+        // Configure large title appearance
+        let largeTitleAppearance = UINavigationBarAppearance()
+        largeTitleAppearance.configureWithDefaultBackground()
+        largeTitleAppearance.largeTitleTextAttributes = [
+            .font: loraBold
+        ]
+        largeTitleAppearance.titleTextAttributes = [
+            .font: loraRegular
+        ]
+
+        // Apply to all navigation bars
+        UINavigationBar.appearance().standardAppearance = standardAppearance
+        UINavigationBar.appearance().compactAppearance = standardAppearance
+        UINavigationBar.appearance().scrollEdgeAppearance = largeTitleAppearance
     }
 
     var body: some Scene {
