@@ -32,7 +32,7 @@ struct FeedView: View {
     @State private var showToast = false
     @State private var toastMessage = ""
     @State private var toastType: ShareToast.ToastType = .success
-    @State private var pullProgress: CGFloat = 0
+
     @State private var currentPlayingIndex: Int? = nil
     @State private var autoplayEnabled = true
     @State private var savedTrackIds: Set<String> = []
@@ -369,11 +369,7 @@ struct FeedView: View {
             .listStyle(.plain)
             .environment(\.defaultMinListRowHeight, 0)
             .scrollDismissesKeyboard(.interactively)
-            .pullToRefreshWithSpinner(
-                isRefreshing: $isRefreshing,
-                pullProgress: $pullProgress,
-                colorScheme: colorScheme
-            ) {
+            .refreshable {
                 isRefreshing = true
                 await loadDailyPlaylist()
                 await loadMyDailySong()
@@ -399,7 +395,9 @@ struct FeedView: View {
             return
         }
 
-        isLoading = true
+        if dailySongs.isEmpty && phlockMembers.isEmpty {
+            isLoading = true
+        }
         errorMessage = nil
 
         do {
@@ -424,6 +422,8 @@ struct FeedView: View {
             })
 
             print("✅ Loaded \(dailySongs.count) daily songs from \(phlockMembers.count) phlock members")
+        } catch is CancellationError {
+            print("ℹ️ Daily playlist load cancelled")
         } catch {
             errorMessage = error.localizedDescription
             print("❌ Error loading daily playlist: \(error)")
@@ -688,6 +688,7 @@ struct FeedView: View {
         }
 
         Task {
+            print("👋 Nudging member: \(member.displayName) (ID: \(member.id))")
             do {
                 try await NotificationService.shared.createNotification(
                     userId: member.id,

@@ -14,44 +14,23 @@ struct WelcomeView: View {
 
                 VStack(spacing: 0) {
                     Spacer()
-                        .frame(height: 120)
-
-                    // Colorful Phlock Logo with rotation animation
-                    ColorfulPhlockLogoView(size: 240, animate: true)
-
+                        .frame(minHeight: 100)
                     Spacer()
-                        .frame(height: 60)
-
-                    // Wordmark
-                    Text("phlock")
-                        .font(.lora(size: 48, weight: .semiBold))
+                    
+                    // Welcome Title
+                    Text("phlock: heard together")
+                        .font(.lora(size: 32, weight: .semiBold))
                         .foregroundColor(.primary)
-                        .kerning(-1)
-
+                        .padding(.bottom, 36)
+                    
+                    // Logo (Original size)
+                    ColorfulPhlockLogoView(size: 240, animate: true)
+                    
                     Spacer()
-                        .frame(height: 16)
-
-                    // Tagline
-                    Text("discover music through your friends")
-                        .font(.lora(size: 18, weight: .regular))
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-
-                    Spacer()
-
-                    // Get Started Button
-                    NavigationLink(destination: PlatformSelectionView()) {
-                        Text("get started")
-                            .font(.lora(size: 17, weight: .medium))
-                            .foregroundColor(colorScheme == .dark ? .black : .white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .background(colorScheme == .dark ? Color.white : Color.black)
-                            .cornerRadius(16)
-                    }
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 50)
+                        .frame(height: 36)
+                    
+                    // Carousel
+                    OnboardingCarouselView()
                 }
             }
         }

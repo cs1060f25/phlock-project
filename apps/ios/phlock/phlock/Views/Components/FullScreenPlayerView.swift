@@ -5,395 +5,420 @@ struct FullScreenPlayerView: View {
     @ObservedObject var playbackService: PlaybackService
     @Binding var isPresented: Bool
     @EnvironmentObject var authState: AuthenticationState
+    @Environment(\.colorScheme) var colorScheme
+
     @State private var isDraggingSlider = false
     @State private var sliderValue: Double = 0
     @State private var showToast = false
     @State private var toastMessage = ""
-    @State private var selectedFriends: Set<UUID> = []
-    @State private var shareMessage: String = ""
-    @State private var isSending: Bool = false
-    @FocusState private var isMessageFieldFocused: Bool
-    @Environment(\.colorScheme) var colorScheme
+    @State private var isTrackSaved: Bool = false
+    @State private var showShareSheet = false
+    @State private var shareTrack: MusicItem? = nil
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color(UIColor.systemBackground)
-                    .ignoresSafeArea()
+        ZStack {
+            // Background gradient with album art blur
+            backgroundLayer
 
-                if let track = playbackService.currentTrack {
-                    VStack(spacing: 0) {
-                        // Track info header
-                        HStack(spacing: 12) {
-                            // Album Art
-                            if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
-                                AsyncImage(url: url) { image in
-                                    image
-                                        .resizable()
-                                        .scaledToFill()
-                                } placeholder: {
-                                    Color.gray.opacity(0.2)
-                                }
-                                .frame(width: 50, height: 50)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                            }
+            // Main content
+            VStack(spacing: 0) {
+                // Top bar with dismiss and menu
+                headerBar
+                    .padding(.horizontal, 20)
+                    .padding(.top, 50) // Account for status bar
 
-                            // Track Info
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(track.name)
-                                    .font(.lora(size: 16, weight: .bold))
-                                    .lineLimit(1)
-                                    .foregroundColor(.primary)
+                // Album artwork
+                albumArtwork
+                    .padding(.horizontal, 30)
+                    .padding(.top, 30)
 
-                                if let artist = track.artistName {
-                                    Text(artist)
-                                        .font(.lora(size: 14))
-                                        .lineLimit(1)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(colorScheme == .dark ? Color(white: 0.1) : Color(white: 0.97))
-                        )
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-                        .padding(.bottom, 8)
+                // Track info section
+                trackInfoSection
+                    .padding(.horizontal, 30)
+                    .padding(.top, 30)
 
-                        // SECTION 1: Friend Selector Grid (independently scrollable at top)
-                        VStack(spacing: 0) {
-                            friendSelectorSection(track: track)
-                        }
-                        .background(Color(UIColor.systemBackground))
+                // Progress bar
+                progressBar
+                    .padding(.horizontal, 30)
+                    .padding(.top, 20)
 
-                        // Subtle separator
-                        Rectangle()
-                            .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
-                            .frame(height: 1)
-                            .padding(.horizontal, 16)
+                // Playback controls
+                playbackControlsSection
+                    .padding(.top, 30)
 
-                        // SECTION 2: Send UI (in the middle)
-                        sendUISection
+                Spacer(minLength: 20)
 
-                        // Subtle separator
-                        Rectangle()
-                            .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
-                            .frame(height: 1)
-                            .padding(.horizontal, 16)
-
-                        Spacer()
-                            .dismissKeyboardOnTouch()
-
-                        // SECTION 3: Player controls (at bottom)
-                        VStack(spacing: 20) {
-                            // Progress Slider
-                            VStack(spacing: 8) {
-                                Slider(
-                                    value: Binding(
-                                        get: {
-                                            isDraggingSlider ? sliderValue : playbackService.currentTime
-                                        },
-                                        set: { newValue in
-                                            sliderValue = newValue
-                                        }
-                                    ),
-                                    in: 0...max(playbackService.duration, 1),
-                                    onEditingChanged: { editing in
-                                        if editing {
-                                            // Start dragging - capture current time
-                                            sliderValue = playbackService.currentTime
-                                            isDraggingSlider = true
-                                        } else {
-                                            // Finished dragging - seek to final position, then update flag after a brief delay
-                                            playbackService.seek(to: sliderValue)
-                                            // Keep isDraggingSlider true briefly to prevent visual jump
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                isDraggingSlider = false
-                                            }
-                                        }
-                                    }
-                                )
-                                .tint(.black)
-                                .frame(height: 44) // Increase tap target
-                                .contentShape(Rectangle()) // Make entire area tappable
-
-                                // Time Labels
-                                HStack {
-                                    Text(formatTime(isDraggingSlider ? sliderValue : playbackService.currentTime))
-                                        .font(.lora(size: 13))
-                                        .foregroundColor(.secondary)
-
-                                    Spacer()
-
-                                    Text(formatTime(playbackService.duration))
-                                        .font(.lora(size: 13))
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            .padding(.horizontal, 32)
-
-                            // Playback Controls
-                            GeometryReader { geometry in
-                                HStack(spacing: 0) {
-                                    // Play on Platform Button (left side)
-                                    Button {
-                                        openInNativeApp(track: track)
-                                    } label: {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "square.and.arrow.up")
-                                                .font(.system(size: 13, weight: .semibold))
-                                            Text("Play on")
-                                                .font(.lora(size: 12, weight: .semiBold))
-                                            Text(platformName)
-                                                .font(.lora(size: 12, weight: .bold))
-                                        }
-                                        .foregroundColor(.primary)
-                                    }
-                                    .frame(width: geometry.size.width / 3, alignment: .leading)
-
-                                    // Play/Pause Button (center)
-                                    Button {
-                                        if playbackService.isPlaying {
-                                            playbackService.pause()
-                                        } else {
-                                            playbackService.resume()
-                                        }
-                                    } label: {
-                                        ZStack {
-                                            Circle()
-                                                .fill(Color.black)
-                                                .frame(width: 70, height: 70)
-
-                                            Image(systemName: playbackService.isPlaying ? "pause.fill" : "play.fill")
-                                                .font(.system(size: 30))
-                                                .foregroundColor(.white)
-                                        }
-                                    }
-                                    .frame(width: geometry.size.width / 3, alignment: .center)
-
-                                    // Spacer for balance (right side)
-                                    Spacer()
-                                        .frame(width: geometry.size.width / 3)
-                                }
-                            }
-                            .frame(height: 70)
-                            .padding(.horizontal, 32)
-                        }
-                        .padding(.top, 20)
-                        .padding(.bottom, 40)
-                        .background(Color(UIColor.systemBackground))
-                    }
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        playbackService.stopPlayback()
-                        isPresented = false
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.primary)
-                    }
-                }
-            }
-            .toast(isPresented: $showToast, message: toastMessage, type: .success, duration: 3.0)
-            .task {
-                if let track = playbackService.currentTrack {
-                    await loadAndRankFriends(for: track)
-                    await checkIfTrackSaved(track: track)
-                }
+                // Bottom action buttons
+                bottomActions
+                    .padding(.horizontal, 30)
+                    .padding(.bottom, 40)
             }
         }
-        .dismissKeyboardOnTouch()
-        .keyboardResponsive()
+        .ignoresSafeArea()
+        .preferredColorScheme(.dark) // Force dark mode for player
+        .toast(isPresented: $showToast, message: toastMessage, type: .success, duration: 3.0)
+        .onAppear {
+            refreshSavedState()
+        }
+        .onChange(of: playbackService.currentTrack?.id) { _ in
+            refreshSavedState()
+        }
+        .overlay(alignment: .bottom) {
+            if showShareSheet, let track = shareTrack {
+                QuickSendBar(
+                    track: track,
+                    onDismiss: {
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            showShareSheet = false
+                            shareTrack = nil
+                        }
+                    },
+                    onSendComplete: { _ in
+                        showShareSheet = false
+                        shareTrack = nil
+                    },
+                    additionalBottomInset: QuickSendBar.Layout.embeddedInset
+                )
+                .environmentObject(authState)
+                .environmentObject(playbackService)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(10)
+                .ignoresSafeArea(.keyboard, edges: .bottom)
+            }
+        }
     }
 
-    // MARK: - Friend Selector Section
+    // MARK: - Background Layer
 
-    @ViewBuilder
-    private func friendSelectorSection(track: MusicItem) -> some View {
-        VStack(spacing: 12) {
-            // Search bar
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
-                    .font(.system(size: 14))
+    private var backgroundLayer: some View {
+        ZStack {
+            // Base color
+            Color.black
 
-                TextField("Search friends", text: $searchText)
-                    .font(.lora(size: 14))
-                    .textFieldStyle(.plain)
-                    .focused($isSearchFocused)
-                    .submitLabel(.search)
-
-                if !searchText.isEmpty {
-                    Button {
-                        searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                            .font(.system(size: 14))
-                    }
-                    .buttonStyle(.plain)
+            // Blurred album art background
+            if let artworkUrl = playbackService.currentTrack?.albumArtUrl,
+               let url = URL(string: artworkUrl) {
+                AsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
+                        .blur(radius: 60)
+                        .overlay(Color.black.opacity(0.4))
+                } placeholder: {
+                    LinearGradient(
+                        colors: [
+                            Color.purple.opacity(0.3),
+                            Color.blue.opacity(0.3)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(colorScheme == .dark ? Color(white: 0.15) : Color(white: 0.95))
-            )
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-
-            // Friends grid (3 per row, vertically scrollable with fixed height)
-            if isLoadingFriends {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle())
-                    .frame(height: 200)
-            } else if filteredFriends.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: searchText.isEmpty ? "person.3" : "magnifyingglass")
-                        .font(.system(size: 32))
-                        .foregroundColor(.secondary)
-                    Text(searchText.isEmpty ? "No friends yet" : "No friends found")
-                        .font(.lora(size: 14))
-                        .foregroundColor(.secondary)
-                }
-                .frame(height: 200)
             } else {
-                ScrollView {
-                    LazyVGrid(columns: gridColumns, spacing: 20) {
-                        ForEach(filteredFriends, id: \.id) { friend in
-                            FriendSelectorItem(
-                                friend: friend,
-                                isSelected: selectedFriends.contains(friend.id)
-                            ) {
-                                toggleFriendSelection(friend)
-                            }
+                LinearGradient(
+                    colors: [
+                        Color.purple.opacity(0.3),
+                        Color.blue.opacity(0.3)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    // MARK: - Header Bar
+
+    private var headerBar: some View {
+        HStack {
+            // Dismiss button
+            Button {
+                isPresented = false
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Color.white.opacity(0.15))
+                    .clipShape(Circle())
+            }
+
+            Spacer()
+
+            // Now Playing label
+            VStack(spacing: 2) {
+                Text("NOW PLAYING")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.2)
+                    .foregroundColor(.white.opacity(0.6))
+
+                HStack(spacing: 4) {
+                    Image(systemName: platformIconName)
+                        .font(.system(size: 10))
+                    Text(platformName)
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .foregroundColor(.white.opacity(0.8))
+            }
+
+            Spacer()
+
+            // Menu button
+            Menu {
+                Button {
+                    if let track = playbackService.currentTrack {
+                        openInNativeApp(track: track)
+                    }
+                } label: {
+                    Label("Open in \(platformName)", systemImage: "arrow.up.right.square")
+                }
+
+                Button {
+                    if let track = playbackService.currentTrack {
+                        shareTrack = track
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            showShareSheet = true
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 16)
+                } label: {
+                    Label("Share with Friends", systemImage: "paperplane")
                 }
-                .frame(height: 240)
-                .scrollDismissesKeyboard(.interactively)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Color.white.opacity(0.15))
+                    .clipShape(Circle())
             }
         }
     }
 
-    // MARK: - Send UI Section
+    // MARK: - Album Artwork
 
-    private var sendUISection: some View {
-        VStack(spacing: 0) {
-            // Message input field
-            HStack(spacing: 10) {
-                Image(systemName: "bubble.left")
-                    .font(.system(size: 15))
-                    .foregroundColor(isMessageFieldFocused
-                        ? (colorScheme == .dark ? .white : .black)
-                        : (colorScheme == .dark ? .white.opacity(0.5) : .black.opacity(0.5)))
+    private var albumArtwork: some View {
+        Group {
+            if let track = playbackService.currentTrack {
+                RemoteImage(
+                    url: track.albumArtUrl,
+                    spotifyId: track.spotifyId,
+                    trackName: track.name,
+                    width: UIScreen.main.bounds.width - 60,
+                    height: UIScreen.main.bounds.width - 60,
+                    cornerRadius: 8
+                )
+                .frame(width: UIScreen.main.bounds.width - 60, height: UIScreen.main.bounds.width - 60)
+                .shadow(color: Color.black.opacity(0.5), radius: 30, x: 0, y: 15)
+            } else {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: UIScreen.main.bounds.width - 60, height: UIScreen.main.bounds.width - 60)
+                    .cornerRadius(8)
+            }
+        }
+    }
 
-                TextField("Write a message...", text: $shareMessage)
-                    .font(.lora(size: 14, weight: .regular))
-                    .textFieldStyle(.plain)
-                    .foregroundColor(.primary)
-                    .focused($isMessageFieldFocused)
-                    .submitLabel(.send)
-                    .onSubmit {
-                        if !isSending && !selectedFriends.isEmpty {
-                            Task {
-                                await sendToSelectedFriends()
+    // MARK: - Track Info Section
+
+    private var trackInfoSection: some View {
+        HStack {
+            if let track = playbackService.currentTrack {
+                VStack(alignment: .leading, spacing: 6) {
+                    // Track name
+                    Text(track.name)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+
+                    // Artist name
+                    Text(track.artistName ?? "Unknown Artist")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white.opacity(0.7))
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                // Like button
+                Button {
+                    if let track = playbackService.currentTrack {
+                        Task {
+                            if isTrackSaved {
+                                await handleUnsaveFromLibrary(track: track)
+                            } else {
+                                await handleSaveToLibrary(track: track)
                             }
                         }
                     }
+                } label: {
+                    Image(systemName: isTrackSaved ? "heart.fill" : "heart")
+                        .font(.system(size: 24))
+                        .foregroundColor(isTrackSaved ? .pink : .white.opacity(0.7))
+                        .frame(width: 44, height: 44)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("No track playing")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                Spacer()
+            }
+        }
+    }
 
-                if !shareMessage.isEmpty {
-                    Button {
-                        shareMessage = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(.secondary)
+    // MARK: - Progress Bar
+
+    private var progressBar: some View {
+        VStack(spacing: 8) {
+            // Slider
+            Slider(
+                value: Binding(
+                    get: {
+                        isDraggingSlider ? sliderValue : currentTimeSafe
+                    },
+                    set: { newValue in
+                        sliderValue = newValue
                     }
-                    .buttonStyle(.plain)
+                ),
+                in: 0...max(durationSafe, 1),
+                onEditingChanged: { editing in
+                    if editing {
+                        sliderValue = currentTimeSafe
+                        isDraggingSlider = true
+                    } else {
+                        seek(to: sliderValue)
+                        DispatchQueue.main.async {
+                            isDraggingSlider = false
+                        }
+                    }
+                }
+            )
+            .tint(.white)
+
+            // Time labels
+            HStack {
+                Text(formatTime(isDraggingSlider ? sliderValue : currentTimeSafe))
+                    .font(.system(size: 12).monospacedDigit())
+                    .foregroundColor(.white.opacity(0.5))
+
+                Spacer()
+
+                Text(formatTime(durationSafe))
+                    .font(.system(size: 12).monospacedDigit())
+                    .foregroundColor(.white.opacity(0.5))
+            }
+        }
+    }
+
+    // MARK: - Playback Controls
+
+    private var playbackControlsSection: some View {
+        HStack(spacing: 50) {
+            // Previous/Rewind button
+            Button {
+                seek(by: -15)
+            } label: {
+                Image(systemName: "gobackward.15")
+                    .font(.system(size: 32))
+                    .foregroundColor(.white)
+            }
+
+            // Play/Pause button
+            Button {
+                if playbackService.isPlaying {
+                    playbackService.pause()
+                } else {
+                    playbackService.resume()
+                }
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 72, height: 72)
+
+                    Image(systemName: playbackService.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(.black)
+                        .offset(x: playbackService.isPlaying ? 0 : 3)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(colorScheme == .dark ? Color(white: 0.15) : Color(white: 0.95))
-            )
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 12)
+            .buttonStyle(ScaleButtonStyle())
 
-            // Send button
+            // Next/Forward button
             Button {
-                Task {
-                    if !isSending {
-                        await sendToSelectedFriends()
+                seek(by: 15)
+            } label: {
+                Image(systemName: "goforward.15")
+                    .font(.system(size: 32))
+                    .foregroundColor(.white)
+            }
+        }
+    }
+
+    // MARK: - Bottom Actions
+
+    private var bottomActions: some View {
+        HStack(spacing: 50) {
+            // Share button
+            Button {
+                if let track = playbackService.currentTrack {
+                    shareTrack = track
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        showShareSheet = true
                     }
                 }
             } label: {
-                HStack {
-                    if isSending {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle())
-                            .scaleEffect(0.8)
-                            .tint(.white)
-                    } else {
-                        Text(selectedFriends.count > 1 ? "Send separately" : "Send")
-                            .font(.lora(size: 16, weight: .semiBold))
+                VStack(spacing: 6) {
+                    Image(systemName: "paperplane")
+                        .font(.system(size: 20))
+                    Text("Share")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .foregroundColor(.white.opacity(0.7))
+            }
+
+            // Save to library button
+            Button {
+                if let track = playbackService.currentTrack {
+                    Task {
+                        if isTrackSaved {
+                            await handleUnsaveFromLibrary(track: track)
+                        } else {
+                            await handleSaveToLibrary(track: track)
+                        }
                     }
                 }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(selectedFriends.isEmpty ? Color.blue.opacity(0.5) : Color.blue)
-                .cornerRadius(12)
+            } label: {
+                VStack(spacing: 6) {
+                    Image(systemName: isTrackSaved ? "checkmark.circle.fill" : "plus.circle")
+                        .font(.system(size: 20))
+                    Text(isTrackSaved ? "Saved" : "Library")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .foregroundColor(isTrackSaved ? .green : .white.opacity(0.7))
             }
-            .buttonStyle(PressedButtonStyle())
-            .disabled(isSending || selectedFriends.isEmpty)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
-        }
-        .background(Color(UIColor.systemBackground))
-    }
 
-    // MARK: - Friend Management State
-
-    @State private var allFriends: [User] = []
-    @State private var rankedFriends: [User] = []
-    @State private var isLoadingFriends = true
-    @State private var searchText = ""
-    @FocusState private var isSearchFocused: Bool
-    @State private var isTrackSaved: Bool = false
-
-    private let gridColumns = [
-        GridItem(.flexible()),
-        GridItem(.flexible()),
-        GridItem(.flexible())
-    ]
-
-    private var filteredFriends: [User] {
-        if searchText.isEmpty {
-            return rankedFriends
-        } else {
-            return allFriends.filter { friend in
-                friend.displayName.lowercased().contains(searchText.lowercased())
+            // Open in app button
+            Button {
+                if let track = playbackService.currentTrack {
+                    openInNativeApp(track: track)
+                }
+            } label: {
+                VStack(spacing: 6) {
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.system(size: 20))
+                    Text("Open")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .foregroundColor(.white.opacity(0.7))
             }
         }
     }
 
-    // MARK: - Actions
+    // MARK: - Helper Properties
 
     private var platformName: String {
         switch authState.currentUser?.resolvedPlatformType {
@@ -402,96 +427,104 @@ struct FullScreenPlayerView: View {
         case .appleMusic:
             return "Apple Music"
         case .none:
-            return "Streaming Service"
+            return ""
         }
     }
 
-    private func toggleFriendSelection(_ friend: User) {
-        // Haptic feedback
-        let selectionFeedback = UISelectionFeedbackGenerator()
-        selectionFeedback.selectionChanged()
-
-        withAnimation(.easeInOut(duration: 0.15)) {
-            if selectedFriends.contains(friend.id) {
-                selectedFriends.remove(friend.id)
-            } else {
-                selectedFriends.insert(friend.id)
-            }
+    private var platformIconName: String {
+        switch authState.currentUser?.resolvedPlatformType {
+        case .spotify:
+            return "music.note"
+        case .appleMusic:
+            return "applelogo"
+        case .none:
+            return "music.note"
         }
     }
 
-    private func loadAndRankFriends(for track: MusicItem) async {
-        guard let currentUser = authState.currentUser else {
-            await MainActor.run {
-                isLoadingFriends = false
-            }
+    private var durationSafe: Double {
+        let duration = playbackService.duration
+        if duration.isNaN || duration.isInfinite || duration < 0 {
+            return 0
+        }
+        return duration
+    }
+
+    private var currentTimeSafe: Double {
+        let time = playbackService.currentTime
+        if time.isNaN || time.isInfinite || time < 0 {
+            return 0
+        }
+        return time
+    }
+
+    // MARK: - Helper Methods
+
+    private func refreshSavedState() {
+        guard let track = playbackService.currentTrack else {
+            isTrackSaved = false
             return
         }
 
-        do {
-            // Load all friends
-            let friends = try await UserService.shared.getFriends(for: currentUser.id)
-
-            await MainActor.run {
-                allFriends = friends
-            }
-
-            // Rank friends using FriendRankingEngine
-            let rankedFriendIds = await FriendRankingEngine.rankFriends(
-                friends: friends,
-                currentUser: currentUser,
-                track: track,
-                limit: friends.count // Get all ranked
-            )
-
-            // Reorder friends based on ranking
-            let ranked = rankedFriendIds.compactMap { friendId in
-                friends.first { $0.id == friendId }
-            }
-
-            await MainActor.run {
-                rankedFriends = ranked
-                isLoadingFriends = false
-            }
-        } catch {
-            print("❌ Failed to load friends: \(error)")
-            await MainActor.run {
-                isLoadingFriends = false
-            }
+        Task {
+            await checkIfTrackSaved(track: track)
         }
     }
+
+    private func seek(by seconds: Double) {
+        let base = isDraggingSlider ? sliderValue : currentTimeSafe
+        let target = base + seconds
+        seek(to: target)
+
+        let impact = UIImpactFeedbackGenerator(style: .light)
+        impact.impactOccurred()
+    }
+
+    private func seek(to time: Double) {
+        guard durationSafe > 0 else {
+            playbackService.seek(to: 0)
+            return
+        }
+
+        let clamped = min(max(time, 0), durationSafe)
+        playbackService.seek(to: clamped)
+        sliderValue = clamped
+    }
+
+    private func formatTime(_ timeInSeconds: Double) -> String {
+        guard !timeInSeconds.isNaN && !timeInSeconds.isInfinite else { return "0:00" }
+        let minutes = Int(timeInSeconds) / 60
+        let seconds = Int(timeInSeconds) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private func openInNativeApp(track: MusicItem) {
+        guard let platformType = authState.currentUser?.resolvedPlatformType else { return }
+        DeepLinkService.shared.openInNativeApp(track: track, platform: platformType)
+    }
+
+    @MainActor
+    private func showToastMessage(_ message: String) {
+        toastMessage = message
+        showToast = true
+    }
+
+    // MARK: - Track Save State
 
     private func checkIfTrackSaved(track: MusicItem) async {
-        guard let currentUser = authState.currentUser else {
-            print("❌ No current user")
-            return
-        }
-
-        guard let platformType = currentUser.resolvedPlatformType else {
-            print("❌ No platform type")
-            return
-        }
+        guard let currentUser = authState.currentUser else { return }
+        guard let platformType = currentUser.resolvedPlatformType else { return }
 
         do {
-            // Get user's access token
             let token = try await getAccessToken(for: currentUser)
-
             var isSaved = false
 
             switch platformType {
             case .spotify:
-                // Check if track is saved in Spotify library
-                guard let spotifyId = track.spotifyId ?? track.id as String? else {
-                    return
-                }
-                isSaved = try await SpotifyService.shared.isTrackSaved(
-                    trackId: spotifyId,
-                    accessToken: token
-                )
-
+                guard let spotifyId = track.spotifyId ?? track.id as String? else { return }
+                isSaved = try await SpotifyService.shared.isTrackSaved(trackId: spotifyId, accessToken: token)
             case .appleMusic:
-                // Apple Music doesn't provide easy API to check saved status
-                // For now, check if there's a saved share to self in database
+                // For Apple Music, check if we have a self-share that's saved
                 let shares: [Share] = try await PhlockSupabaseClient.shared.client
                     .from("shares")
                     .select("*")
@@ -501,121 +534,76 @@ struct FullScreenPlayerView: View {
                     .neq("saved_at", value: "null")
                     .execute()
                     .value
-
                 isSaved = !shares.isEmpty
             }
 
             await MainActor.run {
                 isTrackSaved = isSaved
             }
-
-            print("✅ Track saved status: \(isSaved)")
         } catch {
-            print("❌ Failed to check saved status: \(error)")
+            print("Failed to check saved status: \(error)")
         }
     }
 
     private func handleSaveToLibrary(track: MusicItem) async {
-        guard let currentUser = authState.currentUser else {
-            print("❌ No current user")
-            return
-        }
-
-        guard let platformType = currentUser.resolvedPlatformType else {
-            print("❌ No platform type")
-            return
-        }
+        guard let currentUser = authState.currentUser else { return }
+        guard let platformType = currentUser.resolvedPlatformType else { return }
 
         do {
-            // Get user's access token
             let token = try await getAccessToken(for: currentUser)
 
             switch platformType {
             case .spotify:
-                // Save to Spotify library
-                guard let spotifyId = track.spotifyId ?? track.id as String? else {
-                    showToastMessage("Could not save to Spotify")
-                    return
-                }
-                try await SpotifyService.shared.saveTrackToLibrary(
-                    trackId: spotifyId,
-                    accessToken: token
-                )
-
+                guard let spotifyId = track.spotifyId ?? track.id as String? else { return }
+                try await SpotifyService.shared.saveTrackToLibrary(trackId: spotifyId, accessToken: token)
             case .appleMusic:
-                // Save to Apple Music library
-                guard let appleMusicId = track.appleMusicId ?? track.id as String? else {
-                    showToastMessage("Could not save to Apple Music")
-                    return
-                }
+                guard let appleMusicId = track.appleMusicId ?? track.id as String? else { return }
                 try await AppleMusicService.shared.saveTrackToLibrary(trackId: appleMusicId)
             }
 
-            // Track the library save
-            try await ShareService.shared.trackLibrarySave(
-                trackId: track.id,
-                userId: currentUser.id,
-                platformType: platformType
-            )
+            // Track the save
+            try await ShareService.shared.trackLibrarySave(trackId: track.id, userId: currentUser.id, platformType: platformType)
 
-            // Create a "saved" share to self for the shares tab
+            // Create self-share for tracking
             _ = try await ShareService.shared.createShare(
                 track: track,
-                recipients: [currentUser.id], // Send to self
+                recipients: [currentUser.id],
                 message: nil,
                 senderId: currentUser.id
             )
 
-            // Update saved state
             await MainActor.run {
                 isTrackSaved = true
+                showToastMessage("Added to your library!")
             }
-
-            // Show success feedback
-            showToastMessage("Saved to your library!")
-
-            print("✅ Track saved to library successfully")
         } catch {
-            print("❌ Failed to save track: \(error)")
-            showToastMessage("Failed to save track")
+            print("Failed to save track: \(error)")
+            await MainActor.run {
+                showToastMessage("Failed to add to library")
+            }
         }
     }
 
     private func handleUnsaveFromLibrary(track: MusicItem) async {
-        guard let currentUser = authState.currentUser else {
-            print("❌ No current user")
-            return
-        }
-
-        guard let platformType = currentUser.resolvedPlatformType else {
-            print("❌ No platform type")
-            return
-        }
+        guard let currentUser = authState.currentUser else { return }
+        guard let platformType = currentUser.resolvedPlatformType else { return }
 
         do {
-            // Get user's access token
             let token = try await getAccessToken(for: currentUser)
 
             switch platformType {
             case .spotify:
-                // Remove from Spotify library
-                guard let spotifyId = track.spotifyId ?? track.id as String? else {
-                    showToastMessage("Could not remove from Spotify")
-                    return
-                }
-                try await SpotifyService.shared.removeTrackFromLibrary(
-                    trackId: spotifyId,
-                    accessToken: token
-                )
-
+                guard let spotifyId = track.spotifyId ?? track.id as String? else { return }
+                try await SpotifyService.shared.removeTrackFromLibrary(trackId: spotifyId, accessToken: token)
             case .appleMusic:
-                // Apple Music doesn't provide easy API to remove tracks
-                // The save functionality opens the Music app, so unsave is manual
-                showToastMessage("Open Apple Music to remove track")
+                // Apple Music doesn't support removing via API
+                await MainActor.run {
+                    showToastMessage("Open Apple Music to remove")
+                }
                 return
             }
 
-            // Delete the saved share from database
+            // Remove self-share if exists
             let shares: [Share] = try await PhlockSupabaseClient.shared.client
                 .from("shares")
                 .select("*")
@@ -633,18 +621,15 @@ struct FullScreenPlayerView: View {
                     .execute()
             }
 
-            // Update saved state
             await MainActor.run {
                 isTrackSaved = false
+                showToastMessage("Removed from library")
             }
-
-            // Show success feedback
-            showToastMessage("Removed from your library")
-
-            print("✅ Track removed from library successfully")
         } catch {
-            print("❌ Failed to remove track: \(error)")
-            showToastMessage("Failed to remove track")
+            print("Failed to remove track: \(error)")
+            await MainActor.run {
+                showToastMessage("Failed to remove")
+            }
         }
     }
 
@@ -653,7 +638,6 @@ struct FullScreenPlayerView: View {
             throw NSError(domain: "FullScreenPlayerView", code: -1, userInfo: [NSLocalizedDescriptionKey: "No platform type"])
         }
 
-        // Fetch the platform token from database
         let tokens: [PlatformToken] = try await PhlockSupabaseClient.shared.client
             .from("platform_tokens")
             .select("*")
@@ -669,90 +653,4 @@ struct FullScreenPlayerView: View {
 
         return token.accessToken
     }
-
-    private func sendToSelectedFriends() async {
-        guard let currentUser = authState.currentUser else { return }
-        guard let track = playbackService.currentTrack else { return }
-
-        // Dismiss keyboard
-        await MainActor.run {
-            isMessageFieldFocused = false
-        }
-
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
-
-        await MainActor.run {
-            isSending = true
-        }
-
-        do {
-            _ = try await ShareService.shared.createShare(
-                track: track,
-                recipients: Array(selectedFriends),
-                message: shareMessage.isEmpty ? nil : shareMessage,
-                senderId: currentUser.id
-            )
-
-            await MainActor.run {
-                isSending = false
-
-                let successFeedback = UINotificationFeedbackGenerator()
-                successFeedback.notificationOccurred(.success)
-
-                // Show success feedback
-                toastMessage = selectedFriends.count == 1
-                    ? "Sent to 1 friend"
-                    : "Sent to \(selectedFriends.count) friends"
-                showToast = true
-
-                // Clear selection and message
-                selectedFriends.removeAll()
-                shareMessage = ""
-            }
-        } catch {
-            print("❌ Failed to send shares: \(error)")
-            await MainActor.run {
-                isSending = false
-
-                let errorFeedback = UINotificationFeedbackGenerator()
-                errorFeedback.notificationOccurred(.error)
-
-                toastMessage = "Failed to send"
-                showToast = true
-            }
-        }
-    }
-
-    @MainActor
-    private func showToastMessage(_ message: String) {
-        toastMessage = message
-        showToast = true
-    }
-
-    private func openInNativeApp(track: MusicItem) {
-        guard let platformType = authState.currentUser?.resolvedPlatformType else {
-            print("❌ No platform type found")
-            return
-        }
-
-        DeepLinkService.shared.openInNativeApp(track: track, platform: platformType)
-    }
-
-    private func formatTime(_ timeInSeconds: Double) -> String {
-        guard !timeInSeconds.isNaN && !timeInSeconds.isInfinite else {
-            return "0:00"
-        }
-
-        let minutes = Int(timeInSeconds) / 60
-        let seconds = Int(timeInSeconds) % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-}
-
-#Preview {
-    FullScreenPlayerView(
-        playbackService: PlaybackService.shared,
-        isPresented: .constant(true)
-    )
 }

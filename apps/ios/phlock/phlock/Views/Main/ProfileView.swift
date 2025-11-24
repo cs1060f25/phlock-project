@@ -17,6 +17,17 @@ struct ProfileView: View {
     @State private var todaysPick: Share?
     @State private var pastPicks: [Share] = []
     @State private var phlockMembers: [FriendWithPosition] = []
+    
+    // Song Picker Sheet
+    @State private var showSongPickerSheet = false
+    @State private var songPickerNavPath = NavigationPath()
+    @State private var songPickerClearTrigger = 0
+    @State private var songPickerRefreshTrigger = 0
+    @State private var songPickerScrollToTopTrigger = 0
+    
+    // Phlock Member Interaction
+    @State private var selectedUserForProfile: User?
+    @State private var showPhlockMenu = false
 
     var body: some View {
         ScrollView {
@@ -91,13 +102,20 @@ struct ProfileView: View {
                             share: todaysPick,
                             isCurrentUser: true, // Since we are viewing own profile for now
                             onPickSong: {
-                                // TODO: Navigate to song picker
-                                print("Navigate to song picker")
+                                showSongPickerSheet = true
                             }
                         )
                         
                         // My Phlock
-                        PhlockMembersRow(members: phlockMembers)
+                        PhlockMembersRow(
+                            members: phlockMembers,
+                            onMemberTapped: { user in
+                                selectedUserForProfile = user
+                            },
+                            onEditPhlockTapped: {
+                                showPhlockMenu = true
+                            }
+                        )
 
                         ProfileInsightsSection(
                             user: user,
@@ -164,6 +182,23 @@ struct ProfileView: View {
                             Text("TestFlight Beta")
                                 .font(.lora(size: 11))
                                 .foregroundColor(.secondary.opacity(0.7))
+                            
+                            // DEBUG: Reset Onboarding
+                            Button {
+                                UserDefaults.standard.set(false, forKey: "isOnboardingComplete")
+                                Task { await authState.signOut() }
+                            } label: {
+                                VStack(spacing: 4) {
+                                    Text("Reset Onboarding (Debug)")
+                                        .font(.lora(size: 11))
+                                        .foregroundColor(.red)
+                                    Text("Note: Backend data persists. Use a test account for fresh experience.")
+                                        .font(.lora(size: 9))
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                }
+                                .padding(.top, 8)
+                            }
                         }
                         .padding(.top, 8)
                         .padding(.bottom, 40)
@@ -184,6 +219,36 @@ struct ProfileView: View {
         .id(refreshCount) // Force view refresh when refreshCount changes
         .sheet(isPresented: $showEditProfile) {
             EditProfileView()
+        }
+        .sheet(isPresented: $showSongPickerSheet) {
+            DiscoverView(
+                navigationPath: $songPickerNavPath,
+                clearSearchTrigger: $songPickerClearTrigger,
+                refreshTrigger: $songPickerRefreshTrigger,
+                scrollToTopTrigger: $songPickerScrollToTopTrigger
+            )
+            .environmentObject(authState)
+            .environmentObject(playbackService)
+            .onDisappear {
+                Task {
+                    if let user = authState.currentUser {
+                        await loadData(for: user)
+                    }
+                }
+            }
+        }
+        .sheet(item: $selectedUserForProfile) { user in
+            NavigationStack {
+                UserProfileView(user: user)
+                    .environmentObject(authState)
+            }
+        }
+        .confirmationDialog("Edit Phlock", isPresented: $showPhlockMenu, titleVisibility: .visible) {
+            Button("Choose/Swap Members") {
+                // TODO: Navigate to phlock editing view
+                print("Edit phlock members")
+            }
+            Button("Cancel", role: .cancel) { }
         }
         .task {
             if let user = authState.currentUser {
@@ -1309,6 +1374,14 @@ struct PastPicksView: View {
 
 struct PhlockMembersRow: View {
     let members: [FriendWithPosition]
+    let onMemberTapped: (User) -> Void
+    let onEditPhlockTapped: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+    
+    // Calculate empty slots (max 5 members in a phlock)
+    private var emptySlots: Int {
+        max(0, 5 - members.count)
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1316,15 +1389,20 @@ struct PhlockMembersRow: View {
                 .font(.lora(size: 17, weight: .semiBold))
                 .padding(.horizontal, 24)
             
-            if members.isEmpty {
-                Text("no members in phlock yet.")
+            if members.isEmpty && emptySlots > 0 {
+                Text("add members to your phlock to get started.")
                     .font(.lora(size: 14))
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 24)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 16) {
-                        ForEach(members) { member in
+            }
+            
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 16) {
+                    // Existing members
+                    ForEach(members) { member in
+                        Button {
+                            onMemberTapped(member.user)
+                        } label: {
                             VStack(spacing: 8) {
                                 if let photoUrl = member.user.profilePhotoUrl, let url = URL(string: photoUrl) {
                                     AsyncImage(url: url) { image in
@@ -1343,13 +1421,65 @@ struct PhlockMembersRow: View {
                                 
                                 Text(member.user.displayName)
                                     .font(.lora(size: 12))
+                                    .foregroundColor(.primary)
                                     .lineLimit(1)
                                     .frame(width: 70)
                             }
                         }
+                        .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 24)
+                    
+                    // Empty slot placeholders
+                    ForEach(0..<emptySlots, id: \.self) { _ in
+                        VStack(spacing: 8) {
+                            ZStack {
+                                Circle()
+                                    .strokeBorder(
+                                        style: StrokeStyle(lineWidth: 2, dash: [5, 3])
+                                    )
+                                    .foregroundColor(.secondary.opacity(0.4))
+                                    .frame(width: 60, height: 60)
+                                
+                                Circle()
+                                    .fill(Color.gray.opacity(colorScheme == .dark ? 0.15 : 0.08))
+                                    .frame(width: 60, height: 60)
+                                
+                                Image(systemName: "plus")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .foregroundColor(.secondary.opacity(0.5))
+                            }
+                            
+                            Text(" ")
+                                .font(.lora(size: 12))
+                                .frame(width: 70)
+                        }
+                    }
+                    
+                    // Three-dot menu button
+                    Button {
+                        onEditPhlockTapped()
+                    } label: {
+                        VStack(spacing: 8) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.gray.opacity(colorScheme == .dark ? 0.25 : 0.12))
+                                    .frame(width: 60, height: 60)
+                                
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundColor(.primary)
+                            }
+                            
+                            Text("edit")
+                                .font(.lora(size: 12))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .frame(width: 70)
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
+                .padding(.horizontal, 24)
             }
         }
     }

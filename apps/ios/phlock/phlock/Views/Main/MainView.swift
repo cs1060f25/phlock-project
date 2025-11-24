@@ -164,7 +164,7 @@ struct MainView: View {
             .environment(\.miniPlayerBottomInset, miniPlayerInset)
         .environmentObject(playbackService)
         .environmentObject(navigationState)
-        .sheet(isPresented: $navigationState.showFullPlayer) {
+        .fullScreenCover(isPresented: $navigationState.showFullPlayer) {
             FullScreenPlayerView(
                 playbackService: playbackService,
                 isPresented: $navigationState.showFullPlayer

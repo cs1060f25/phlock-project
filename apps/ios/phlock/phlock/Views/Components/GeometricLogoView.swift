@@ -36,30 +36,38 @@ struct GeometricLogoView: View {
 
     // First generation positions (6 nodes, evenly spaced at 60° intervals, 60 units from center)
     // Matching phlock_network_logo_fixed.svg exactly
-    private let firstGenPositions: [CGPoint] = [
-        CGPoint(x: 120, y: 60),   // Top
-        CGPoint(x: 172, y: 90),   // Top right
-        CGPoint(x: 172, y: 150),  // Bottom right
-        CGPoint(x: 120, y: 180),  // Bottom
-        CGPoint(x: 68, y: 150),   // Bottom left
-        CGPoint(x: 68, y: 90)     // Top left
+    // Custom Hashable Point struct to avoid iOS 18 requirement for CGPoint
+    struct Point: Hashable {
+        let x: CGFloat
+        let y: CGFloat
+    }
+
+    // First generation positions (6 nodes, evenly spaced at 60° intervals, 60 units from center)
+    // Matching phlock_network_logo_fixed.svg exactly
+    private let firstGenPositions: [Point] = [
+        Point(x: 120, y: 60),   // Top
+        Point(x: 172, y: 90),   // Top right
+        Point(x: 172, y: 150),  // Bottom right
+        Point(x: 120, y: 180),  // Bottom
+        Point(x: 68, y: 150),   // Bottom left
+        Point(x: 68, y: 90)     // Top left
     ]
 
     // Second generation positions (12 nodes, evenly spaced at 30° intervals, 95 units from center)
     // Matching phlock_network_logo_fixed.svg exactly
-    private let secondGenPositions: [CGPoint] = [
-        CGPoint(x: 120, y: 25),     // Top
-        CGPoint(x: 167.5, y: 37.5), // 30°
-        CGPoint(x: 202.5, y: 72.5), // 60°
-        CGPoint(x: 215, y: 120),    // 90° Right
-        CGPoint(x: 202.5, y: 167.5),// 120°
-        CGPoint(x: 167.5, y: 202.5),// 150°
-        CGPoint(x: 120, y: 215),    // 180° Bottom
-        CGPoint(x: 72.5, y: 202.5), // 210°
-        CGPoint(x: 37.5, y: 167.5), // 240°
-        CGPoint(x: 25, y: 120),     // 270° Left
-        CGPoint(x: 37.5, y: 72.5),  // 300°
-        CGPoint(x: 72.5, y: 37.5)   // 330°
+    private let secondGenPositions: [Point] = [
+        Point(x: 120, y: 25),     // Top
+        Point(x: 167.5, y: 37.5), // 30°
+        Point(x: 202.5, y: 72.5), // 60°
+        Point(x: 215, y: 120),    // 90° Right
+        Point(x: 202.5, y: 167.5),// 120°
+        Point(x: 167.5, y: 202.5),// 150°
+        Point(x: 120, y: 215),    // 180° Bottom
+        Point(x: 72.5, y: 202.5), // 210°
+        Point(x: 37.5, y: 167.5), // 240°
+        Point(x: 25, y: 120),     // 270° Left
+        Point(x: 37.5, y: 72.5),  // 300°
+        Point(x: 72.5, y: 37.5)   // 330°
     ]
 }
 

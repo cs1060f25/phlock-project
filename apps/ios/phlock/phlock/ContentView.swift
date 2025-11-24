@@ -19,7 +19,13 @@ struct ContentView: View {
         ZStack {
             // Main content
             if authState.isAuthenticated {
-                MainView()
+                if authState.isOnboardingComplete {
+                    MainView()
+                } else {
+                    NavigationStack {
+                        PhlockCreationView()
+                    }
+                }
             } else if !showSplashScreen {
                 // Not authenticated and splash is done - show welcome screen
                 WelcomeView()

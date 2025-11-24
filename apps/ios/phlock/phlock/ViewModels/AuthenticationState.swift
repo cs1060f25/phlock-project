@@ -9,6 +9,7 @@ class AuthenticationState: ObservableObject {
     @Published var currentUser: User?
     @Published var isLoading = true
     @Published var error: Error?
+    @Published var isOnboardingComplete = false
 
     init() {
         Task {
@@ -21,6 +22,9 @@ class AuthenticationState: ObservableObject {
     func checkAuthStatus() async {
         isLoading = true
 
+        // Check onboarding status from UserDefaults
+        isOnboardingComplete = UserDefaults.standard.bool(forKey: "isOnboardingComplete")
+
         do {
             currentUser = try await AuthServiceV2.shared.currentUser
             isAuthenticated = currentUser != nil
@@ -31,6 +35,11 @@ class AuthenticationState: ObservableObject {
         }
 
         isLoading = false
+    }
+    
+    func completeOnboarding() {
+        isOnboardingComplete = true
+        UserDefaults.standard.set(true, forKey: "isOnboardingComplete")
     }
 
     // MARK: - Sign In
@@ -123,6 +132,8 @@ class AuthenticationState: ObservableObject {
             try await AuthServiceV2.shared.signOut()
             currentUser = nil
             isAuthenticated = false
+            isOnboardingComplete = false
+            UserDefaults.standard.set(false, forKey: "isOnboardingComplete")
         } catch {
             self.error = error
         }

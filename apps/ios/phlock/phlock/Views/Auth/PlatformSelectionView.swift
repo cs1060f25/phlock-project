@@ -8,14 +8,16 @@ struct PlatformSelectionView: View {
     var body: some View {
         VStack(spacing: 32) {
             // Header
-            VStack(spacing: 12) {
+            VStack(spacing: 16) {
                 Text("connect your music")
                     .font(.lora(size: 32, weight: .bold))
+                    .multilineTextAlignment(.center)
 
                 Text("choose your streaming platform to get started")
                     .font(.lora(size: 17))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
             }
             .padding(.top, 60)
 
@@ -26,7 +28,8 @@ struct PlatformSelectionView: View {
                 PlatformCard(
                     platform: "Spotify",
                     logo: "SpotifyLogo",
-                    color: Color(red: 0.11, green: 0.73, blue: 0.33)
+                    color: Color(red: 0.11, green: 0.73, blue: 0.33),
+                    description: "Connect your Spotify account"
                 ) {
                     await signInWithSpotify()
                 }
@@ -34,7 +37,8 @@ struct PlatformSelectionView: View {
                 PlatformCard(
                     platform: "Apple Music",
                     logo: "AppleMusicLogo",
-                    color: Color(red: 0.98, green: 0.26, blue: 0.42)
+                    color: Color(red: 0.98, green: 0.26, blue: 0.42),
+                    description: "Connect your Apple Music library"
                 ) {
                     await signInWithAppleMusic()
                 }
@@ -42,6 +46,14 @@ struct PlatformSelectionView: View {
             .padding(.horizontal, 24)
 
             Spacer()
+            
+            // Disclaimer
+            Text("by continuing, you agree to our terms of service and privacy policy")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+                .padding(.bottom, 20)
         }
         .navigationBarTitleDisplayMode(.inline)
         .overlay {
@@ -91,9 +103,11 @@ struct PlatformCard: View {
     let platform: String
     let logo: String
     let color: Color
+    let description: String
     let action: () async -> Void
 
     @State private var isProcessing = false
+    @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
         Button {
@@ -104,19 +118,27 @@ struct PlatformCard: View {
             }
         } label: {
             HStack(spacing: 16) {
-                Image(logo)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 32, height: 32)
-                    .padding(9)
-                    .background(color.opacity(0.2))
-                    .clipShape(Circle())
+                // Logo Container
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.15))
+                        .frame(width: 56, height: 56)
+                    
+                    Image(logo)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 28, height: 28)
+                }
 
-                Text("continue with \(platform)")
-                    .font(.lora(size: 17, weight: .semiBold))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(platform)
+                        .font(.lora(size: 18, weight: .semiBold))
+                        .foregroundColor(.primary)
+                    
+                    Text(description)
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
 
                 Spacer()
 
@@ -124,18 +146,30 @@ struct PlatformCard: View {
                     ProgressView()
                 } else {
                     Image(systemName: "chevron.right")
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.secondary.opacity(0.5))
                 }
             }
-            .padding(20)
-            .background(Color.gray.opacity(0.08))
-            .cornerRadius(16)
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Color(UIColor.secondarySystemBackground).opacity(0.5))
+            )
             .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(color.opacity(0.3), lineWidth: 2)
+                RoundedRectangle(cornerRadius: 24)
+                    .stroke(Color.primary.opacity(0.05), lineWidth: 1)
             )
         }
+        .buttonStyle(PlatformCardButtonStyle())
         .disabled(isProcessing)
+    }
+}
+
+struct PlatformCardButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
 

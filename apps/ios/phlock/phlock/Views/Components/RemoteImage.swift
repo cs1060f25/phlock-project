@@ -96,7 +96,7 @@ struct RemoteImage: View {
                 }
             }
         }
-        .frame(width: width, height: height)
+        .frame(width: max(0, width.isFinite ? width : 0), height: max(0, height.isFinite ? height : 0))
         .cornerRadius(cornerRadius)
         .onAppear {
             // Check cache on appear

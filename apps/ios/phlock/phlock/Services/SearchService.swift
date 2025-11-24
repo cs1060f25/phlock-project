@@ -207,7 +207,7 @@ class SearchService {
 
     private func searchAppleMusic(query: String, type: SearchType) async throws -> SearchResult {
         // Ensure MusicKit access
-        let currentStatus = await MusicAuthorization.currentStatus
+        let currentStatus = MusicAuthorization.currentStatus
         if currentStatus != .authorized {
             let newStatus = await MusicAuthorization.request()
             guard newStatus == .authorized else {

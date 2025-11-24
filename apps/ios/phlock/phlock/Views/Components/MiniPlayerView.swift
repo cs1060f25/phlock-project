@@ -9,6 +9,7 @@ struct MiniPlayerView: View {
     @State private var showToast = false
     @State private var toastMessage = ""
     @State private var showConfetti = false
+    @State private var dragOffset: CGFloat = 0
 
     var body: some View {
         if let track = playbackService.currentTrack {
@@ -35,119 +36,127 @@ struct MiniPlayerView: View {
                 .drawingGroup() // Optimize rendering
 
                 // Player content
-                Button {
-                    showFullPlayer = true
-                } label: {
-                    HStack(spacing: 12) {
-                        // Album Art
-                        if let albumArtUrl = track.albumArtUrl,
-                           !albumArtUrl.isEmpty,
-                           let url = URL(string: albumArtUrl) {
-                            AsyncImage(url: url) { image in
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                            } placeholder: {
-                                Rectangle()
-                                    .fill(Color.gray.opacity(0.2))
-                            }
-                            .frame(width: 50, height: 50)
-                            .cornerRadius(8)
-                        } else {
-                            // Fallback for missing album art
-                            ZStack {
-                                LinearGradient(
-                                    colors: [Color.purple.opacity(0.3), Color.blue.opacity(0.3)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                                Image(systemName: "music.note")
-                                    .font(.system(size: 18))
-                                    .foregroundColor(.white.opacity(0.7))
-                            }
-                            .frame(width: 50, height: 50)
-                            .cornerRadius(8)
+                HStack(spacing: 12) {
+                    // Album Art
+                    if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
+                        AsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 48, height: 48)
+                                .cornerRadius(8)
+                        } placeholder: {
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.3))
+                                .frame(width: 48, height: 48)
+                                .cornerRadius(8)
                         }
-
-                        // Track Info
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(track.name)
-                                .font(.lora(size: 14, weight: .semiBold))
-                                .lineLimit(1)
-                                .foregroundColor(.primary)
-
-                            if let artistName = track.artistName {
-                                Text(artistName)
-                                    .font(.lora(size: 12))
-                                    .lineLimit(1)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-
-                        Spacer()
-
-                        // Open in App Button
-                        Button {
-                            if let platformType = authState.currentUser?.resolvedPlatformType {
-                                DeepLinkService.shared.openInNativeApp(track: track, platform: platformType)
-                            }
-                        } label: {
-                            Image(systemName: "arrow.up.right.square")
+                    } else {
+                        // Fallback for missing album art
+                        ZStack {
+                            LinearGradient(
+                                colors: [Color.purple.opacity(0.3), Color.blue.opacity(0.3)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            Image(systemName: "music.note")
                                 .font(.system(size: 18))
-                                .foregroundColor(.secondary)
-                                .frame(width: 44, height: 44)
+                                .foregroundColor(.white.opacity(0.7))
                         }
-                        .buttonStyle(.plain)
-
-                        // Share Button
-                        Button {
-                            trackToShare = track
-                            showShareSheet = true
-                        } label: {
-                            Image(systemName: "paperplane")
-                                .font(.system(size: 16))
-                                .foregroundColor(.secondary)
-                                .frame(width: 44, height: 44)
-                        }
-                        .buttonStyle(.plain)
-
-                        // Play/Pause Button
-                        Button {
-                            if playbackService.isPlaying {
-                                playbackService.pause()
-                            } else {
-                                playbackService.resume()
-                            }
-                        } label: {
-                            Image(systemName: playbackService.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(.primary)
-                                .frame(width: 44, height: 44)
-                        }
-                        .buttonStyle(.plain)
-
-                        // Close Button
-                        Button {
-                            playbackService.stopPlayback()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.secondary)
-                                .frame(width: 44, height: 44)
-                        }
-                        .buttonStyle(.plain)
+                        .frame(width: 48, height: 48)
+                        .cornerRadius(8)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+
+                    // Track Info
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(track.name)
+                            .font(.lora(size: 14, weight: .semiBold))
+                            .lineLimit(1)
+                            .foregroundColor(.primary)
+
+                        if let artist = track.artistName {
+                            Text(artist)
+                                .font(.lora(size: 12))
+                                .lineLimit(1)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    Spacer()
+
+                    // Open in App Button
+                    Button {
+                        if let platformType = authState.currentUser?.resolvedPlatformType {
+                            DeepLinkService.shared.openInNativeApp(track: track, platform: platformType)
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.system(size: 20))
+                            .foregroundColor(.secondary)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(abs(dragOffset) > 5)
+
+                    // Play/Pause Button
+                    Button {
+                        if playbackService.isPlaying {
+                            playbackService.pause()
+                        } else {
+                            playbackService.resume()
+                        }
+                    } label: {
+                        Image(systemName: playbackService.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(.primary)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(abs(dragOffset) > 5)
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             }
-            .background(Color(UIColor.systemBackground))
-            .cornerRadius(20)
-            .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+            .background(Color(UIColor.secondarySystemBackground))
+            .cornerRadius(12)
+            .shadow(radius: 5)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 4) // Lift slightly above tab bar
+            .offset(x: dragOffset)
+            .simultaneousGesture(
+                DragGesture()
+                    .onChanged { value in
+                        // Only allow horizontal dragging
+                        dragOffset = value.translation.width
+                    }
+                    .onEnded { value in
+                        // Threshold for dismissal
+                        let threshold: CGFloat = 100
+                        if abs(value.translation.width) > threshold {
+                            // Swipe away animation
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                dragOffset = value.translation.width > 0 ? 500 : -500
+                            }
+                            // Stop playback after animation
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                playbackService.stopPlayback()
+                                dragOffset = 0 // Reset for next time
+                            }
+                        } else {
+                            // Snap back
+                            withAnimation(.spring()) {
+                                dragOffset = 0
+                            }
+                        }
+                    }
             )
+            .onTapGesture {
+                if abs(dragOffset) < 5 {
+                    withAnimation(.spring()) {
+                        showFullPlayer = true
+                    }
+                }
+            }
             .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: -5)
             .padding(.horizontal, 8)
             .toast(isPresented: $showToast, message: toastMessage, type: .success, duration: 3.0)

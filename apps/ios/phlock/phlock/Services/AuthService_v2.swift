@@ -5,6 +5,12 @@ import OSLog
 
 /// Production-grade authentication service using Supabase Auth with OAuth
 /// This replaces the manual user creation approach with proper auth.uid() integration
+enum AuthError: Error {
+    case userCreationFailed
+    case userUpdateFailed
+    case unknown
+}
+
 class AuthServiceV2 {
     static let shared = AuthServiceV2()
 
@@ -661,10 +667,33 @@ class AuthServiceV2 {
 
     /// Search for Spotify artist ID (using edge function to keep client secret secure)
     private func searchSpotifyArtist(artistName: String) async throws -> String {
-        // DEFERRED: Edge function implementation - Ticket PHLOCK-5678
-        // Waiting for search-spotify-artist edge function deployment
-        // For now, returns empty string to avoid blocking auth flow
-        return ""
+        print("🔍 Searching for Spotify artist via Edge Function: \(artistName)")
+
+        struct SearchRequest: Encodable {
+            let artistName: String
+        }
+
+        struct SearchResponse: Decodable {
+            let spotifyId: String?
+        }
+
+        do {
+            let response: SearchResponse = try await supabase.functions.invoke(
+                "search-spotify-artist",
+                options: FunctionInvokeOptions(body: SearchRequest(artistName: artistName))
+            )
+
+            if let spotifyId = response.spotifyId, !spotifyId.isEmpty {
+                print("✅ Found Spotify ID via Edge Function: \(spotifyId)")
+                return spotifyId
+            }
+
+            print("⚠️ No Spotify artist found via Edge Function")
+            throw NSError(domain: "AuthService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Artist not found"])
+        } catch {
+            print("❌ Error searching for Spotify artist: \(error)")
+            throw error
+        }
     }
 
     /// Exchange native OAuth token for Supabase Auth session
