@@ -223,50 +223,26 @@ struct FullScreenPlayerView: View {
     // MARK: - Track Info Section
 
     private var trackInfoSection: some View {
-        HStack {
+        VStack(alignment: .leading, spacing: 6) {
             if let track = playbackService.currentTrack {
-                VStack(alignment: .leading, spacing: 6) {
-                    // Track name
-                    Text(track.name)
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
+                // Track name
+                Text(track.name)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
 
-                    // Artist name
-                    Text(track.artistName ?? "Unknown Artist")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.white.opacity(0.7))
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                // Like button
-                Button {
-                    if let track = playbackService.currentTrack {
-                        Task {
-                            if isTrackSaved {
-                                await handleUnsaveFromLibrary(track: track)
-                            } else {
-                                await handleSaveToLibrary(track: track)
-                            }
-                        }
-                    }
-                } label: {
-                    Image(systemName: isTrackSaved ? "heart.fill" : "heart")
-                        .font(.system(size: 24))
-                        .foregroundColor(isTrackSaved ? .pink : .white.opacity(0.7))
-                        .frame(width: 44, height: 44)
-                }
+                // Artist name
+                Text(track.artistName ?? "Unknown Artist")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white.opacity(0.7))
+                    .lineLimit(1)
             } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("No track playing")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(.white.opacity(0.5))
-                }
-                Spacer()
+                Text("No track playing")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.white.opacity(0.5))
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Progress Bar
@@ -317,14 +293,18 @@ struct FullScreenPlayerView: View {
 
     private var playbackControlsSection: some View {
         HStack(spacing: 50) {
-            // Previous/Rewind button
+            // Previous track button
             Button {
-                seek(by: -15)
+                // TODO: Implement previous track functionality when queue is available
+                // For now, just provide visual feedback
+                let impact = UIImpactFeedbackGenerator(style: .light)
+                impact.impactOccurred()
             } label: {
-                Image(systemName: "gobackward.15")
-                    .font(.system(size: 32))
-                    .foregroundColor(.white)
+                Image(systemName: "backward.fill")
+                    .font(.system(size: 28))
+                    .foregroundColor(.white.opacity(0.3)) // Dimmed since not functional yet
             }
+            .disabled(true) // Disabled until queue functionality is implemented
 
             // Play/Pause button
             Button {
@@ -347,14 +327,18 @@ struct FullScreenPlayerView: View {
             }
             .buttonStyle(ScaleButtonStyle())
 
-            // Next/Forward button
+            // Next track button
             Button {
-                seek(by: 15)
+                // TODO: Implement next track functionality when queue is available
+                // For now, just provide visual feedback
+                let impact = UIImpactFeedbackGenerator(style: .light)
+                impact.impactOccurred()
             } label: {
-                Image(systemName: "goforward.15")
-                    .font(.system(size: 32))
-                    .foregroundColor(.white)
+                Image(systemName: "forward.fill")
+                    .font(.system(size: 28))
+                    .foregroundColor(.white.opacity(0.3)) // Dimmed since not functional yet
             }
+            .disabled(true) // Disabled until queue functionality is implemented
         }
     }
 
@@ -516,15 +500,17 @@ struct FullScreenPlayerView: View {
         guard let platformType = currentUser.resolvedPlatformType else { return }
 
         do {
-            let token = try await getAccessToken(for: currentUser)
             var isSaved = false
 
             switch platformType {
             case .spotify:
-                guard let spotifyId = track.spotifyId ?? track.id as String? else { return }
+                let spotifyId = track.spotifyId ?? track.id
+                let token = try await getAccessToken(for: currentUser)
                 isSaved = try await SpotifyService.shared.isTrackSaved(trackId: spotifyId, accessToken: token)
+
             case .appleMusic:
                 // For Apple Music, check if we have a self-share that's saved
+                // This is a workaround since Apple Music doesn't provide API to check library status
                 let shares: [Share] = try await PhlockSupabaseClient.shared.client
                     .from("shares")
                     .select("*")
@@ -541,30 +527,50 @@ struct FullScreenPlayerView: View {
                 isTrackSaved = isSaved
             }
         } catch {
-            print("Failed to check saved status: \(error)")
+            print("❌ Failed to check saved status: \(error)")
+            // Default to false if we can't check
+            await MainActor.run {
+                isTrackSaved = false
+            }
         }
     }
 
     private func handleSaveToLibrary(track: MusicItem) async {
-        guard let currentUser = authState.currentUser else { return }
-        guard let platformType = currentUser.resolvedPlatformType else { return }
+        guard let currentUser = authState.currentUser else {
+            await MainActor.run {
+                showToastMessage("Please sign in to save tracks")
+            }
+            return
+        }
+        guard let platformType = currentUser.resolvedPlatformType else {
+            await MainActor.run {
+                showToastMessage("Platform type not found")
+            }
+            return
+        }
 
         do {
-            let token = try await getAccessToken(for: currentUser)
-
             switch platformType {
             case .spotify:
-                guard let spotifyId = track.spotifyId ?? track.id as String? else { return }
+                // Get the Spotify ID - it might be stored as the main ID or in spotifyId field
+                let spotifyId = track.spotifyId ?? track.id
+                print("🎵 Attempting to save Spotify track with ID: \(spotifyId)")
+
+                let token = try await getAccessToken(for: currentUser)
                 try await SpotifyService.shared.saveTrackToLibrary(trackId: spotifyId, accessToken: token)
+
             case .appleMusic:
-                guard let appleMusicId = track.appleMusicId ?? track.id as String? else { return }
+                // For Apple Music, we need the Apple Music ID
+                let appleMusicId = track.appleMusicId ?? track.id
+                print("🎵 Attempting to save Apple Music track with ID: \(appleMusicId)")
+
                 try await AppleMusicService.shared.saveTrackToLibrary(trackId: appleMusicId)
             }
 
-            // Track the save
+            // Track the save in our database
             try await ShareService.shared.trackLibrarySave(trackId: track.id, userId: currentUser.id, platformType: platformType)
 
-            // Create self-share for tracking
+            // Create self-share for tracking (optional)
             _ = try await ShareService.shared.createShare(
                 track: track,
                 recipients: [currentUser.id],
@@ -575,11 +581,22 @@ struct FullScreenPlayerView: View {
             await MainActor.run {
                 isTrackSaved = true
                 showToastMessage("Added to your library!")
+
+                // Haptic feedback
+                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                impactFeedback.impactOccurred()
             }
         } catch {
-            print("Failed to save track: \(error)")
+            print("❌ Failed to save track: \(error)")
             await MainActor.run {
-                showToastMessage("Failed to add to library")
+                // More specific error messages
+                if error.localizedDescription.contains("401") || error.localizedDescription.contains("unauthorized") {
+                    showToastMessage("Please re-login to save tracks")
+                } else if error.localizedDescription.contains("network") {
+                    showToastMessage("Network error. Please try again")
+                } else {
+                    showToastMessage("Failed to add to library")
+                }
             }
         }
     }
@@ -589,12 +606,14 @@ struct FullScreenPlayerView: View {
         guard let platformType = currentUser.resolvedPlatformType else { return }
 
         do {
-            let token = try await getAccessToken(for: currentUser)
-
             switch platformType {
             case .spotify:
-                guard let spotifyId = track.spotifyId ?? track.id as String? else { return }
+                let spotifyId = track.spotifyId ?? track.id
+                print("🗑️ Attempting to remove Spotify track with ID: \(spotifyId)")
+
+                let token = try await getAccessToken(for: currentUser)
                 try await SpotifyService.shared.removeTrackFromLibrary(trackId: spotifyId, accessToken: token)
+
             case .appleMusic:
                 // Apple Music doesn't support removing via API
                 await MainActor.run {
