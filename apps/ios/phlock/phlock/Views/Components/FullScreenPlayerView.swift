@@ -138,7 +138,7 @@ struct FullScreenPlayerView: View {
                 isPresented = false
             } label: {
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.lora(size: 20, weight: .semiBold))
                     .foregroundColor(.white)
                     .frame(width: 40, height: 40)
                     .background(Color.white.opacity(0.15))
@@ -150,15 +150,15 @@ struct FullScreenPlayerView: View {
             // Now Playing label
             VStack(spacing: 2) {
                 Text("NOW PLAYING")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.lora(size: 10, weight: .bold))
                     .tracking(1.2)
                     .foregroundColor(.white.opacity(0.6))
 
                 HStack(spacing: 4) {
                     Image(systemName: platformIconName)
-                        .font(.system(size: 10))
+                        .font(.lora(size: 10))
                     Text(platformName)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.lora(size: 11, weight: .semiBold))
                 }
                 .foregroundColor(.white.opacity(0.8))
             }
@@ -187,7 +187,7 @@ struct FullScreenPlayerView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.lora(size: 20, weight: .semiBold))
                     .foregroundColor(.white)
                     .frame(width: 40, height: 40)
                     .background(Color.white.opacity(0.15))
@@ -227,18 +227,18 @@ struct FullScreenPlayerView: View {
             if let track = playbackService.currentTrack {
                 // Track name
                 Text(track.name)
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.lora(size: 20, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(1)
 
                 // Artist name
                 Text(track.artistName ?? "Unknown Artist")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.lora(size: 16, weight: .medium))
                     .foregroundColor(.white.opacity(0.7))
                     .lineLimit(1)
             } else {
                 Text("No track playing")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.lora(size: 20, weight: .bold))
                     .foregroundColor(.white.opacity(0.5))
             }
         }
@@ -277,13 +277,13 @@ struct FullScreenPlayerView: View {
             // Time labels
             HStack {
                 Text(formatTime(isDraggingSlider ? sliderValue : currentTimeSafe))
-                    .font(.system(size: 12).monospacedDigit())
+                    .font(.lora(size: 12))
                     .foregroundColor(.white.opacity(0.5))
 
                 Spacer()
 
                 Text(formatTime(durationSafe))
-                    .font(.system(size: 12).monospacedDigit())
+                    .font(.lora(size: 12))
                     .foregroundColor(.white.opacity(0.5))
             }
         }
@@ -295,16 +295,15 @@ struct FullScreenPlayerView: View {
         HStack(spacing: 50) {
             // Previous track button
             Button {
-                // TODO: Implement previous track functionality when queue is available
-                // For now, just provide visual feedback
+                playbackService.skipBackward()
                 let impact = UIImpactFeedbackGenerator(style: .light)
                 impact.impactOccurred()
             } label: {
                 Image(systemName: "backward.fill")
-                    .font(.system(size: 28))
-                    .foregroundColor(.white.opacity(0.3)) // Dimmed since not functional yet
+                    .font(.lora(size: 28))
+                    .foregroundColor(canSkipBackward ? .white : .white.opacity(0.3))
             }
-            .disabled(true) // Disabled until queue functionality is implemented
+            .disabled(!canSkipBackward)
 
             // Play/Pause button
             Button {
@@ -320,7 +319,7 @@ struct FullScreenPlayerView: View {
                         .frame(width: 72, height: 72)
 
                     Image(systemName: playbackService.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 32))
+                        .font(.lora(size: 32))
                         .foregroundColor(.black)
                         .offset(x: playbackService.isPlaying ? 0 : 3)
                 }
@@ -329,16 +328,15 @@ struct FullScreenPlayerView: View {
 
             // Next track button
             Button {
-                // TODO: Implement next track functionality when queue is available
-                // For now, just provide visual feedback
+                playbackService.skipForward()
                 let impact = UIImpactFeedbackGenerator(style: .light)
                 impact.impactOccurred()
             } label: {
                 Image(systemName: "forward.fill")
-                    .font(.system(size: 28))
-                    .foregroundColor(.white.opacity(0.3)) // Dimmed since not functional yet
+                    .font(.lora(size: 28))
+                    .foregroundColor(canSkipForward ? .white : .white.opacity(0.3))
             }
-            .disabled(true) // Disabled until queue functionality is implemented
+            .disabled(!canSkipForward)
         }
     }
 
@@ -357,9 +355,9 @@ struct FullScreenPlayerView: View {
             } label: {
                 VStack(spacing: 6) {
                     Image(systemName: "paperplane")
-                        .font(.system(size: 20))
+                        .font(.lora(size: 20))
                     Text("Share")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.lora(size: 10, weight: .medium))
                 }
                 .foregroundColor(.white.opacity(0.7))
             }
@@ -378,9 +376,9 @@ struct FullScreenPlayerView: View {
             } label: {
                 VStack(spacing: 6) {
                     Image(systemName: isTrackSaved ? "checkmark.circle.fill" : "plus.circle")
-                        .font(.system(size: 20))
+                        .font(.lora(size: 20))
                     Text(isTrackSaved ? "Saved" : "Library")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.lora(size: 10, weight: .medium))
                 }
                 .foregroundColor(isTrackSaved ? .green : .white.opacity(0.7))
             }
@@ -393,9 +391,9 @@ struct FullScreenPlayerView: View {
             } label: {
                 VStack(spacing: 6) {
                     Image(systemName: "arrow.up.right.square")
-                        .font(.system(size: 20))
+                        .font(.lora(size: 20))
                     Text("Open")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.lora(size: 10, weight: .medium))
                 }
                 .foregroundColor(.white.opacity(0.7))
             }
@@ -424,6 +422,14 @@ struct FullScreenPlayerView: View {
         case .none:
             return "music.note"
         }
+    }
+
+    private var canSkipBackward: Bool {
+        playbackService.currentTrack != nil
+    }
+
+    private var canSkipForward: Bool {
+        playbackService.canGoToNextTrack
     }
 
     private var durationSafe: Double {
@@ -487,6 +493,51 @@ struct FullScreenPlayerView: View {
         DeepLinkService.shared.openInNativeApp(track: track, platform: platformType)
     }
 
+    private func sanitizeSpotifyId(_ rawId: String) -> String {
+        if rawId.contains("/") || rawId.contains(":") {
+            if let last = rawId.split(whereSeparator: { $0 == "/" || $0 == ":" }).last {
+                return String(last)
+            }
+        }
+        return rawId
+    }
+
+    private func resolveAppleMusicTrackId(for track: MusicItem) async throws -> String {
+        if let appleMusicId = track.appleMusicId, !appleMusicId.isEmpty {
+            return appleMusicId
+        }
+
+        if !track.id.isEmpty,
+           CharacterSet.decimalDigits.isSuperset(of: CharacterSet(charactersIn: track.id)) {
+            return track.id
+        }
+
+        if let url = URL(string: track.id),
+           let lastComponent = url.pathComponents.last,
+           CharacterSet.decimalDigits.isSuperset(of: CharacterSet(charactersIn: lastComponent)) {
+            return lastComponent
+        }
+
+        if let isrc = track.isrc,
+           let match = try? await AppleMusicService.shared.searchTrack(
+               name: track.name,
+               artist: track.artistName ?? "",
+               isrc: isrc
+           ) {
+            return match.id
+        }
+
+        if let match = try? await AppleMusicService.shared.searchTrack(
+            name: track.name,
+            artist: track.artistName ?? "",
+            isrc: nil
+        ) {
+            return match.id
+        }
+
+        throw AppleMusicError.apiError("Could not find Apple Music ID for \(track.name)")
+    }
+
     @MainActor
     private func showToastMessage(_ message: String) {
         toastMessage = message
@@ -504,7 +555,7 @@ struct FullScreenPlayerView: View {
 
             switch platformType {
             case .spotify:
-                let spotifyId = track.spotifyId ?? track.id
+                let spotifyId = sanitizeSpotifyId(track.spotifyId ?? track.id)
                 let token = try await getAccessToken(for: currentUser)
                 isSaved = try await SpotifyService.shared.isTrackSaved(trackId: spotifyId, accessToken: token)
 
@@ -553,7 +604,7 @@ struct FullScreenPlayerView: View {
             switch platformType {
             case .spotify:
                 // Get the Spotify ID - it might be stored as the main ID or in spotifyId field
-                let spotifyId = track.spotifyId ?? track.id
+                let spotifyId = sanitizeSpotifyId(track.spotifyId ?? track.id)
                 print("🎵 Attempting to save Spotify track with ID: \(spotifyId)")
 
                 let token = try await getAccessToken(for: currentUser)
@@ -561,7 +612,7 @@ struct FullScreenPlayerView: View {
 
             case .appleMusic:
                 // For Apple Music, we need the Apple Music ID
-                let appleMusicId = track.appleMusicId ?? track.id
+                let appleMusicId = try await resolveAppleMusicTrackId(for: track)
                 print("🎵 Attempting to save Apple Music track with ID: \(appleMusicId)")
 
                 try await AppleMusicService.shared.saveTrackToLibrary(trackId: appleMusicId)
@@ -608,7 +659,7 @@ struct FullScreenPlayerView: View {
         do {
             switch platformType {
             case .spotify:
-                let spotifyId = track.spotifyId ?? track.id
+                let spotifyId = sanitizeSpotifyId(track.spotifyId ?? track.id)
                 print("🗑️ Attempting to remove Spotify track with ID: \(spotifyId)")
 
                 let token = try await getAccessToken(for: currentUser)
@@ -657,17 +708,66 @@ struct FullScreenPlayerView: View {
             throw NSError(domain: "FullScreenPlayerView", code: -1, userInfo: [NSLocalizedDescriptionKey: "No platform type"])
         }
 
-        let tokens: [PlatformToken] = try await PhlockSupabaseClient.shared.client
+        let supabase = PhlockSupabaseClient.shared.client
+
+        var tokens: [PlatformToken] = try await supabase
             .from("platform_tokens")
             .select("*")
             .eq("user_id", value: user.id.uuidString)
             .eq("platform_type", value: platformType.rawValue as String)
+            .order("updated_at", ascending: false)
             .limit(1)
             .execute()
             .value
 
-        guard let token = tokens.first else {
+        guard var token = tokens.first else {
             throw NSError(domain: "FullScreenPlayerView", code: -1, userInfo: [NSLocalizedDescriptionKey: "No platform token found"])
+        }
+
+        if platformType == .spotify {
+            // Refresh slightly early to avoid expiry mid-request
+            let refreshThreshold = token.tokenExpiresAt.addingTimeInterval(-120)
+            if Date() >= refreshThreshold {
+                guard let refreshToken = token.refreshToken else {
+                    throw NSError(domain: "FullScreenPlayerView", code: -2, userInfo: [NSLocalizedDescriptionKey: "No Spotify refresh token; please relink."])
+                }
+
+                let refreshed = try await SpotifyService.shared.refreshAccessToken(refreshToken: refreshToken)
+                let now = Date()
+                let newExpiresAt = now.addingTimeInterval(TimeInterval(refreshed.expiresIn))
+
+                struct TokenUpdate: Encodable {
+                    let access_token: String
+                    let refresh_token: String
+                    let token_expires_at: String
+                    let updated_at: String
+                }
+
+                let updatePayload = TokenUpdate(
+                    access_token: refreshed.accessToken,
+                    refresh_token: refreshed.refreshToken ?? refreshToken,
+                    token_expires_at: ISO8601DateFormatter().string(from: newExpiresAt),
+                    updated_at: ISO8601DateFormatter().string(from: now)
+                )
+
+                try await supabase
+                    .from("platform_tokens")
+                    .update(updatePayload)
+                    .eq("id", value: token.id.uuidString)
+                    .execute()
+
+                token = PlatformToken(
+                    id: token.id,
+                    userId: token.userId,
+                    platformType: token.platformType,
+                    accessToken: refreshed.accessToken,
+                    refreshToken: refreshed.refreshToken ?? refreshToken,
+                    tokenExpiresAt: newExpiresAt,
+                    scope: token.scope,
+                    createdAt: token.createdAt,
+                    updatedAt: now
+                )
+            }
         }
 
         return token.accessToken
