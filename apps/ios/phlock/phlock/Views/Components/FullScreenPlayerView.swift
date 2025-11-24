@@ -14,6 +14,7 @@ struct FullScreenPlayerView: View {
     @State private var isTrackSaved: Bool = false
     @State private var showShareSheet = false
     @State private var shareTrack: MusicItem? = nil
+    @State private var dragOffset: CGFloat = 0
 
     var body: some View {
         ZStack {
@@ -54,8 +55,39 @@ struct FullScreenPlayerView: View {
                     .padding(.bottom, 40)
             }
         }
+        .offset(y: max(0, dragOffset)) // Only allow downward drag
         .ignoresSafeArea()
         .preferredColorScheme(.dark) // Force dark mode for player
+        .gesture(
+            DragGesture()
+                .onChanged { gesture in
+                    // Only allow dragging down (positive offset)
+                    if gesture.translation.height > 0 {
+                        dragOffset = gesture.translation.height
+                    }
+                }
+                .onEnded { gesture in
+                    let dismissThreshold: CGFloat = 150
+
+                    if gesture.translation.height > dismissThreshold {
+                        // Animate dismissal
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            dragOffset = UIScreen.main.bounds.height
+                        }
+
+                        // Dismiss after animation
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            isPresented = false
+                            dragOffset = 0 // Reset for next time
+                        }
+                    } else {
+                        // Spring back to original position
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            dragOffset = 0
+                        }
+                    }
+                }
+        )
         .toast(isPresented: $showToast, message: toastMessage, type: .success, duration: 3.0)
         .onAppear {
             refreshSavedState()
