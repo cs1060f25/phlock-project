@@ -15,79 +15,120 @@ struct FullScreenPlayerView: View {
     @State private var showShareSheet = false
     @State private var shareTrack: MusicItem? = nil
     @State private var dragOffset: CGFloat = 0
+    @State private var isDismissing: Bool = false
+
+    // Spotify-like animation constants
+    private let screenHeight = UIScreen.main.bounds.height
+    private let dismissThreshold: CGFloat = 120
+    private let velocityThreshold: CGFloat = 800
+
+    // Computed properties for Spotify-like effects
+    private var dragProgress: CGFloat {
+        min(max(dragOffset / screenHeight, 0), 1)
+    }
+
+    private var scaleEffect: CGFloat {
+        1 - (dragProgress * 0.1) // Scale down to 0.9 at max drag
+    }
+
+    private var cornerRadiusEffect: CGFloat {
+        dragProgress * 40 // Round corners as you drag
+    }
+
+    private var opacityEffect: CGFloat {
+        1 - (dragProgress * 0.3) // Slightly fade as you drag
+    }
 
     var body: some View {
-        ZStack {
-            // Background gradient with album art blur
-            backgroundLayer
+        GeometryReader { geometry in
+            ZStack {
+                // Semi-transparent background that shows through during drag
+                Color.black.opacity(0.5 * (1 - dragProgress))
+                    .ignoresSafeArea()
 
-            // Main content
-            VStack(spacing: 0) {
-                // Top bar with dismiss and menu
-                headerBar
-                    .padding(.horizontal, 20)
-                    .padding(.top, 50) // Account for status bar
+                // Main player card
+                ZStack {
+                    // Background gradient with album art blur
+                    backgroundLayer
 
-                // Album artwork
-                albumArtwork
-                    .padding(.horizontal, 30)
-                    .padding(.top, 30)
+                    // Main content
+                    VStack(spacing: 0) {
+                        // Drag indicator pill (like Spotify)
+                        Capsule()
+                            .fill(Color.white.opacity(0.4))
+                            .frame(width: 36, height: 5)
+                            .padding(.top, 8)
 
-                // Track info section
-                trackInfoSection
-                    .padding(.horizontal, 30)
-                    .padding(.top, 30)
+                        // Top bar with dismiss and menu
+                        headerBar
+                            .padding(.horizontal, 20)
+                            .padding(.top, 12)
 
-                // Progress bar
-                progressBar
-                    .padding(.horizontal, 30)
-                    .padding(.top, 20)
+                        // Album artwork
+                        albumArtwork
+                            .padding(.horizontal, 30)
+                            .padding(.top, 24)
 
-                // Playback controls
-                playbackControlsSection
-                    .padding(.top, 30)
+                        // Track info section
+                        trackInfoSection
+                            .padding(.horizontal, 30)
+                            .padding(.top, 24)
 
-                Spacer(minLength: 20)
+                        // Progress bar
+                        progressBar
+                            .padding(.horizontal, 30)
+                            .padding(.top, 20)
 
-                // Bottom action buttons
-                bottomActions
-                    .padding(.horizontal, 30)
-                    .padding(.bottom, 40)
+                        // Playback controls
+                        playbackControlsSection
+                            .padding(.top, 24)
+
+                        Spacer(minLength: 16)
+
+                        // Bottom action buttons
+                        bottomActions
+                            .padding(.horizontal, 30)
+                            .padding(.bottom, geometry.safeAreaInsets.bottom + 20)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadiusEffect, style: .continuous))
+                .scaleEffect(scaleEffect)
+                .offset(y: dragOffset)
+                .opacity(opacityEffect)
+                .gesture(
+                    DragGesture()
+                        .onChanged { gesture in
+                            guard !isDismissing else { return }
+                            // Only allow dragging down
+                            if gesture.translation.height > 0 {
+                                // Add slight resistance as you drag further
+                                let resistance: CGFloat = 0.7
+                                dragOffset = gesture.translation.height * resistance
+                            }
+                        }
+                        .onEnded { gesture in
+                            guard !isDismissing else { return }
+
+                            let velocity = gesture.predictedEndLocation.y - gesture.location.y
+                            let translation = gesture.translation.height
+
+                            // Dismiss if dragged past threshold OR flicked with high velocity
+                            let shouldDismiss = translation > dismissThreshold || velocity > velocityThreshold
+
+                            if shouldDismiss {
+                                dismissPlayer()
+                            } else {
+                                // Spring back
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    dragOffset = 0
+                                }
+                            }
+                        }
+                )
             }
         }
-        .offset(y: max(0, dragOffset)) // Only allow downward drag
         .ignoresSafeArea()
-        .preferredColorScheme(.dark) // Force dark mode for player
-        .gesture(
-            DragGesture()
-                .onChanged { gesture in
-                    // Only allow dragging down (positive offset)
-                    if gesture.translation.height > 0 {
-                        dragOffset = gesture.translation.height
-                    }
-                }
-                .onEnded { gesture in
-                    let dismissThreshold: CGFloat = 150
-
-                    if gesture.translation.height > dismissThreshold {
-                        // Animate dismissal
-                        withAnimation(.easeOut(duration: 0.25)) {
-                            dragOffset = UIScreen.main.bounds.height
-                        }
-
-                        // Dismiss after animation
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                            isPresented = false
-                            dragOffset = 0 // Reset for next time
-                        }
-                    } else {
-                        // Spring back to original position
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            dragOffset = 0
-                        }
-                    }
-                }
-        )
+        .preferredColorScheme(.dark)
         .toast(isPresented: $showToast, message: toastMessage, type: .success, duration: 3.0)
         .onAppear {
             refreshSavedState()
@@ -117,6 +158,19 @@ struct FullScreenPlayerView: View {
                 .zIndex(10)
                 .ignoresSafeArea(.keyboard, edges: .bottom)
             }
+        }
+    }
+
+    private func dismissPlayer() {
+        isDismissing = true
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            dragOffset = screenHeight
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            isPresented = false
+            // Reset state for next presentation
+            dragOffset = 0
+            isDismissing = false
         }
     }
 
@@ -167,7 +221,7 @@ struct FullScreenPlayerView: View {
         HStack {
             // Dismiss button
             Button {
-                isPresented = false
+                dismissPlayer()
             } label: {
                 Image(systemName: "chevron.down")
                     .font(.lora(size: 20, weight: .semiBold))
@@ -331,7 +385,7 @@ struct FullScreenPlayerView: View {
                 let impact = UIImpactFeedbackGenerator(style: .light)
                 impact.impactOccurred()
             } label: {
-                Image(systemName: "backward.fill")
+                Image(systemName: "backward.end.fill")
                     .font(.lora(size: 28))
                     .foregroundColor(canSkipBackward ? .white : .white.opacity(0.3))
             }
@@ -351,9 +405,9 @@ struct FullScreenPlayerView: View {
                         .frame(width: 72, height: 72)
 
                     Image(systemName: playbackService.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.lora(size: 32))
+                        .font(.lora(size: 30, weight: .bold))
                         .foregroundColor(.black)
-                        .offset(x: playbackService.isPlaying ? 0 : 3)
+                        .offset(x: playbackService.isPlaying ? 0 : 1.5)
                 }
             }
             .buttonStyle(ScaleButtonStyle())
@@ -364,7 +418,7 @@ struct FullScreenPlayerView: View {
                 let impact = UIImpactFeedbackGenerator(style: .light)
                 impact.impactOccurred()
             } label: {
-                Image(systemName: "forward.fill")
+                Image(systemName: "forward.end.fill")
                     .font(.lora(size: 28))
                     .foregroundColor(canSkipForward ? .white : .white.opacity(0.3))
             }
@@ -457,7 +511,7 @@ struct FullScreenPlayerView: View {
     }
 
     private var canSkipBackward: Bool {
-        playbackService.currentTrack != nil
+        playbackService.canGoToPreviousTrack
     }
 
     private var canSkipForward: Bool {
@@ -534,6 +588,15 @@ struct FullScreenPlayerView: View {
         return rawId
     }
 
+    private func trackCacheKey(for track: MusicItem, platform: PlatformType) -> String {
+        switch platform {
+        case .spotify:
+            return sanitizeSpotifyId(track.spotifyId ?? track.id)
+        case .appleMusic:
+            return track.appleMusicId ?? track.id
+        }
+    }
+
     private func resolveAppleMusicTrackId(for track: MusicItem) async throws -> String {
         if let appleMusicId = track.appleMusicId, !appleMusicId.isEmpty {
             return appleMusicId
@@ -582,6 +645,13 @@ struct FullScreenPlayerView: View {
         guard let currentUser = authState.currentUser else { return }
         guard let platformType = currentUser.resolvedPlatformType else { return }
 
+        let cacheKey = trackCacheKey(for: track, platform: platformType)
+        let cachedSaved = SavedTrackCache.shared.contains(trackId: cacheKey, userId: currentUser.id)
+
+        await MainActor.run {
+            isTrackSaved = cachedSaved
+        }
+
         do {
             var isSaved = false
 
@@ -603,17 +673,19 @@ struct FullScreenPlayerView: View {
                     .neq("saved_at", value: "null")
                     .execute()
                     .value
-                isSaved = !shares.isEmpty
+                isSaved = cachedSaved || !shares.isEmpty
             }
 
             await MainActor.run {
                 isTrackSaved = isSaved
             }
+
+            SavedTrackCache.shared.set(trackId: cacheKey, userId: currentUser.id, isSaved: isSaved)
         } catch {
             print("❌ Failed to check saved status: \(error)")
             // Default to false if we can't check
             await MainActor.run {
-                isTrackSaved = false
+                isTrackSaved = cachedSaved
             }
         }
     }
@@ -669,6 +741,9 @@ struct FullScreenPlayerView: View {
                 let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
                 impactFeedback.impactOccurred()
             }
+
+            let cacheKey = trackCacheKey(for: track, platform: platformType)
+            SavedTrackCache.shared.set(trackId: cacheKey, userId: currentUser.id, isSaved: true)
         } catch {
             print("❌ Failed to save track: \(error)")
             await MainActor.run {
@@ -701,7 +776,10 @@ struct FullScreenPlayerView: View {
                 // Apple Music doesn't support removing via API
                 await MainActor.run {
                     showToastMessage("Open Apple Music to remove")
+                    isTrackSaved = false
                 }
+                let cacheKey = trackCacheKey(for: track, platform: platformType)
+                SavedTrackCache.shared.set(trackId: cacheKey, userId: currentUser.id, isSaved: false)
                 return
             }
 
@@ -727,6 +805,9 @@ struct FullScreenPlayerView: View {
                 isTrackSaved = false
                 showToastMessage("Removed from library")
             }
+
+            let cacheKey = trackCacheKey(for: track, platform: platformType)
+            SavedTrackCache.shared.set(trackId: cacheKey, userId: currentUser.id, isSaved: false)
         } catch {
             print("Failed to remove track: \(error)")
             await MainActor.run {
@@ -742,7 +823,7 @@ struct FullScreenPlayerView: View {
 
         let supabase = PhlockSupabaseClient.shared.client
 
-        var tokens: [PlatformToken] = try await supabase
+        let tokens: [PlatformToken] = try await supabase
             .from("platform_tokens")
             .select("*")
             .eq("user_id", value: user.id.uuidString)
@@ -803,5 +884,38 @@ struct FullScreenPlayerView: View {
         }
 
         return token.accessToken
+    }
+}
+
+// Simple per-user cache to remember saved tracks across player sessions (helps Apple Music and avoids UI flicker)
+private final class SavedTrackCache {
+    static let shared = SavedTrackCache()
+    private let defaults = UserDefaults.standard
+
+    private init() {}
+
+    private func storageKey(for userId: UUID) -> String {
+        "saved_tracks_\(userId.uuidString.lowercased())"
+    }
+
+    private func load(userId: UUID) -> Set<String> {
+        let key = storageKey(for: userId)
+        let values = defaults.stringArray(forKey: key) ?? []
+        return Set(values)
+    }
+
+    func contains(trackId: String, userId: UUID) -> Bool {
+        load(userId: userId).contains(trackId)
+    }
+
+    func set(trackId: String, userId: UUID, isSaved: Bool) {
+        let key = storageKey(for: userId)
+        var current = load(userId: userId)
+        if isSaved {
+            current.insert(trackId)
+        } else {
+            current.remove(trackId)
+        }
+        defaults.set(Array(current), forKey: key)
     }
 }
