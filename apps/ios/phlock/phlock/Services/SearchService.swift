@@ -127,8 +127,8 @@ class SearchService {
                     return nil
                 }
                 // Spotify typically returns 3 sizes: 640x640, 300x300, 64x64
-                // We want the medium one for better performance
-                let url = track.album.images.count > 1 ? track.album.images[1].url : track.album.images.first?.url
+                // Use the largest (first) for best quality, especially for full-screen player
+                let url = track.album.images.first?.url
                 print("🎨 Track '\(track.name)' album art: \(url ?? "nil") (from \(track.album.images.count) images)")
                 return url
             }()
@@ -176,15 +176,10 @@ class SearchService {
         )
 
         return response.artists.map { artist in
-            // Get medium-sized image or fallback to first available
+            // Get largest image for best quality
             let artistImageUrl: String? = {
                 guard !artist.images.isEmpty else { return nil }
-                // Artists also typically have multiple image sizes
-                if artist.images.count > 1 {
-                    return artist.images[1].url
-                } else {
-                    return artist.images.first?.url
-                }
+                return artist.images.first?.url
             }()
 
             return MusicItem(
@@ -240,7 +235,7 @@ class SearchService {
                     name: song.title,
                     artistName: song.artistName,
                     previewUrl: song.previewAssets?.first?.url?.absoluteString,
-                    albumArtUrl: song.artwork?.url(width: 300, height: 300)?.absoluteString,
+                    albumArtUrl: song.artwork?.url(width: 640, height: 640)?.absoluteString,
                     isrc: song.isrc,
                     playedAt: nil,
                     spotifyId: nil,
@@ -259,7 +254,7 @@ class SearchService {
                     name: artist.name,
                     artistName: nil,
                     previewUrl: nil,
-                    albumArtUrl: artist.artwork?.url(width: 300, height: 300)?.absoluteString,
+                    albumArtUrl: artist.artwork?.url(width: 640, height: 640)?.absoluteString,
                     isrc: nil,
                     playedAt: nil,
                     spotifyId: nil,
@@ -305,7 +300,7 @@ class SearchService {
                     // Get medium-sized image
                     let albumArtUrl: String? = {
                         guard !item.track.album.images.isEmpty else { return nil }
-                        return item.track.album.images.count > 1 ? item.track.album.images[1].url : item.track.album.images.first?.url
+                        return item.track.album.images.first?.url
                     }()
 
                     // Convert ISO 8601 string to Date
@@ -413,7 +408,7 @@ class SearchService {
                     let allTracks = response.items.enumerated().map { (index, item) -> MusicItem in
                         let albumArtUrl: String? = {
                             guard !item.track.album.images.isEmpty else { return nil }
-                            return item.track.album.images.count > 1 ? item.track.album.images[1].url : item.track.album.images.first?.url
+                            return item.track.album.images.first?.url
                         }()
 
                         let playedDate: Date? = {
@@ -567,8 +562,8 @@ class SearchService {
                     return nil
                 }
                 // Spotify typically returns 3 sizes: 640x640, 300x300, 64x64
-                // We want the medium one for better performance
-                let url = track.album.images.count > 1 ? track.album.images[1].url : track.album.images.first?.url
+                // Use the largest (first) for best quality, especially for full-screen player
+                let url = track.album.images.first?.url
                 print("🎨 Track '\(track.name)' album art: \(url ?? "nil") (from \(track.album.images.count) images)")
                 return url
             }()

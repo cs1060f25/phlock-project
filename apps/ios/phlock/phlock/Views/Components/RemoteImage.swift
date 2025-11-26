@@ -179,11 +179,9 @@ struct RemoteImage: View {
                     options: FunctionInvokeOptions(body: request)
                 )
 
-                // Get medium-sized image (usually index 1) or fallback to first available
+                // Get largest image (index 0) for best quality
                 if !response.album.images.isEmpty {
-                    let freshUrl = response.album.images.count > 1
-                        ? response.album.images[1].url
-                        : response.album.images.first!.url
+                    let freshUrl = response.album.images.first!.url
 
                     await MainActor.run {
                         print("   ✅ Fetched fresh album art URL: \(freshUrl)")

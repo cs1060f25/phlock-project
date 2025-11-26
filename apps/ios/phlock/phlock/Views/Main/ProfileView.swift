@@ -929,17 +929,6 @@ struct MusicStatsCard: View {
 
                             // Different icons based on action type
                             if itemType == .track {
-                                // Send button
-                                Button {
-                                    trackToShare = item
-                                    showQuickSendBar = true
-                                } label: {
-                                    Image(systemName: "paperplane")
-                                        .font(.lora(size: 18))
-                                        .foregroundColor(.secondary)
-                                }
-                                .buttonStyle(.plain)
-
                                 // Show pause icon if playing, play icon if not
                                 Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                                     .font(.lora(size: 22))

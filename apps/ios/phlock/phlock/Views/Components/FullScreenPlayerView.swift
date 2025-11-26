@@ -43,24 +43,25 @@ struct FullScreenPlayerView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 50) // Account for status bar
 
+                Spacer(minLength: 20)
+
                 // Album artwork
                 albumArtwork
                     .padding(.horizontal, 30)
-                    .padding(.top, 30)
 
                 // Track info section
                 trackInfoSection
                     .padding(.horizontal, 30)
-                    .padding(.top, 30)
+                    .padding(.top, 24)
 
                 // Progress bar
                 progressBar
                     .padding(.horizontal, 30)
-                    .padding(.top, 20)
+                    .padding(.top, 24)
 
                 // Playback controls
                 playbackControlsSection
-                    .padding(.top, 30)
+                    .padding(.top, 20)
 
                 Spacer(minLength: 20)
 
@@ -486,32 +487,54 @@ struct FullScreenPlayerView: View {
     // MARK: - Track Info Section
 
     private var trackInfoSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let track = playbackService.currentTrack {
-                // Track name (Marquee)
-                MarqueeText(
-                    text: track.name,
-                    font: .lora(size: 24, weight: .bold),
-                    leftFade: 16,
-                    rightFade: 16,
-                    startDelay: 2.0,
-                    alignment: .leading
-                )
-                .frame(height: 34) // Fixed height for track name area
-                .foregroundColor(.white)
+        HStack(alignment: .center, spacing: 16) {
+            // Track info (left side)
+            VStack(alignment: .leading, spacing: 6) {
+                if let track = playbackService.currentTrack {
+                    // Track name (Marquee)
+                    MarqueeText(
+                        text: track.name,
+                        font: .lora(size: 24, weight: .bold),
+                        leftFade: 16,
+                        rightFade: 16,
+                        startDelay: 2.0,
+                        alignment: .leading
+                    )
+                    .frame(height: 34) // Fixed height for track name area
+                    .foregroundColor(.white)
 
-                // Artist name
-                Text(track.artistName ?? "Unknown Artist")
-                    .font(.lora(size: 16))
-                    .foregroundColor(.white.opacity(0.7))
-                    .lineLimit(1)
-            } else {
-                Text("No track playing")
-                    .font(.lora(size: 24, weight: .bold))
-                    .foregroundColor(.white.opacity(0.5))
+                    // Artist name
+                    Text(track.artistName ?? "Unknown Artist")
+                        .font(.lora(size: 16))
+                        .foregroundColor(.white.opacity(0.7))
+                        .lineLimit(1)
+                } else {
+                    Text("No track playing")
+                        .font(.lora(size: 24, weight: .bold))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Add to library button (right side)
+            if playbackService.currentTrack != nil {
+                Button {
+                    if let track = playbackService.currentTrack {
+                        Task {
+                            if isTrackSaved {
+                                await handleUnsaveFromLibrary(track: track)
+                            } else {
+                                await handleSaveToLibrary(track: track)
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: isTrackSaved ? "checkmark.circle.fill" : "plus.circle")
+                        .font(.system(size: 28))
+                        .foregroundColor(isTrackSaved ? .green : .white.opacity(0.7))
+                }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Progress Bar
@@ -646,60 +669,19 @@ struct FullScreenPlayerView: View {
     // MARK: - Bottom Actions
 
     private var bottomActions: some View {
-        HStack(spacing: 50) {
-            // Share button
-            Button {
-                if let track = playbackService.currentTrack {
-                    shareTrack = track
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        showShareSheet = true
-                    }
-                }
-            } label: {
-                VStack(spacing: 6) {
-                    Image(systemName: "paperplane")
-                        .font(.lora(size: 20, weight: .semiBold))
-                    Text("Share")
-                        .font(.lora(size: 10))
-                }
-                .foregroundColor(.white.opacity(0.7))
+        // Open in streaming app button (centered)
+        Button {
+            if let track = playbackService.currentTrack {
+                openInNativeApp(track: track)
             }
-
-            // Save to library button
-            Button {
-                if let track = playbackService.currentTrack {
-                    Task {
-                        if isTrackSaved {
-                            await handleUnsaveFromLibrary(track: track)
-                        } else {
-                            await handleSaveToLibrary(track: track)
-                        }
-                    }
-                }
-            } label: {
-                VStack(spacing: 6) {
-                    Image(systemName: isTrackSaved ? "checkmark.circle.fill" : "plus.circle")
-                        .font(.lora(size: 20, weight: .semiBold))
-                    Text(isTrackSaved ? "Saved" : "Library")
-                        .font(.lora(size: 10))
-                }
-                .foregroundColor(isTrackSaved ? .green : .white.opacity(0.7))
+        } label: {
+            VStack(spacing: 6) {
+                Image(systemName: "arrow.up.right.square")
+                    .font(.lora(size: 20, weight: .semiBold))
+                Text("Open in \(platformName)")
+                    .font(.lora(size: 10))
             }
-
-            // Open in app button
-            Button {
-                if let track = playbackService.currentTrack {
-                    openInNativeApp(track: track)
-                }
-            } label: {
-                VStack(spacing: 6) {
-                    Image(systemName: "arrow.up.right.square")
-                        .font(.lora(size: 20, weight: .semiBold))
-                    Text("Open")
-                        .font(.lora(size: 10))
-                }
-                .foregroundColor(.white.opacity(0.7))
-            }
+            .foregroundColor(.white.opacity(0.7))
         }
     }
 

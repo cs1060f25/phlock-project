@@ -2,6 +2,75 @@ import SwiftUI
 import AVFoundation
 import Supabase
 
+// MARK: - Scrollable Message Text Component
+
+/// A horizontally scrollable text view with fade gradient that disappears when scrolled to end
+struct ScrollableMessageText: View {
+    let message: String
+
+    @State private var textWidth: CGFloat = 0
+    @State private var containerWidth: CGFloat = 0
+    @State private var scrollOffset: CGFloat = 0
+
+    private var needsScroll: Bool {
+        textWidth > containerWidth
+    }
+
+    private var isAtEnd: Bool {
+        // Consider "at end" when scrolled within 5 points of the end
+        scrollOffset >= (textWidth - containerWidth - 5)
+    }
+
+    var body: some View {
+        GeometryReader { containerGeo in
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text("— \"\(message)\"")
+                    .font(.lora(size: 11))
+                    .foregroundColor(.secondary.opacity(0.8))
+                    .italic()
+                    .fixedSize(horizontal: true, vertical: false)
+                    .background(
+                        GeometryReader { textGeo in
+                            Color.clear
+                                .onAppear {
+                                    textWidth = textGeo.size.width
+                                }
+                                .preference(key: ScrollOffsetPreferenceKey.self,
+                                           value: containerGeo.frame(in: .global).minX - textGeo.frame(in: .global).minX)
+                        }
+                    )
+            }
+            .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
+                scrollOffset = value
+            }
+            .onAppear {
+                containerWidth = containerGeo.size.width
+            }
+            .mask(
+                HStack(spacing: 0) {
+                    Color.black
+                    if needsScroll && !isAtEnd {
+                        LinearGradient(
+                            colors: [.black, .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .frame(width: 20)
+                    }
+                }
+            )
+        }
+        .frame(height: 16) // Fixed height for the text line
+    }
+}
+
+private struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 // Navigation destination types for Phlock
 enum PhlockDestination: Hashable {
     case profile
@@ -1067,26 +1136,20 @@ struct DailyPlaylistRow: View {
                             .lineLimit(1)
 
                         if let message = song.message, !message.isEmpty {
-                            Text(message)
-                                .font(.lora(size: 14))
-                                .foregroundColor(.secondary)
-                                .italic()
-                                .lineLimit(1)
+                            ScrollableMessageText(message: message)
+                                .padding(.top, 2)
                         }
                     }
-
-                    // Fill remaining space up to action buttons so taps just left of them still toggle playback
-                    Spacer(minLength: 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
             .contentShape(Rectangle())
             .disabled(song.previewUrl == nil)
             .opacity(song.previewUrl != nil ? 1.0 : 0.5)
-            
+
             // Actions (Right)
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 Button {
                     onSwapTapped()
                 } label: {
@@ -1763,6 +1826,7 @@ private enum DemoPhlockContent {
         let fallbackArt: String
         let fallbackPreview: String
         let preferFallback: Bool
+        let message: String?
     }
 
     static let placeholderMembers: [FriendWithPosition] = [
@@ -1843,7 +1907,8 @@ private enum DemoPhlockContent {
             artist: "Daniel Caesar",
             fallbackArt: "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/b6/cd/1a/b6cd1a5b-83af-a1e2-0ad7-ea530fcf2522/859722261219.jpg/400x400bb.jpg",
             fallbackPreview: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/cc/95/ed/cc95edc8-4f9b-0c56-bc74-31ba76a057f9/mzaf_11346187551197903108.plus.aac.p.m4a",
-            preferFallback: true // lock to official Freudian artwork/preview to avoid mismatched versions
+            preferFallback: true, // lock to official Freudian artwork/preview to avoid mismatched versions
+            message: "This song has been on repeat all morning! The vibes are immaculate ✨"
         ),
         TrackTemplate(
             id: "7wRQIKvVqLWiTfMFwfUYlK",
@@ -1851,7 +1916,8 @@ private enum DemoPhlockContent {
             artist: "Aaliyah",
             fallbackArt: "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/9d/f3/55/9df35530-e066-5df9-2212-fe5ed7cf9b14/5034644712819.jpg/400x400bb.jpg",
             fallbackPreview: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/9d/3f/3e/9d3f3e43-0960-12f9-e2fb-8c975fb9bb4d/mzaf_269865300524312841.plus.aac.p.m4a",
-            preferFallback: false
+            preferFallback: false,
+            message: "Perfect driving music - the beat drop at 1:30 is everything 🔥"
         ),
         TrackTemplate(
             id: "2arETTjDUyUqXR0x5g6E8U",
@@ -1859,7 +1925,8 @@ private enum DemoPhlockContent {
             artist: "Justin Bieber",
             fallbackArt: "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/e0/cb/3e/e0cb3e1c-0dde-156d-d500-7943bc4ddebd/25UM1IM36272.rgb.jpg/400x400bb.jpg",
             fallbackPreview: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/98/8a/94/988a946b-1c49-67ed-a2d9-6bbce5c30162/mzaf_4634555832945306175.plus.aac.p.m4a",
-            preferFallback: false
+            preferFallback: false,
+            message: "Found this gem while producing last night. Had to share with the phlock!"
         )
     ]
 
@@ -1915,7 +1982,7 @@ private enum DemoPhlockContent {
                     trackName: template.title,
                     artistName: template.artist,
                     albumArtUrl: art,
-                    message: nil,
+                    message: template.message,
                     status: .sent,
                     createdAt: timestamp,
                     updatedAt: timestamp,

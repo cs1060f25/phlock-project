@@ -482,6 +482,12 @@ struct DailySongSelectionBar: View {
                         .textFieldStyle(.plain)
                         .focused($isFocused)
                         .submitLabel(.send)
+                        .onChange(of: note) { newValue in
+                            // Limit to 80 characters for brief one-sentence messages
+                            if newValue.count > 80 {
+                                note = String(newValue.prefix(80))
+                            }
+                        }
                         .onSubmit {
                             onSend()
                         }

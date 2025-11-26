@@ -6,8 +6,6 @@ struct ShareToast: View {
     let type: ToastType
     let onUndo: (() -> Void)?
 
-    @Environment(\.colorScheme) var colorScheme
-
     enum ToastType {
         case success
         case error
@@ -31,52 +29,66 @@ struct ShareToast: View {
     }
 
     var body: some View {
-        let background: Color = {
-            if colorScheme == .dark {
-                return Color(.tertiarySystemBackground).opacity(0.95)
-            } else {
-                return Color(.systemBackground).opacity(0.95)
-            }
-        }()
-
-        let textColor: Color = {
-            if colorScheme == .dark {
-                return .white
-            } else {
-                return .black
-            }
-        }()
-
         HStack(spacing: 12) {
             // Icon
             Image(systemName: type.icon)
-                .font(.lora(size: 20, weight: .semiBold))
+                .font(.system(size: 22, weight: .semibold))
                 .foregroundColor(type.color)
 
             // Message
             Text(message)
-                .font(.lora(size: 10))
-                .foregroundColor(textColor)
+                .font(.lora(size: 14, weight: .medium))
+                .foregroundColor(.white)
 
             Spacer()
 
             // Undo button (if provided)
             if let onUndo = onUndo {
-                Button("undo") {
+                Button("Undo") {
                     onUndo()
                 }
-                .font(.lora(size: 10))
-                .foregroundColor(.blue)
+                .font(.lora(size: 12, weight: .medium))
+                .foregroundColor(.white.opacity(0.8))
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(background)
-                .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 5)
+            ZStack {
+                // Blur effect for glassmorphism - using thinMaterial for more translucency
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(.thinMaterial)
+
+                // Very subtle gradient overlay - reduced opacity for more translucency
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.08),
+                                Color.white.opacity(0.02)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+
+                // Border for definition - reduced opacity
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.2),
+                                Color.white.opacity(0.05)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.5
+                    )
+            }
         )
-        .padding(.horizontal, 16)
+        .shadow(color: Color.black.opacity(0.25), radius: 20, x: 0, y: 10)
+        .padding(.horizontal, 20)
     }
 }
 
@@ -93,11 +105,14 @@ struct ToastModifier: ViewModifier {
             content
 
             if isPresented {
-                ShareToast(message: message, type: type, onUndo: onUndo)
-                    .frame(maxWidth: 360)
-                    .padding(.horizontal, 24)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    .transition(.scale.combined(with: .opacity))
+                VStack {
+                    Spacer()
+                    ShareToast(message: message, type: type, onUndo: onUndo)
+                        .frame(maxWidth: 360)
+                        .padding(.bottom, 60)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
                     .allowsHitTesting(false)
                     .onAppear {
                         // Auto-dismiss after duration

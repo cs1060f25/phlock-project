@@ -84,7 +84,7 @@ class AppleMusicService {
                         id: id,
                         title: song.title,
                         artistName: song.artistName,
-                        artworkURL: song.artwork?.url(width: 300, height: 300)?.absoluteString,
+                        artworkURL: song.artwork?.url(width: 640, height: 640)?.absoluteString,
                         previewURL: song.previewAssets?.first?.url?.absoluteString,
                         url: song.url?.absoluteString
                     )
@@ -119,7 +119,7 @@ class AppleMusicService {
                                 id: id,
                                 title: song.title,
                                 artistName: song.artistName,
-                                artworkURL: song.artwork?.url(width: 300, height: 300)?.absoluteString,
+                                artworkURL: song.artwork?.url(width: 640, height: 640)?.absoluteString,
                                 previewURL: song.previewAssets?.first?.url?.absoluteString,
                                 url: song.url?.absoluteString
                             )
@@ -147,7 +147,7 @@ class AppleMusicService {
             AppleMusicPlaylist(
                 id: playlist.id.rawValue,
                 name: playlist.name,
-                artworkURL: playlist.artwork?.url(width: 300, height: 300)?.absoluteString,
+                artworkURL: playlist.artwork?.url(width: 640, height: 640)?.absoluteString,
                 trackCount: nil // MusicKit doesn't expose track count directly
             )
         }
@@ -184,7 +184,7 @@ class AppleMusicService {
                     id: song.id.rawValue,
                     title: song.title,
                     artistName: song.artistName,
-                    artworkURL: song.artwork?.url(width: 300, height: 300)?.absoluteString,
+                    artworkURL: song.artwork?.url(width: 640, height: 640)?.absoluteString,
                     previewURL: song.previewAssets?.first?.url?.absoluteString,
                     url: song.url?.absoluteString
                 )
@@ -292,7 +292,7 @@ class AppleMusicService {
             let searchResponse = try await searchRequest.response()
 
             if let artist = searchResponse.artists.first {
-                let artworkURL = artist.artwork?.url(width: 300, height: 300)?.absoluteString
+                let artworkURL = artist.artwork?.url(width: 640, height: 640)?.absoluteString
                 print("✅ Found artist artwork for \(artistName)")
                 return artworkURL
             } else {
@@ -334,7 +334,7 @@ class AppleMusicService {
                             id: song.id.rawValue,
                             title: song.title,
                             artistName: song.artistName,
-                            artworkURL: song.artwork?.url(width: 300, height: 300)?.absoluteString,
+                            artworkURL: song.artwork?.url(width: 640, height: 640)?.absoluteString,
                             previewURL: song.previewAssets?.first?.url?.absoluteString,
                             url: song.url?.absoluteString
                         )
@@ -362,7 +362,7 @@ class AppleMusicService {
                             id: song.id.rawValue,
                             title: song.title,
                             artistName: song.artistName,
-                            artworkURL: song.artwork?.url(width: 300, height: 300)?.absoluteString,
+                            artworkURL: song.artwork?.url(width: 640, height: 640)?.absoluteString,
                             previewURL: song.previewAssets?.first?.url?.absoluteString,
                             url: song.url?.absoluteString
                         )
@@ -434,7 +434,7 @@ class AppleMusicService {
                 name: song.title,
                 artistName: song.artistName,
                 previewUrl: song.previewAssets?.first?.url?.absoluteString,
-                albumArtUrl: song.artwork?.url(width: 300, height: 300)?.absoluteString,
+                albumArtUrl: song.artwork?.url(width: 640, height: 640)?.absoluteString,
                 isrc: song.isrc,
                 playedAt: nil,
                 spotifyId: nil,
