@@ -10,11 +10,11 @@ struct PlatformSelectionView: View {
             // Header
             VStack(spacing: 16) {
                 Text("connect your music")
-                    .font(.dmSans(size: 32, weight: .bold))
+                    .font(.lora(size: 32, weight: .bold))
                     .multilineTextAlignment(.center)
 
                 Text("choose your streaming platform to get started")
-                    .font(.dmSans(size: 17))
+                    .font(.lora(size: 17))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
@@ -132,11 +132,11 @@ struct PlatformCard: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(platform)
-                        .font(.dmSans(size: 18, weight: .semiBold))
+                        .font(.lora(size: 18, weight: .semiBold))
                         .foregroundColor(.primary)
 
                     Text(description)
-                        .font(.dmSans(size: 13))
+                        .font(.lora(size: 13))
                         .foregroundColor(.secondary)
                 }
 
@@ -146,7 +146,7 @@ struct PlatformCard: View {
                     ProgressView()
                 } else {
                     Image(systemName: "chevron.right")
-                        .font(.dmSans(size: 14))
+                        .font(.lora(size: 14))
                         .foregroundColor(.secondary.opacity(0.5))
                 }
             }

@@ -18,6 +18,7 @@ struct FullScreenPlayerView: View {
     @State private var dragOffset: CGFloat = 0
     @State private var horizontalDragOffset: CGFloat = 0
     @State private var isSkipping: Bool = false
+    @State private var isSeeking: Bool = false
     @State private var activeGesture: ActiveGesture = .none
 
     // Displayed track for artwork - controlled separately during skip animations
@@ -233,7 +234,7 @@ struct FullScreenPlayerView: View {
                 isPresented = false
             } label: {
                 Image(systemName: "chevron.down")
-                    .font(.dmSans(size: 20, weight: .semiBold))
+                    .font(.lora(size: 20, weight: .semiBold))
                     .foregroundColor(.white)
                     .frame(width: 40, height: 40)
                     .background(Color.white.opacity(0.15))
@@ -245,15 +246,15 @@ struct FullScreenPlayerView: View {
             // Now Playing label
             VStack(spacing: 2) {
                 Text("NOW PLAYING")
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .tracking(1.2)
                     .foregroundColor(.white.opacity(0.6))
 
                 HStack(spacing: 4) {
                     Image(systemName: platformIconName)
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: 10))
                     Text(platformName)
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: 10))
                 }
                 .foregroundColor(.white.opacity(0.8))
             }
@@ -282,7 +283,7 @@ struct FullScreenPlayerView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.dmSans(size: 20, weight: .semiBold))
+                    .font(.lora(size: 20, weight: .semiBold))
                     .foregroundColor(.white)
                     .frame(width: 40, height: 40)
                     .background(Color.white.opacity(0.15))
@@ -487,20 +488,26 @@ struct FullScreenPlayerView: View {
     private var trackInfoSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let track = playbackService.currentTrack {
-                // Track name
-                Text(track.name)
-                    .font(.dmSans(size: 28, weight: .bold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
+                // Track name (Marquee)
+                MarqueeText(
+                    text: track.name,
+                    font: .lora(size: 24, weight: .bold),
+                    leftFade: 16,
+                    rightFade: 16,
+                    startDelay: 2.0,
+                    alignment: .leading
+                )
+                .frame(height: 34) // Fixed height for track name area
+                .foregroundColor(.white)
 
                 // Artist name
                 Text(track.artistName ?? "Unknown Artist")
-                    .font(.dmSans(size: 18))
+                    .font(.lora(size: 16))
                     .foregroundColor(.white.opacity(0.7))
                     .lineLimit(1)
             } else {
                 Text("No track playing")
-                    .font(.dmSans(size: 28, weight: .bold))
+                    .font(.lora(size: 24, weight: .bold))
                     .foregroundColor(.white.opacity(0.5))
             }
         }
@@ -513,7 +520,7 @@ struct FullScreenPlayerView: View {
         VStack(spacing: 8) {
             // Custom scrubbable progress bar
             GeometryReader { geometry in
-                let progress = isDraggingSlider
+                let progress = (isDraggingSlider || isSeeking)
                     ? sliderValue / max(durationSafe, 1)
                     : currentTimeSafe / max(durationSafe, 1)
 
@@ -552,11 +559,19 @@ struct FullScreenPlayerView: View {
                         .onEnded { value in
                             let progress = max(0, min(1, value.location.x / geometry.size.width))
                             let seekTime = Double(progress) * durationSafe
+                            
+                            // Set seeking state to prevent jump back
+                            isSeeking = true
                             seek(to: seekTime)
                             isDraggingSlider = false
 
                             let impact = UIImpactFeedbackGenerator(style: .light)
                             impact.impactOccurred()
+                            
+                            // Reset seeking state after a delay to allow playback service to catch up
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                isSeeking = false
+                            }
                         }
                 )
             }
@@ -565,13 +580,13 @@ struct FullScreenPlayerView: View {
             // Time labels
             HStack {
                 Text(formatTime(isDraggingSlider ? sliderValue : currentTimeSafe))
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .foregroundColor(.white.opacity(0.5))
 
                 Spacer()
 
                 Text(formatTime(durationSafe))
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .foregroundColor(.white.opacity(0.5))
             }
         }
@@ -588,7 +603,7 @@ struct FullScreenPlayerView: View {
                 impact.impactOccurred()
             } label: {
                 Image(systemName: "backward.end.fill")
-                    .font(.dmSans(size: 20, weight: .bold))
+                    .font(.lora(size: 20, weight: .bold))
                     .foregroundColor(canSkipBackward ? .white : .white.opacity(0.3))
             }
             .disabled(!canSkipBackward)
@@ -607,7 +622,7 @@ struct FullScreenPlayerView: View {
                         .frame(width: 72, height: 72)
 
                     Image(systemName: playbackService.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.dmSans(size: 30, weight: .bold))
+                        .font(.lora(size: 30, weight: .bold))
                         .foregroundColor(.black)
                         .offset(x: playbackService.isPlaying ? 0 : 1)
                 }
@@ -621,7 +636,7 @@ struct FullScreenPlayerView: View {
                 impact.impactOccurred()
             } label: {
                 Image(systemName: "forward.end.fill")
-                    .font(.dmSans(size: 20, weight: .bold))
+                    .font(.lora(size: 20, weight: .bold))
                     .foregroundColor(canSkipForward ? .white : .white.opacity(0.3))
             }
             .disabled(!canSkipForward)
@@ -643,9 +658,9 @@ struct FullScreenPlayerView: View {
             } label: {
                 VStack(spacing: 6) {
                     Image(systemName: "paperplane")
-                        .font(.dmSans(size: 20, weight: .semiBold))
+                        .font(.lora(size: 20, weight: .semiBold))
                     Text("Share")
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: 10))
                 }
                 .foregroundColor(.white.opacity(0.7))
             }
@@ -664,9 +679,9 @@ struct FullScreenPlayerView: View {
             } label: {
                 VStack(spacing: 6) {
                     Image(systemName: isTrackSaved ? "checkmark.circle.fill" : "plus.circle")
-                        .font(.dmSans(size: 20, weight: .semiBold))
+                        .font(.lora(size: 20, weight: .semiBold))
                     Text(isTrackSaved ? "Saved" : "Library")
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: 10))
                 }
                 .foregroundColor(isTrackSaved ? .green : .white.opacity(0.7))
             }
@@ -679,9 +694,9 @@ struct FullScreenPlayerView: View {
             } label: {
                 VStack(spacing: 6) {
                     Image(systemName: "arrow.up.right.square")
-                        .font(.dmSans(size: 20, weight: .semiBold))
+                        .font(.lora(size: 20, weight: .semiBold))
                     Text("Open")
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: 10))
                 }
                 .foregroundColor(.white.opacity(0.7))
             }
@@ -836,7 +851,7 @@ struct FullScreenPlayerView: View {
 
     private func checkIfTrackSaved(track: MusicItem) async {
         // First check if the track is in the saved set from the playback context
-        // This handles demo songs and tracks that FeedView already knows are saved
+        // This handles demo songs and tracks that PhlockView already knows are saved
         if playbackService.savedTrackIds.contains(track.id) {
             await MainActor.run {
                 isTrackSaved = true

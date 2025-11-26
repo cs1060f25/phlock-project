@@ -62,14 +62,14 @@ struct ArtistDetailView: View {
                                     .frame(width: 200, height: 200)
                                     .overlay(
                                         Image(systemName: "music.mic")
-                                            .font(.dmSans(size: 60, weight: .bold))
+                                            .font(.lora(size: 60, weight: .bold))
                                             .foregroundColor(.gray)
                                     )
                             }
 
                             // Artist Name
                             Text(artist.name)
-                                .font(.dmSans(size: 32, weight: .bold))
+                                .font(.lora(size: 32, weight: .bold))
                                 .multilineTextAlignment(.center)
                         }
                         .padding(.top, 20)
@@ -77,12 +77,12 @@ struct ArtistDetailView: View {
                         // Tracks Section
                         VStack(alignment: .leading, spacing: 16) {
                             Text(searchText.isEmpty ? "Top Tracks" : "Search Results")
-                                .font(.dmSans(size: 20, weight: .semiBold))
+                                .font(.lora(size: 20, weight: .semiBold))
                                 .padding(.horizontal)
 
                             if displayedTracks.isEmpty {
                                 Text(searchText.isEmpty ? "No tracks available" : "No tracks found")
-                                    .font(.dmSans(size: 10))
+                                    .font(.lora(size: 10))
                                     .foregroundColor(.secondary)
                                     .padding()
                             } else {
@@ -101,7 +101,7 @@ struct ArtistDetailView: View {
 
                                         // Track Number
                                         Text("\(index + 1)")
-                                            .font(.dmSans(size: 10))
+                                            .font(.lora(size: 10))
                                             .foregroundColor(.secondary)
                                             .frame(width: 30)
 
@@ -129,13 +129,13 @@ struct ArtistDetailView: View {
                                         // Track Info
                                         VStack(alignment: .leading, spacing: 4) {
                                             Text(track.name)
-                                                .font(.dmSans(size: 10))
+                                                .font(.lora(size: 10))
                                                 .lineLimit(1)
                                                 .foregroundColor(.primary)
 
                                             if let artistName = track.artistName {
                                                 Text(artistName)
-                                                    .font(.dmSans(size: 10))
+                                                    .font(.lora(size: 10))
                                                     .foregroundColor(.secondary)
                                                     .lineLimit(1)
                                             }
@@ -148,14 +148,14 @@ struct ArtistDetailView: View {
                                             showShareSheetForTrackId = track.id
                                         } label: {
                                             Image(systemName: showShareSheetForTrackId == track.id ? "paperplane.fill" : "paperplane")
-                                                .font(.dmSans(size: 20, weight: .semiBold))
+                                                .font(.lora(size: 20, weight: .semiBold))
                                                 .foregroundColor(showShareSheetForTrackId == track.id ? .primary : .secondary)
                                         }
                                         .buttonStyle(.plain)
 
                                         // Play Button
                                         Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                                            .font(.dmSans(size: 20, weight: .bold))
+                                            .font(.lora(size: 20, weight: .bold))
                                             .foregroundColor(isCurrentTrack ? .primary : .secondary)
                                     }
                                     .padding(.horizontal, isCurrentTrack ? 12 : 16)
@@ -213,12 +213,12 @@ struct ArtistDetailView: View {
                             // Expanded Search Bar
                             HStack(spacing: 8) {
                                 Image(systemName: "magnifyingglass")
-                                    .font(.dmSans(size: 10))
+                                    .font(.lora(size: 10))
                                     .foregroundColor(.gray)
 
                                 TextField("search \(artist.name) tracks...", text: $searchText)
                                     .textFieldStyle(.plain)
-                                    .font(.dmSans(size: 10))
+                                    .font(.lora(size: 10))
                                     .autocorrectionDisabled()
                                     .focused($isSearchFieldFocused)
                                     .onChange(of: searchText) { newValue in
@@ -231,7 +231,7 @@ struct ArtistDetailView: View {
                                         searchResults = []
                                     } label: {
                                         Image(systemName: "xmark.circle.fill")
-                                            .font(.dmSans(size: 10))
+                                            .font(.lora(size: 10))
                                             .foregroundColor(.gray)
                                     }
                                 }
@@ -249,7 +249,7 @@ struct ArtistDetailView: View {
                                     }
                                 } label: {
                                     Image(systemName: "xmark")
-                                        .font(.dmSans(size: 10))
+                                        .font(.lora(size: 10))
                                         .foregroundColor(.gray)
                                 }
                             }
@@ -276,9 +276,9 @@ struct ArtistDetailView: View {
                             } label: {
                                 HStack(spacing: 8) {
                                     Image(systemName: "magnifyingglass")
-                                        .font(.dmSans(size: 10))
+                                        .font(.lora(size: 10))
                                     Text(artist.name)
-                                        .font(.dmSans(size: 10))
+                                        .font(.lora(size: 10))
                                         .lineLimit(1)
                                 }
                                 .foregroundColor(.white)
@@ -318,7 +318,7 @@ struct ArtistDetailView: View {
                     dismiss()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.dmSans(size: 20, weight: .semiBold))
+                        .font(.lora(size: 20, weight: .semiBold))
                         .foregroundColor(.primary)
                 }
             }

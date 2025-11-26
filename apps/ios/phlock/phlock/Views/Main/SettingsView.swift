@@ -18,11 +18,11 @@ struct SettingsView: View {
                     Link(destination: privacyPolicyURL) {
                         HStack {
                             Text("Privacy Policy")
-                                .font(.dmSans(size: 16))
+                                .font(.lora(size: 16))
                                 .foregroundColor(.primary)
                             Spacer()
                             Image(systemName: "arrow.up.right")
-                                .font(.dmSans(size: 12))
+                                .font(.lora(size: 12))
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -30,17 +30,17 @@ struct SettingsView: View {
                     Link(destination: termsOfServiceURL) {
                         HStack {
                             Text("Terms of Service")
-                                .font(.dmSans(size: 16))
+                                .font(.lora(size: 16))
                                 .foregroundColor(.primary)
                             Spacer()
                             Image(systemName: "arrow.up.right")
-                                .font(.dmSans(size: 12))
+                                .font(.lora(size: 12))
                                 .foregroundColor(.secondary)
                         }
                     }
                 } header: {
                     Text("Legal")
-                        .font(.dmSans(size: 12))
+                        .font(.lora(size: 12))
                 }
 
                 Section {
@@ -48,14 +48,14 @@ struct SettingsView: View {
                         showDeleteConfirmation = true
                     } label: {
                         Text("Delete Account")
-                            .font(.dmSans(size: 16))
+                            .font(.lora(size: 16))
                     }
                 } header: {
                     Text("Account")
-                        .font(.dmSans(size: 12))
+                        .font(.lora(size: 12))
                 } footer: {
                     Text("Deleting your account is permanent and cannot be undone. All your data will be removed.")
-                        .font(.dmSans(size: 12))
+                        .font(.lora(size: 12))
                 }
                 
                 Section {
@@ -65,7 +65,7 @@ struct SettingsView: View {
                         }
                     } label: {
                         Text("Sign Out")
-                            .font(.dmSans(size: 16))
+                            .font(.lora(size: 16))
                             .foregroundColor(.red)
                     }
                 }
@@ -77,7 +77,7 @@ struct SettingsView: View {
                     Button("Done") {
                         dismiss()
                     }
-                    .font(.dmSans(size: 16, weight: .medium))
+                    .font(.lora(size: 16, weight: .medium))
                 }
             }
             .alert("Delete Account?", isPresented: $showDeleteConfirmation) {

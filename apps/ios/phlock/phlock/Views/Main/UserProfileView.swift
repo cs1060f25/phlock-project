@@ -36,12 +36,12 @@ struct UserProfileView: View {
 
                     // Display Name
                     Text(user.displayName)
-                        .font(.dmSans(size: 20, weight: .bold))
+                        .font(.lora(size: 20, weight: .bold))
 
                     // Bio
                     if let bio = user.bio {
                         Text(bio)
-                            .font(.dmSans(size: 10))
+                            .font(.lora(size: 10))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
                     }
@@ -49,9 +49,9 @@ struct UserProfileView: View {
                     // Platform Badge
                     HStack(spacing: 6) {
                         Image(systemName: user.platformType == .spotify ? "music.note" : "applelogo")
-                            .font(.dmSans(size: 10))
+                            .font(.lora(size: 10))
                         Text(user.platformType == .spotify ? "spotify" : "apple music")
-                            .font(.dmSans(size: 10))
+                            .font(.lora(size: 10))
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 12)
@@ -72,7 +72,7 @@ struct UserProfileView: View {
                                     Image(systemName: "checkmark.circle.fill")
                                         .foregroundColor(.green)
                                     Text("friends")
-                                        .font(.dmSans(size: 10))
+                                        .font(.lora(size: 10))
                                 }
                                 .foregroundColor(.primary)
                                 .frame(maxWidth: .infinity)
@@ -84,7 +84,7 @@ struct UserProfileView: View {
                                 if let friendship = friendship, friendship.userId1 == authState.currentUser?.id {
                                     // Current user sent the request
                                     Text("request sent")
-                                        .font(.dmSans(size: 10))
+                                        .font(.lora(size: 10))
                                         .foregroundColor(.secondary)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 12)
@@ -97,7 +97,7 @@ struct UserProfileView: View {
                                             Task { await rejectFriendRequest() }
                                         } label: {
                                             Text("reject")
-                                                .font(.dmSans(size: 10))
+                                                .font(.lora(size: 10))
                                                 .foregroundColor(.primary)
                                                 .frame(maxWidth: .infinity)
                                                 .padding(.vertical, 12)
@@ -109,7 +109,7 @@ struct UserProfileView: View {
                                             Task { await acceptFriendRequest() }
                                         } label: {
                                             Text("accept")
-                                                .font(.dmSans(size: 10))
+                                                .font(.lora(size: 10))
                                                 .foregroundColor(.white)
                                                 .frame(maxWidth: .infinity)
                                                 .padding(.vertical, 12)
@@ -133,7 +133,7 @@ struct UserProfileView: View {
                                         .padding(.vertical, 12)
                                 } else {
                                     Text("add friend")
-                                        .font(.dmSans(size: 10))
+                                        .font(.lora(size: 10))
                                         .foregroundColor(.white)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 12)
@@ -152,7 +152,7 @@ struct UserProfileView: View {
                 if let platformData = user.platformData {
                     VStack(spacing: 16) {
                         Text("music taste")
-                            .font(.dmSans(size: 20, weight: .semiBold))
+                            .font(.lora(size: 20, weight: .semiBold))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 24)
 
@@ -191,7 +191,7 @@ struct UserProfileView: View {
                     dismiss()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.dmSans(size: 20, weight: .semiBold))
+                        .font(.lora(size: 20, weight: .semiBold))
                         .foregroundColor(.primary)
                 }
             }
@@ -211,7 +211,7 @@ struct UserProfileView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.dmSans(size: 20, weight: .semiBold))
+                        .font(.lora(size: 20, weight: .semiBold))
                         .foregroundColor(.primary)
                 }
             }

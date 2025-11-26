@@ -61,7 +61,7 @@ struct ProfileView: View {
                             // Display Name with Platform Logo
                             HStack(spacing: 8) {
                                 Text(user.displayName)
-                                    .font(.dmSans(size: 28, weight: .bold))
+                                    .font(.lora(size: 28, weight: .bold))
 
                                 Image(user.platformType == .spotify ? "SpotifyLogo" : "AppleMusicLogo")
                                     .resizable()
@@ -72,7 +72,7 @@ struct ProfileView: View {
                             // Bio
                             if let bio = user.bio {
                                 Text(bio)
-                                    .font(.dmSans(size: 15))
+                                    .font(.lora(size: 15))
                                     .multilineTextAlignment(.center)
                                     .padding(.horizontal, 24)
                             }
@@ -84,31 +84,18 @@ struct ProfileView: View {
                                 } label: {
                                     HStack(spacing: 4) {
                                         Image(systemName: "pencil")
-                                            .font(.dmSans(size: 11))
+                                            .font(.lora(size: 11))
                                         Text("edit profile")
-                                            .font(.dmSans(size: 13))
+                                            .font(.lora(size: 13))
                                     }
                                     .foregroundColor(.secondary)
                                 }
                                 
-                                // Settings Button (Fallback/Direct Access)
-                                Button {
-                                    showSettings = true
-                                } label: {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "gearshape")
-                                            .font(.dmSans(size: 11))
-                                        Text("settings")
-                                            .font(.dmSans(size: 13))
-                                    }
-                                    .foregroundColor(.secondary)
-                                }
-
                                 HStack(spacing: 4) {
                                     Image(systemName: "person.2")
-                                        .font(.dmSans(size: 11))
+                                        .font(.lora(size: 11))
                                     Text("friends")
-                                        .font(.dmSans(size: 13))
+                                        .font(.lora(size: 13))
                                 }
                                 .foregroundColor(.secondary)
                                 .opacity(0.5)
@@ -148,10 +135,7 @@ struct ProfileView: View {
                         // Music Stats from Platform
                         if let platformData = user.platformData {
                             VStack(spacing: 16) {
-                                Text("your music")
-                                    .font(.dmSans(size: 20, weight: .semiBold))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 24)
+
 
                                 // Top Tracks
                                 if let topTracks = platformData.topTracks, !topTracks.isEmpty,
@@ -187,25 +171,36 @@ struct ProfileView: View {
                             if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
                                let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
                                 Text("Phlock v\(version) (\(build))")
-                                    .font(.dmSans(size: 12))
+                                    .font(.lora(size: 12))
                                     .foregroundColor(.secondary)
                             }
 
                             Text("TestFlight Beta")
-                                .font(.dmSans(size: 11))
+                                .font(.lora(size: 11))
                                 .foregroundColor(.secondary.opacity(0.7))
                             
                             // DEBUG: Reset Onboarding
                             Button {
                                 UserDefaults.standard.set(false, forKey: "isOnboardingComplete")
-                                Task { await authState.signOut() }
+                                Task {
+                                    if let userId = authState.currentUser?.id {
+                                        print("🗑️ Attempting to delete daily song for user \(userId)")
+                                        do {
+                                            try await ShareService.shared.deleteDailySong(for: userId)
+                                            print("✅ Successfully deleted daily song")
+                                        } catch {
+                                            print("❌ Failed to delete daily song: \(error)")
+                                        }
+                                    }
+                                    await authState.signOut()
+                                }
                             } label: {
                                 VStack(spacing: 4) {
                                     Text("Reset Onboarding (Debug)")
-                                        .font(.dmSans(size: 11))
+                                        .font(.lora(size: 11))
                                         .foregroundColor(.red)
                                     Text("Note: Backend data persists. Use a test account for fresh experience.")
-                                        .font(.dmSans(size: 9))
+                                        .font(.lora(size: 9))
                                         .foregroundColor(.secondary)
                                         .multilineTextAlignment(.center)
                                 }
@@ -337,7 +332,7 @@ struct ProfilePhotoPlaceholder: View {
                 .fill(Color.black.opacity(0.1))
 
             Text(displayName.prefix(1).uppercased())
-                .font(.dmSans(size: 40, weight: .bold))
+                .font(.lora(size: 40, weight: .bold))
                 .foregroundColor(.black.opacity(0.4))
         }
     }
@@ -488,7 +483,7 @@ struct ProfileInsightsSection: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
                 Text("your activity")
-                    .font(.dmSans(size: 20, weight: .semiBold))
+                    .font(.lora(size: 17, weight: .medium))
                 if viewModel.isLoading {
                     ProgressView()
                         .scaleEffect(0.8)
@@ -514,7 +509,7 @@ struct ProfileInsightsSection: View {
 
             if let error = viewModel.errorMessage {
                 Text(error)
-                    .font(.dmSans(size: 12))
+                    .font(.lora(size: 12))
                     .foregroundColor(.secondary)
             }
         }
@@ -572,9 +567,9 @@ struct StatPill: View {
     let isLoading: Bool
     @Environment(\.colorScheme) var colorScheme
 
-    private let titleFont = Font.dmSans(size: 11.5)
-    private let valueFont = Font.dmSans(size: 21, weight: .semiBold).monospacedDigit()
-    private let subtitleFont = Font.dmSans(size: 11)
+    private let titleFont = Font.lora(size: 11.5)
+    private let valueFont = Font.lora(size: 21, weight: .semiBold).monospacedDigit()
+    private let subtitleFont = Font.lora(size: 11)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -584,7 +579,7 @@ struct StatPill: View {
                         .foregroundColor(.secondary)
                 } else if let systemImage {
                     Image(systemName: systemImage)
-                        .font(.dmSans(size: 14))
+                        .font(.lora(size: 14))
                         .foregroundColor(.secondary)
                 }
                 Text(title)
@@ -651,25 +646,25 @@ struct TopArtistsSentCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("top artists you send (30d)")
-                .font(.dmSans(size: 16, weight: .medium))
+                .font(.lora(size: 16, weight: .medium))
 
             if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if artists.isEmpty {
                 Text("share a track to surface your go-to artists.")
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .foregroundColor(.secondary)
             } else {
                 ForEach(Array(artists.enumerated()), id: \.element.id) { index, artist in
                     HStack(spacing: 10) {
                         Text("\(index + 1).")
-                            .font(.dmSans(size: 14))
+                            .font(.lora(size: 14))
                             .foregroundColor(.secondary)
                             .frame(width: 24, alignment: .leading)
 
                         Text(artist.name)
-                            .font(.dmSans(size: 15))
+                            .font(.lora(size: 15))
                             .lineLimit(1)
                             .foregroundColor(.primary)
 
@@ -681,13 +676,13 @@ struct TopArtistsSentCard: View {
                                 showPlatformSheet = true
                             } label: {
                                 Image(systemName: "arrow.up.forward.square")
-                                    .font(.dmSans(size: 14))
+                                    .font(.lora(size: 14))
                                     .foregroundColor(.secondary)
                             }
                             .buttonStyle(.plain)
 
                             Text("\(artist.count)")
-                                .font(.dmSans(size: 14))
+                                .font(.lora(size: 14))
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -744,14 +739,14 @@ struct GenreBreakdownCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("top genres from your shares")
-                .font(.dmSans(size: 16, weight: .medium))
+                .font(.lora(size: 16, weight: .medium))
 
             if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if genres.isEmpty {
                 Text("once you've shared a few tracks, we'll chart the genres you pass around.")
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .foregroundColor(.secondary)
             } else {
                 let maxCount = max(genres.map { $0.count }.max() ?? 1, 1)
@@ -760,11 +755,11 @@ struct GenreBreakdownCard: View {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Text(genre.name.capitalized)
-                                .font(.dmSans(size: 14))
+                                .font(.lora(size: 14))
                                 .lineLimit(1)
                             Spacer()
                             Text("\(genre.count)")
-                                .font(.dmSans(size: 12))
+                                .font(.lora(size: 12))
                                 .foregroundColor(.secondary)
                         }
 
@@ -854,7 +849,7 @@ struct MusicStatsCard: View {
         ZStack {
             VStack(alignment: .leading, spacing: 12) {
                 Text(title)
-                    .font(.dmSans(size: 17, weight: .medium))
+                    .font(.lora(size: 17, weight: .medium))
                     .padding(.horizontal, 24)
 
             VStack(spacing: 0) {
@@ -891,7 +886,7 @@ struct MusicStatsCard: View {
                             }
 
                             Text("\(index + 1).")
-                                .font(.dmSans(size: 15))
+                                .font(.lora(size: 15))
                                 .foregroundColor(.secondary)
                                 .frame(width: 24, alignment: .leading)
 
@@ -918,14 +913,14 @@ struct MusicStatsCard: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.name)
-                                    .font(.dmSans(size: 15))
+                                    .font(.lora(size: 15))
                                     .lineLimit(1)
                                     .foregroundColor(.primary)
 
                                 // Show timestamp for tracks only (not artists)
                                 if itemType == .track, let playedAt = item.playedAt {
                                     Text(playedAt.shortRelativeTimeString())
-                                        .font(.dmSans(size: 12))
+                                        .font(.lora(size: 12))
                                         .foregroundColor(.secondary)
                                 }
                             }
@@ -940,19 +935,19 @@ struct MusicStatsCard: View {
                                     showQuickSendBar = true
                                 } label: {
                                     Image(systemName: "paperplane")
-                                        .font(.dmSans(size: 18))
+                                        .font(.lora(size: 18))
                                         .foregroundColor(.secondary)
                                 }
                                 .buttonStyle(.plain)
 
                                 // Show pause icon if playing, play icon if not
                                 Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                                    .font(.dmSans(size: 22))
+                                    .font(.lora(size: 22))
                                     .foregroundColor(isCurrentTrack ? .primary : .secondary)
                             } else {
                                 // External link icon for artists (opens action sheet)
                                 Image(systemName: "arrow.up.forward.square")
-                                    .font(.dmSans(size: 16, weight: .medium))
+                                    .font(.lora(size: 16, weight: .medium))
                                     .foregroundColor(.secondary)
                             }
                         }
@@ -992,11 +987,11 @@ struct MusicStatsCard: View {
                             Spacer()
 
                             Text(isExpanded ? "show less" : "show more")
-                                .font(.dmSans(size: 13))
+                                .font(.lora(size: 13))
                                 .foregroundColor(.secondary)
 
                             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                                .font(.dmSans(size: 10))
+                                .font(.lora(size: 10))
                                 .foregroundColor(.secondary)
 
                             Spacer()
@@ -1215,7 +1210,7 @@ struct TodaysPickCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("today's pick")
-                .font(.dmSans(size: 17, weight: .medium))
+                .font(.lora(size: 17, weight: .medium))
                 .padding(.horizontal, 24)
 
             if let share = share {
@@ -1271,18 +1266,18 @@ struct TodaysPickCard: View {
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text(share.trackName)
-                                .font(.dmSans(size: 16, weight: .medium))
+                                .font(.lora(size: 16, weight: .medium))
                                 .foregroundColor(.primary)
                                 .lineLimit(1)
 
                             Text(share.artistName)
-                                .font(.dmSans(size: 14))
+                                .font(.lora(size: 14))
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
 
                             if let message = share.message, !message.isEmpty {
                                 Text("\"\(message)\"")
-                                    .font(.dmSans(size: 13))
+                                    .font(.lora(size: 13))
                                     .italic()
                                     .foregroundColor(.secondary)
                                     .lineLimit(2)
@@ -1294,7 +1289,7 @@ struct TodaysPickCard: View {
                         
                         // Play/Pause Icon
                         Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.dmSans(size: 32, weight: .medium))
+                            .font(.lora(size: 32, weight: .medium))
                             .foregroundColor(isCurrentTrack ? .primary : .secondary)
                     }
                     .padding(16)
@@ -1312,18 +1307,18 @@ struct TodaysPickCard: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("pick your song for today")
-                                .font(.dmSans(size: 16, weight: .medium))
+                                .font(.lora(size: 16, weight: .medium))
                                 .foregroundColor(.primary)
 
                             Text("keep your streak alive 🔥")
-                                .font(.dmSans(size: 13))
+                                .font(.lora(size: 13))
                                 .foregroundColor(.secondary)
                         }
                         
                         Spacer()
                         
                         Image(systemName: "plus.circle.fill")
-                            .font(.dmSans(size: 32, weight: .medium))
+                            .font(.lora(size: 32, weight: .medium))
                             .foregroundColor(.primary)
                     }
                     .padding(16)
@@ -1335,7 +1330,7 @@ struct TodaysPickCard: View {
             } else {
                 // Empty state for other users
                 Text("no pick for today yet.")
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .italic()
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 24)
@@ -1351,12 +1346,12 @@ struct PastPicksView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("past picks")
-                .font(.dmSans(size: 17, weight: .medium))
+                .font(.lora(size: 17, weight: .medium))
                 .padding(.horizontal, 24)
 
             if shares.isEmpty {
                 Text("no past picks yet.")
-                    .font(.dmSans(size: 14))
+                    .font(.lora(size: 14))
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 24)
             } else {
@@ -1412,12 +1407,12 @@ struct PastPicksView: View {
                                 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(share.trackName)
-                                        .font(.dmSans(size: 15))
+                                        .font(.lora(size: 15))
                                         .foregroundColor(.primary)
                                         .lineLimit(1)
 
                                     Text(share.artistName)
-                                        .font(.dmSans(size: 13))
+                                        .font(.lora(size: 13))
                                         .foregroundColor(.secondary)
                                         .lineLimit(1)
                                 }
@@ -1426,7 +1421,7 @@ struct PastPicksView: View {
                                 
                                 // Date on the right
                                 Text(share.formattedDate)
-                                    .font(.dmSans(size: 12))
+                                    .font(.lora(size: 12))
                                     .foregroundColor(.secondary)
                             }
                             .padding(.horizontal, 24)
@@ -1459,12 +1454,12 @@ struct PhlockMembersRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("my phlock")
-                .font(.dmSans(size: 17, weight: .medium))
+                .font(.lora(size: 17, weight: .medium))
                 .padding(.horizontal, 24)
 
             if members.isEmpty && emptySlots > 0 {
                 Text("add members to your phlock to get started.")
-                    .font(.dmSans(size: 14))
+                    .font(.lora(size: 14))
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 24)
             }
@@ -1493,7 +1488,7 @@ struct PhlockMembersRow: View {
                                 }
                                 
                                 Text(member.user.displayName)
-                                    .font(.dmSans(size: 12))
+                                    .font(.lora(size: 12))
                                     .foregroundColor(.primary)
                                     .lineLimit(1)
                                     .frame(width: 70)
@@ -1518,12 +1513,12 @@ struct PhlockMembersRow: View {
                                     .frame(width: 60, height: 60)
                                 
                                 Image(systemName: "plus")
-                                    .font(.dmSans(size: 20, weight: .semiBold))
+                                    .font(.lora(size: 20, weight: .semiBold))
                                     .foregroundColor(.secondary.opacity(0.5))
                             }
                             
                             Text(" ")
-                                .font(.dmSans(size: 12))
+                                .font(.lora(size: 12))
                                 .frame(width: 70)
                         }
                     }
@@ -1539,12 +1534,12 @@ struct PhlockMembersRow: View {
                                     .frame(width: 60, height: 60)
                                 
                                 Image(systemName: "ellipsis")
-                                    .font(.dmSans(size: 20, weight: .semiBold))
+                                    .font(.lora(size: 20, weight: .semiBold))
                                     .foregroundColor(.primary)
                             }
                             
                             Text("edit")
-                                .font(.dmSans(size: 12))
+                                .font(.lora(size: 12))
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
                                 .frame(width: 70)

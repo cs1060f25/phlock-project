@@ -27,13 +27,13 @@ struct CompactTrackInfoRow: View {
             // Track info (middle - takes available space)
             VStack(alignment: .leading, spacing: 4) {
                 Text(track.name)
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .lineLimit(1)
                     .foregroundColor(.primary)
 
                 if let artistName = track.artistName {
                     Text(artistName)
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: 10))
                         .lineLimit(1)
                         .foregroundColor(.secondary)
                 }
@@ -58,7 +58,7 @@ struct CompactTrackInfoRow: View {
                             .scaleEffect(0.7)
                     } else {
                         Image(systemName: isSaved ? "checkmark.circle.fill" : "plus.circle")
-                            .font(.dmSans(size: 20, weight: .semiBold))
+                            .font(.lora(size: 20, weight: .semiBold))
                             .foregroundColor(isSaved ? .green : .primary)
                     }
                 }

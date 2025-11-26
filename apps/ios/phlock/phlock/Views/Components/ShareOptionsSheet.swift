@@ -37,7 +37,7 @@ struct ShareOptionsSheet: View {
                 .padding(.top, 6)
 
             Text("Share")
-                .font(.dmSans(size: 10, weight: .medium))
+                .font(.lora(size: 10, weight: .medium))
                 .foregroundColor(.primary)
 
             VStack(spacing: 10) {
@@ -49,17 +49,17 @@ struct ShareOptionsSheet: View {
                                 .frame(width: 42, height: 42)
                                 .overlay(
                                     Image(systemName: option.systemImage)
-                                        .font(.dmSans(size: 10, weight: .medium))
+                                        .font(.lora(size: 10, weight: .medium))
                                         .foregroundColor(.primary)
                                 )
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(option.title)
-                                    .font(.dmSans(size: 10))
+                                    .font(.lora(size: 10))
                                     .foregroundColor(.primary)
                                 if let subtitle = option.subtitle {
                                     Text(subtitle)
-                                        .font(.dmSans(size: 10))
+                                        .font(.lora(size: 10))
                                         .foregroundColor(.secondary)
                                 }
                             }
@@ -67,7 +67,7 @@ struct ShareOptionsSheet: View {
                             Spacer()
 
                             Image(systemName: "chevron.right")
-                                .font(.dmSans(size: 10))
+                                .font(.lora(size: 10))
                                 .foregroundColor(.secondary)
                         }
                         .padding(.horizontal, 12)
@@ -87,7 +87,7 @@ struct ShareOptionsSheet: View {
 
             Button(action: onDismiss) {
                 Text("Close")
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .foregroundColor(.primary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)

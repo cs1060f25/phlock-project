@@ -730,6 +730,22 @@ class ShareService {
 
         return shares
     }
+    /// Delete today's daily song for a user (Debug/Reset purposes)
+    /// - Parameter userId: The user's ID
+    func deleteDailySong(for userId: UUID) async throws {
+        let today = Calendar.current.startOfDay(for: Date())
+        let todayString = ISO8601DateFormatter().string(from: today)
+
+        try await supabase
+            .from("shares")
+            .delete()
+            .eq("sender_id", value: userId.uuidString)
+            .eq("is_daily_song", value: true)
+            .eq("selected_date", value: todayString)
+            .execute()
+
+        print("🗑️ Deleted all daily songs for user \(userId) on \(todayString)")
+    }
 }
 
 // MARK: - Errors

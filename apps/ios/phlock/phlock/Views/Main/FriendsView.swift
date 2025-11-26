@@ -102,7 +102,7 @@ struct FriendsView: View {
                     .foregroundColor(.secondary)
                 
                 TextField("Search friends...", text: $searchText)
-                    .font(.dmSans(size: 16))
+                    .font(.lora(size: 16))
                     .textFieldStyle(.plain)
                     .autocorrectionDisabled()
                 
@@ -131,7 +131,7 @@ struct FriendsView: View {
     private var requestsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("requests")
-                .font(.dmSans(size: 20, weight: .semiBold))
+                .font(.lora(size: 20, weight: .semiBold))
                 .padding(.horizontal)
                 .padding(.top, 16)
 
@@ -155,7 +155,7 @@ struct FriendsView: View {
     private var peopleSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("people on phlock")
-                .font(.dmSans(size: 14))
+                .font(.lora(size: 14))
                 .foregroundColor(.secondary)
                 .textCase(.uppercase)
                 .padding(.horizontal)
@@ -168,14 +168,14 @@ struct FriendsView: View {
             } else if searchResults.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "magnifyingglass")
-                        .font(.dmSans(size: 48, weight: .bold))
+                        .font(.lora(size: 48, weight: .bold))
                         .foregroundColor(.secondary)
 
                     Text("No matches found")
-                        .font(.dmSans(size: 20, weight: .semiBold))
+                        .font(.lora(size: 20, weight: .semiBold))
 
                     Text("Try searching for a different name.")
-                        .font(.dmSans(size: 14))
+                        .font(.lora(size: 14))
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity)
@@ -213,12 +213,12 @@ struct FriendsView: View {
                         // Empty state for no friends
                         VStack(spacing: 16) {
                             Image(systemName: "person.2.slash")
-                                .font(.dmSans(size: 48, weight: .bold))
+                                .font(.lora(size: 48, weight: .bold))
                                 .foregroundColor(.secondary)
                             Text("No friends yet")
-                                .font(.dmSans(size: 20, weight: .semiBold))
+                                .font(.lora(size: 20, weight: .semiBold))
                             Text("Your crew starts here. Add friends to share music.")
-                                .font(.dmSans(size: 14))
+                                .font(.lora(size: 14))
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
                         }
@@ -244,10 +244,10 @@ struct FriendsView: View {
             } header: {
                 HStack {
                     Text("your friends")
-                        .font(.dmSans(size: 20, weight: .semiBold))
+                        .font(.lora(size: 20, weight: .semiBold))
                     Spacer()
                     Text("\(filteredFriends.count)")
-                        .font(.dmSans(size: 14))
+                        .font(.lora(size: 14))
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
@@ -269,14 +269,14 @@ struct FriendsView: View {
     private var contactsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("from contacts")
-                .font(.dmSans(size: 20, weight: .semiBold))
+                .font(.lora(size: 20, weight: .semiBold))
                 .padding(.horizontal)
 
             if isFetchingContacts {
                 HStack {
                     ProgressView()
                     Text("Syncing contacts...")
-                        .font(.dmSans(size: 14))
+                        .font(.lora(size: 14))
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity)
@@ -284,9 +284,9 @@ struct FriendsView: View {
             } else if let contactError {
                 VStack(spacing: 8) {
                     Text("Could not access contacts")
-                        .font(.dmSans(size: 14))
+                        .font(.lora(size: 14))
                     Text(contactError)
-                        .font(.dmSans(size: 14))
+                        .font(.lora(size: 14))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                     Button("Try Again") {
@@ -307,7 +307,7 @@ struct FriendsView: View {
                                 UserRow(user: match.user)
                                 Spacer()
                                 Text("as \(match.contactName)")
-                                    .font(.dmSans(size: 14))
+                                    .font(.lora(size: 14))
                                     .foregroundColor(.secondary)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
@@ -434,10 +434,10 @@ struct FriendRequestCard: View {
 
             VStack(spacing: 2) {
                 Text(friendshipWithUser.user.displayName)
-                    .font(.dmSans(size: 16))
+                    .font(.lora(size: 16))
                     .lineLimit(1)
                 Text("wants to connect")
-                    .font(.dmSans(size: 14))
+                    .font(.lora(size: 14))
                     .foregroundColor(.secondary)
             }
 
@@ -481,16 +481,16 @@ struct ContactsBanner: View {
                         .fill(Color.blue.opacity(0.1))
                         .frame(width: 48, height: 48)
                     Image(systemName: "person.crop.circle.badge.plus")
-                        .font(.dmSans(size: 20, weight: .semiBold))
+                        .font(.lora(size: 20, weight: .semiBold))
                         .foregroundColor(.blue)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("find friends")
-                        .font(.dmSans(size: 16))
+                        .font(.lora(size: 16))
                         .foregroundColor(.primary)
                     Text("Sync contacts to find people you know")
-                        .font(.dmSans(size: 14))
+                        .font(.lora(size: 14))
                         .foregroundColor(.secondary)
                 }
                 
@@ -528,19 +528,19 @@ struct UserRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(user.displayName)
-                    .font(.dmSans(size: 16))
+                    .font(.lora(size: 16))
                     .foregroundColor(.primary)
 
                 if let username = user.username {
                     Text("@\(username)")
-                        .font(.dmSans(size: 14))
+                        .font(.lora(size: 14))
                         .foregroundColor(.secondary)
                 } else {
                     HStack(spacing: 4) {
                         Image(systemName: user.platformType == .spotify ? "music.note" : "applelogo")
                             .font(.system(size: 10))
                         Text(user.platformType == .spotify ? "Spotify" : "Apple Music")
-                            .font(.dmSans(size: 14))
+                            .font(.lora(size: 14))
                     }
                     .foregroundColor(.secondary)
                 }

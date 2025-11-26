@@ -17,30 +17,30 @@ struct phlockApp: App {
         UIRefreshControl.appearance().tintColor = .clear
         UIRefreshControl.appearance().backgroundColor = .clear
 
-        // Configure navigation bar to use DM Sans font
+        // Configure navigation bar to use Lora font
         configureNavigationBarAppearance()
     }
 
     private func configureNavigationBarAppearance() {
-        // Create DM Sans fonts for navigation bar titles
-        let dmSansRegular = UIFont(name: "DMSans-SemiBold", size: 17) ?? UIFont.systemFont(ofSize: 17)
-        let dmSansLarge = UIFont(name: "DMSans-Bold", size: 34) ?? UIFont.boldSystemFont(ofSize: 34)
+        // Create Lora fonts for navigation bar titles
+        let loraRegular = UIFont(name: "Lora-SemiBold", size: 17) ?? UIFont.systemFont(ofSize: 17)
+        let loraLarge = UIFont(name: "Lora-Bold", size: 34) ?? UIFont.boldSystemFont(ofSize: 34)
 
         // Configure standard navigation bar appearance (inline titles)
         let standardAppearance = UINavigationBarAppearance()
         standardAppearance.configureWithDefaultBackground()
         standardAppearance.titleTextAttributes = [
-            .font: dmSansRegular
+            .font: loraRegular
         ]
 
         // Configure large title appearance
         let largeTitleAppearance = UINavigationBarAppearance()
         largeTitleAppearance.configureWithDefaultBackground()
         largeTitleAppearance.largeTitleTextAttributes = [
-            .font: dmSansLarge
+            .font: loraLarge
         ]
         largeTitleAppearance.titleTextAttributes = [
-            .font: dmSansRegular
+            .font: loraRegular
         ]
 
         // Apply to all navigation bars

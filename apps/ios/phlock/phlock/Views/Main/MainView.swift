@@ -32,7 +32,7 @@ struct MainView: View {
                     scrollNotificationsToTopTrigger: $navigationState.scrollNotificationsToTopTrigger,
                     scrollProfileToTopTrigger: $navigationState.scrollProfileToTopTrigger,
                     feedView: AnyView(
-                        FeedView(navigationPath: $navigationState.feedNavigationPath, refreshTrigger: $navigationState.refreshFeedTrigger, scrollToTopTrigger: $navigationState.scrollFeedToTopTrigger)
+                        PhlockView(navigationPath: $navigationState.feedNavigationPath, refreshTrigger: $navigationState.refreshFeedTrigger, scrollToTopTrigger: $navigationState.scrollFeedToTopTrigger)
                             .environmentObject(authState)
                             .environmentObject(playbackService)
                             .environmentObject(navigationState)

@@ -49,7 +49,7 @@ struct PhlockStatsView: View {
                 .frame(width: 120, height: 120)
                 .overlay(
                     Image(systemName: "music.note")
-                        .font(.dmSans(size: 48, weight: .bold))
+                        .font(.lora(size: 48, weight: .bold))
                         .foregroundColor(.white.opacity(0.8))
                 )
 
@@ -58,7 +58,7 @@ struct PhlockStatsView: View {
                 .multilineTextAlignment(.center)
 
             Text(phlock.artistName)
-                .font(.dmSans(size: 10, weight: .medium))
+                .font(.lora(size: 10, weight: .medium))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -113,7 +113,7 @@ struct PhlockStatsView: View {
             VStack(spacing: 8) {
                 HStack {
                     Image(systemName: "chart.line.uptrend.xyaxis")
-                        .font(.dmSans(size: 20, weight: .semiBold))
+                        .font(.lora(size: 20, weight: .semiBold))
                         .foregroundColor(.pink)
 
                     Text("Virality Score")
@@ -126,7 +126,7 @@ struct PhlockStatsView: View {
                         .foregroundColor(.pink)
 
                     Text("/ 10")
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: 10))
                         .foregroundColor(.secondary)
                         .padding(.top, 8)
                 }
@@ -252,7 +252,7 @@ struct PhlockStatsView: View {
 
                 if sharesPerNode.isEmpty {
                     Text("No shares yet")
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: 10))
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -355,7 +355,7 @@ struct StatCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: icon)
-                    .font(.dmSans(size: 10, weight: .medium))
+                    .font(.lora(size: 10, weight: .medium))
                     .foregroundColor(color)
                 Spacer()
             }
@@ -365,11 +365,11 @@ struct StatCard: View {
                 .foregroundColor(color)
 
             Text(title)
-                .font(.dmSans(size: 10))
+                .font(.lora(size: 10))
                 .foregroundColor(.primary)
 
             Text(subtitle)
-                .font(.dmSans(size: 10))
+                .font(.lora(size: 10))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -395,12 +395,12 @@ struct EngagementRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.dmSans(size: 10))
+                .font(.lora(size: 10))
                 .foregroundColor(color)
                 .frame(width: 24)
 
             Text(label)
-                .font(.dmSans(size: 10))
+                .font(.lora(size: 10))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Text("\(count)")
@@ -408,7 +408,7 @@ struct EngagementRow: View {
                 .foregroundColor(color)
 
             Text(String(format: "%.0f%%", percentage))
-                .font(.dmSans(size: 10))
+                .font(.lora(size: 10))
                 .foregroundColor(.secondary)
                 .frame(width: 50, alignment: .trailing)
         }
@@ -445,7 +445,7 @@ struct GenerationRow: View {
                             .frame(width: geometry.size.width * CGFloat(count) / CGFloat(maxCount), height: 24)
 
                         Text("\(count)")
-                            .font(.dmSans(size: 10))
+                            .font(.lora(size: 10))
                             .foregroundColor(.white)
                             .padding(.leading, 8)
                     }
@@ -480,16 +480,16 @@ struct TopSharerRow: View {
                 .frame(width: 36, height: 36)
                 .overlay(
                     Text(String(name.prefix(1)))
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: 10))
                         .foregroundColor(.white)
                 )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
 
                 Text("Generation \(generation)")
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .foregroundColor(.secondary)
             }
 
@@ -497,7 +497,7 @@ struct TopSharerRow: View {
 
             HStack(spacing: 4) {
                 Image(systemName: "arrow.right.circle.fill")
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .foregroundColor(.green)
 
                 Text("\(shareCount)")
@@ -520,13 +520,13 @@ struct ViralityInsight: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.dmSans(size: 20, weight: .semiBold))
+                .font(.lora(size: 20, weight: .semiBold))
                 .foregroundColor(color)
                 .frame(width: 40)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .foregroundColor(.secondary)
 
                 Text(value)

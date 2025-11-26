@@ -36,6 +36,7 @@ struct ContentView: View {
             }
 
             // Splash screen overlay - only shows on initial app launch
+            // We show it while loading, then ContentView logic decides whether to keep it (authenticated) or remove it (unauthenticated)
             if showSplashScreen && isInitialLaunch {
                 SplashScreenView(onComplete: {
                     // Called when splash animation completes (dots appeared)
@@ -70,12 +71,29 @@ struct ContentView: View {
             print("📱 ContentView appeared")
             print("📱 Auth state - authenticated: \(authState.isAuthenticated), loading: \(authState.isLoading)")
         }
+        .onChange(of: authState.isLoading) { isLoading in
+            print("📱 Auth loading changed: \(isLoading)")
+            if !isLoading {
+                if !authState.isAuthenticated {
+                    // Auth check finished, user is NOT logged in -> Remove splash immediately
+                    print("📱 User not authenticated after load - skipping splash")
+                    showSplashScreen = false
+                    isInitialLaunch = false
+                } else {
+                    print("📱 User authenticated after load - showing splash")
+                    // User IS authenticated -> Keep splash screen (it will dismiss itself via onComplete)
+                }
+            }
+        }
         .onChange(of: authState.isAuthenticated) { newValue in
             print("📱 Auth state changed - authenticated: \(newValue)")
 
             if !newValue {
                 // User signed out - body will automatically show WelcomeView
                 print("📱 User signed out, will show WelcomeView")
+                // Ensure splash is hidden so WelcomeView shows
+                showSplashScreen = false
+                isInitialLaunch = false
             }
         }
         .dismissKeyboardOnTouch()

@@ -277,12 +277,12 @@ struct TabBarButton: View {
                     customIcon
                 } else {
                     Image(systemName: isSelected ? selectedIcon : icon)
-                        .font(.dmSans(size: 20, weight: .semiBold))
+                        .font(.lora(size: 20, weight: .semiBold))
                         .foregroundColor(iconColor)
                 }
 
                 Text(title)
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .foregroundColor(iconColor)
             }
             .frame(maxWidth: .infinity)
@@ -309,9 +309,10 @@ struct PhlockTabIcon: View {
                 .fill(fillColor)
                 .frame(width: 8, height: 8)
 
-            ForEach(0..<6) { index in
-                // Start at top (-90°) so top/bottom align with center, then step every 60°
-                let angle = -Double.pi / 2 + Double(index) * (2 * .pi / 6)
+            ForEach(0..<5) { index in
+                // Start at top (-90°) to match the app logo's pentagonal layout
+                // 5 circles distributed evenly: 72 degrees apart
+                let angle = -Double.pi / 2 + Double(index) * (2 * .pi / 5)
                 Circle()
                     .fill(fillColor)
                     .frame(width: 6, height: 6)
@@ -362,7 +363,7 @@ struct ProfileTabIcon: View {
 
     private var initialsView: some View {
         Text(initials(from: displayName))
-            .font(.dmSans(size: 10))
+            .font(.lora(size: 10))
             .foregroundColor(.primary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.gray.opacity(0.3))

@@ -2,16 +2,16 @@ import SwiftUI
 import AVFoundation
 import Supabase
 
-// Navigation destination types for Feed
-enum FeedDestination: Hashable {
+// Navigation destination types for Phlock
+enum PhlockDestination: Hashable {
     case profile
     case userProfile(User)
     case conversation(User)
 }
 
-// MARK: - Daily Playlist View (replaces Feed)
+// MARK: - Daily Playlist View
 
-struct FeedView: View {
+struct PhlockView: View {
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var navigationState: NavigationState
@@ -45,8 +45,8 @@ struct FeedView: View {
     @State private var myDailySongScrollToTopTrigger = 0
     @State private var hasLoadedPhlockOnce = false
 
-    // Helper struct to organize feed items
-    struct FeedItem: Identifiable {
+    // Helper struct to organize phlock items
+    struct PhlockItem: Identifiable {
         let id: UUID
         let member: User?
         let song: Share?
@@ -59,8 +59,8 @@ struct FeedView: View {
         }
     }
 
-    private var sortedFeedItems: [FeedItem] {
-        var items: [FeedItem] = []
+    private var sortedPhlockItems: [PhlockItem] {
+        var items: [PhlockItem] = []
         
         // 1. Members with songs (sorted by time)
         let membersWithSongs = phlockMembers.compactMap { member -> (FriendWithPosition, Share)? in
@@ -69,7 +69,7 @@ struct FeedView: View {
         }.sorted { $0.1.createdAt < $1.1.createdAt }
         
         for (member, song) in membersWithSongs {
-            items.append(FeedItem(id: member.user.id, member: member.user, song: song, type: .song))
+            items.append(PhlockItem(id: member.user.id, member: member.user, song: song, type: .song))
         }
         
         // 2. Members without songs (sorted alphabetically)
@@ -78,14 +78,14 @@ struct FeedView: View {
         }.sorted { $0.user.displayName.localizedCaseInsensitiveCompare($1.user.displayName) == .orderedAscending }
         
         for member in membersWithoutSongs {
-            items.append(FeedItem(id: member.user.id, member: member.user, song: nil, type: .waiting))
+            items.append(PhlockItem(id: member.user.id, member: member.user, song: nil, type: .waiting))
         }
         
         // 3. Empty slots (up to 5 total)
         let currentCount = items.count
         if currentCount < 5 {
             for _ in 0..<(5 - currentCount) {
-                items.append(FeedItem(id: UUID(), member: nil, song: nil, type: .empty))
+                items.append(PhlockItem(id: UUID(), member: nil, song: nil, type: .empty))
             }
         }
         
@@ -154,7 +154,7 @@ struct FeedView: View {
             }
             .navigationTitle("your phlock")
             .navigationBarTitleDisplayMode(.large)
-            .navigationDestination(for: FeedDestination.self) { destination in
+            .navigationDestination(for: PhlockDestination.self) { destination in
                 switch destination {
                 case .profile:
                     ProfileView()
@@ -175,7 +175,7 @@ struct FeedView: View {
                             handleSwapCompleted(oldMember: memberToSwap, newMember: newMember)
                         },
                         onProfileTapped: { user in
-                            navigationPath.append(FeedDestination.userProfile(user))
+                            navigationPath.append(PhlockDestination.userProfile(user))
                         }
                     )
                     .environmentObject(authState)
@@ -261,7 +261,7 @@ struct FeedView: View {
                     .listRowBackground(Color.clear)
                     .id("playlistTop")
 
-                ForEach(Array(sortedFeedItems.enumerated()), id: \.element.id) { index, item in
+                ForEach(Array(sortedPhlockItems.enumerated()), id: \.element.id) { index, item in
                     switch item.type {
                     case .song:
                         if let song = item.song, let member = item.member {
@@ -288,7 +288,7 @@ struct FeedView: View {
                                     removeFromLibrary(song)
                                 },
                                 onProfileTapped: {
-                                    navigationPath.append(FeedDestination.userProfile(member))
+                                    navigationPath.append(PhlockDestination.userProfile(member))
                                 },
                                 onNudgeTapped: {
                                     nudgeMember(member)
@@ -312,7 +312,7 @@ struct FeedView: View {
                                     nudgeMember(member)
                                 },
                                 onProfileTapped: {
-                                    navigationPath.append(FeedDestination.userProfile(member))
+                                    navigationPath.append(PhlockDestination.userProfile(member))
                                 }
                             )
                             .listRowInsets(EdgeInsets())
@@ -357,25 +357,25 @@ struct FeedView: View {
                                     .frame(width: 64, height: 64)
                                     .cornerRadius(12)
                                 Image(systemName: "sparkles")
-                                    .font(.dmSans(size: 22, weight: .medium))
+                                    .font(.lora(size: 22, weight: .medium))
                                     .foregroundColor(.white)
                                     .shadow(color: Color.black.opacity(0.25), radius: 4, x: 0, y: 2)
                             }
 
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("select your song of the day")
-                                    .font(.dmSans(size: 17, weight: .medium))
+                                    .font(.lora(size: 17, weight: .medium))
                                     .foregroundColor(.primary)
                                 Text("share what you're feeling with your phlock")
-                                    .font(.dmSans(size: 13))
+                                    .font(.lora(size: 13))
                                     .foregroundColor(.secondary)
 
                                 HStack(spacing: 6) {
                                     Image(systemName: "hand.tap")
-                                        .font(.dmSans(size: 12))
+                                        .font(.lora(size: 12))
                                         .foregroundColor(.primary)
                                     Text("tap to pick")
-                                        .font(.dmSans(size: 12, weight: .medium))
+                                        .font(.lora(size: 12, weight: .medium))
                                         .foregroundColor(.primary)
                                         .textCase(.uppercase)
                                 }
@@ -384,7 +384,7 @@ struct FeedView: View {
                             Spacer()
 
                             Image(systemName: "chevron.right")
-                                .font(.dmSans(size: 16))
+                                .font(.lora(size: 16))
                                 .foregroundColor(.primary)
                         }
                         .padding(.horizontal, 16)
@@ -529,6 +529,11 @@ struct FeedView: View {
     private func loadMyDailySong() async {
         guard let userId = authState.currentUser?.id else { return }
         myDailySong = try? await ShareService.shared.getTodaysDailySong(for: userId)
+        if let song = myDailySong {
+            print("🎵 PhlockView: Found my daily song: \(song.trackName)")
+        } else {
+            print("🎵 PhlockView: No daily song found for me")
+        }
     }
 
     private func addToLibrary(_ song: Share) {
@@ -646,7 +651,7 @@ struct FeedView: View {
                 if Date() >= refreshThreshold {
                     guard let refreshToken = token.refreshToken else {
                         throw NSError(
-                            domain: "FeedView",
+                            domain: "PhlockView",
                             code: -2,
                             userInfo: [NSLocalizedDescriptionKey: "No Spotify refresh token; please relink."]
                         )
@@ -694,7 +699,7 @@ struct FeedView: View {
         }
 
         throw NSError(
-            domain: "FeedView",
+            domain: "PhlockView",
             code: -1,
             userInfo: [NSLocalizedDescriptionKey: "No \(platform.rawValue) token found"]
         )
@@ -934,7 +939,7 @@ struct DailySongGateView: View {
 
             VStack(spacing: 16) {
                 Image(systemName: "sparkles")
-                    .font(.dmSans(size: 32, weight: .medium))
+                    .font(.lora(size: 32, weight: .medium))
                     .foregroundColor(.primary)
                     .padding(14)
                     .background(
@@ -950,8 +955,8 @@ struct DailySongGateView: View {
                     .clipShape(Circle())
 
                 VStack(spacing: 6) {
-                    Text("pick your song to unlock")
-                        .font(.dmSans(size: 20, weight: .semiBold))
+                    Text("unlock today's playlist")
+                        .font(.lora(size: 20, weight: .semiBold))
                         .foregroundColor(.primary)
                         .multilineTextAlignment(.center)
                 }
@@ -961,11 +966,12 @@ struct DailySongGateView: View {
                     title: "choose today's song",
                     action: onPickSong,
                     variant: .primary,
-                    fullWidth: true
+                    fullWidth: true,
+                    fontSize: 17
                 )
 
-                Text("post yours to view everyone else's.")
-                    .font(.dmSans(size: 12))
+                Text("share your pick to unlock the feed.")
+                    .font(.lora(size: 12))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -1041,7 +1047,7 @@ struct DailyPlaylistRow: View {
 
                         // Play/pause indicator (non-interactive; tap handled by parent button)
                         Image(systemName: isCurrentlyPlaying ? "pause.fill" : "play.fill")
-                            .font(.dmSans(size: 20, weight: .medium))
+                            .font(.lora(size: 20, weight: .medium))
                             .foregroundColor(.white)
                             .shadow(color: Color.black.opacity(0.5), radius: 4, x: 0, y: 2)
                             .opacity(song.previewUrl != nil ? 1.0 : 0.4)
@@ -1051,14 +1057,22 @@ struct DailyPlaylistRow: View {
                     // Song info (Middle)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(song.trackName)
-                            .font(.dmSans(size: 16, weight: .medium))
+                            .font(.lora(size: 16, weight: .medium))
                             .foregroundColor(.primary)
                             .lineLimit(1)
 
                         Text(song.artistName)
-                            .font(.dmSans(size: 14))
+                            .font(.lora(size: 14))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
+
+                        if let message = song.message, !message.isEmpty {
+                            Text(message)
+                                .font(.lora(size: 14))
+                                .foregroundColor(.secondary)
+                                .italic()
+                                .lineLimit(1)
+                        }
                     }
 
                     // Fill remaining space up to action buttons so taps just left of them still toggle playback
@@ -1077,7 +1091,7 @@ struct DailyPlaylistRow: View {
                     onSwapTapped()
                 } label: {
                     Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.dmSans(size: 20))
+                        .font(.lora(size: 20))
                         .foregroundColor(.primary)
                 }
                 .buttonStyle(.plain)
@@ -1090,7 +1104,7 @@ struct DailyPlaylistRow: View {
                     }
                 } label: {
                     Image(systemName: isSaved ? "checkmark.circle.fill" : "plus.circle")
-                        .font(.dmSans(size: 22))
+                        .font(.lora(size: 22))
                         .foregroundColor(isSaved ? .green : .primary)
                 }
                 .buttonStyle(.plain)
@@ -1107,7 +1121,7 @@ struct DailyPlaylistRow: View {
                         onNudgeTapped()
                     } label: {
                         Image(systemName: "hand.wave")
-                            .font(.dmSans(size: 20))
+                            .font(.lora(size: 20))
                             .foregroundColor(.primary)
                     }
                     .buttonStyle(.plain)
@@ -1133,7 +1147,7 @@ struct DailyPlaylistRow: View {
                         .fill(Color.gray.opacity(0.3))
                         .overlay(
                             Text(String(member.displayName.prefix(1)))
-                                .font(.dmSans(size: 12, weight: .medium))
+                                .font(.lora(size: 12, weight: .medium))
                         )
                 }
                 .frame(width: 32, height: 32)
@@ -1147,7 +1161,7 @@ struct DailyPlaylistRow: View {
                     .fill(Color.gray.opacity(0.3))
                     .overlay(
                         Image(systemName: "person.fill")
-                            .font(.dmSans(size: 16, weight: .medium))
+                            .font(.lora(size: 16, weight: .medium))
                             .foregroundColor(.gray)
                     )
                     .frame(width: 32, height: 32)
@@ -1155,7 +1169,7 @@ struct DailyPlaylistRow: View {
 
             if let overlay = overlaySystemName {
                 Image(systemName: overlay)
-                    .font(.dmSans(size: 11))
+                    .font(.lora(size: 11))
                     .foregroundColor(.primary)
                     .padding(4)
                     .background(Color(UIColor.systemBackground))
@@ -1189,7 +1203,7 @@ struct WaitingForSongRow: View {
                             .fill(Color.gray.opacity(0.3))
                             .overlay(
                                 Text(String(member.displayName.prefix(1)))
-                                    .font(.dmSans(size: 12, weight: .medium))
+                                    .font(.lora(size: 12, weight: .medium))
                             )
                     }
                     .frame(width: 56, height: 56)
@@ -1208,11 +1222,11 @@ struct WaitingForSongRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(member.displayName)
-                    .font(.dmSans(size: 16, weight: .medium))
+                    .font(.lora(size: 16, weight: .medium))
                     .foregroundColor(.primary)
 
                 Text("Waiting for today's song...")
-                    .font(.dmSans(size: 14))
+                    .font(.lora(size: 14))
                     .foregroundColor(.secondary)
                     .italic()
             }
@@ -1224,7 +1238,7 @@ struct WaitingForSongRow: View {
                     onSwapTapped()
                 } label: {
                     Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.dmSans(size: 20))
+                        .font(.lora(size: 20))
                         .foregroundColor(.primary)
                 }
                 .buttonStyle(.plain)
@@ -1233,7 +1247,7 @@ struct WaitingForSongRow: View {
                     onNudgeTapped()
                 } label: {
                     Image(systemName: isNudged ? "hand.wave.fill" : "hand.wave")
-                        .font(.dmSans(size: 22))
+                        .font(.lora(size: 22))
                         .foregroundColor(isNudged ? .green : .primary)
                 }
                 .buttonStyle(.plain)
@@ -1291,7 +1305,7 @@ struct MyDailySongRow: View {
                 }
 
                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.dmSans(size: 18, weight: .medium))
+                    .font(.lora(size: 18, weight: .medium))
                     .foregroundColor(.white)
                     .shadow(color: Color.black.opacity(0.5), radius: 4, x: 0, y: 2)
                     .opacity(0.95)
@@ -1300,21 +1314,21 @@ struct MyDailySongRow: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(song.trackName)
-                    .font(.dmSans(size: 17, weight: .medium))
+                    .font(.lora(size: 17, weight: .medium))
                     .foregroundColor(.primary)
                     .lineLimit(1)
 
                 Text(song.artistName)
-                    .font(.dmSans(size: 14))
+                    .font(.lora(size: 14))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
 
                 HStack(spacing: 6) {
                     Image(systemName: "sparkles")
-                        .font(.dmSans(size: 12, weight: .medium))
+                        .font(.lora(size: 12, weight: .medium))
                         .foregroundColor(.primary)
                     Text("your daily pick")
-                        .font(.dmSans(size: 12, weight: .medium))
+                        .font(.lora(size: 12, weight: .medium))
                         .foregroundColor(.primary)
                         .textCase(.uppercase)
                 }
@@ -1359,13 +1373,13 @@ struct EmptySlotRow: View {
                 .overlay(
                     Image(systemName: "plus")
                         .foregroundColor(.gray)
-                        .font(.dmSans(size: 20, weight: .semiBold))
+                        .font(.lora(size: 20, weight: .semiBold))
                 )
 
             // Text content
             VStack(alignment: .leading, spacing: 4) {
                 Text("Add a friend to your phlock")
-                    .font(.dmSans(size: 16, weight: .medium))
+                    .font(.lora(size: 16, weight: .medium))
                     .foregroundColor(.primary)
             }
 
@@ -1376,7 +1390,7 @@ struct EmptySlotRow: View {
                 onAddMemberTapped()
             } label: {
                 Text("Add")
-                    .font(.dmSans(size: 14))
+                    .font(.lora(size: 14))
                     .foregroundColor(.white)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
@@ -1447,11 +1461,11 @@ struct EmptyDailyPlaylistView: View {
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(member.displayName)
-                                    .font(.dmSans(size: 16, weight: .medium))
+                                    .font(.lora(size: 16, weight: .medium))
                                     .foregroundColor(.primary)
 
                                 Text("Waiting for daily song...")
-                                    .font(.dmSans(size: 14))
+                                    .font(.lora(size: 14))
                                     .italic()
                                     .foregroundColor(.secondary)
                             }
@@ -1467,17 +1481,17 @@ struct EmptyDailyPlaylistView: View {
                                 .overlay(
                                     Image(systemName: "plus")
                                         .foregroundColor(.gray)
-                                        .font(.dmSans(size: 20, weight: .semiBold))
+                                        .font(.lora(size: 20, weight: .semiBold))
                                 )
 
                             Text("Add a member to your phlock")
-                                .font(.dmSans(size: 16, weight: .medium))
+                                .font(.lora(size: 16, weight: .medium))
                                 .foregroundColor(.secondary)
 
                             Spacer()
 
                             Image(systemName: "plus.circle.fill")
-                                .font(.dmSans(size: 24, weight: .bold))
+                                .font(.lora(size: 24, weight: .bold))
                                 .foregroundColor(.blue)
                         }
                     }
@@ -1508,14 +1522,14 @@ struct FeedErrorStateView: View {
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.dmSans(size: 50, weight: .bold))
+                .font(.lora(size: 50, weight: .bold))
                 .foregroundColor(.orange)
 
             Text("Unable to load playlist")
-                .font(.dmSans(size: 20, weight: .semiBold))
+                .font(.lora(size: 20, weight: .semiBold))
 
             Text(error)
-                .font(.dmSans(size: 10))
+                .font(.lora(size: 10))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
@@ -1524,7 +1538,7 @@ struct FeedErrorStateView: View {
                 onRetry()
             } label: {
                 Text("Try Again")
-                    .font(.dmSans(size: 16, weight: .medium))
+                    .font(.lora(size: 16, weight: .medium))
                     .foregroundColor(.white)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 12)
@@ -1576,7 +1590,7 @@ struct SwapMemberView: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Swap \(currentMember.displayName) with…")
-                            .font(.dmSans(size: 16, weight: .medium))
+                            .font(.lora(size: 16, weight: .medium))
                             .foregroundColor(.primary)
                     }
 
@@ -1593,9 +1607,9 @@ struct SwapMemberView: View {
                 } else if friends.isEmpty {
                     VStack(spacing: 12) {
                         Text("No available friends")
-                            .font(.dmSans(size: 16, weight: .medium))
+                            .font(.lora(size: 16, weight: .medium))
                         Text("All your friends are already in your phlock")
-                            .font(.dmSans(size: 14))
+                            .font(.lora(size: 14))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1628,11 +1642,11 @@ struct SwapMemberView: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(friend.displayName)
-                                    .font(.dmSans(size: 16, weight: .medium))
+                                    .font(.lora(size: 16, weight: .medium))
 
                                 if friend.username != nil {
                                     Text("@\(friend.username ?? "")")
-                                        .font(.dmSans(size: 12, weight: .medium))
+                                        .font(.lora(size: 12, weight: .medium))
                                         .foregroundColor(.secondary)
                                 }
                             }
@@ -1646,7 +1660,7 @@ struct SwapMemberView: View {
                                         .frame(width: 8, height: 8)
 
                                     Text(hasSong ? "has today's song" : "no song yet")
-                                        .font(.dmSans(size: 11))
+                                        .font(.lora(size: 11))
                                         .foregroundColor(hasSong ? .green : .secondary)
                                 }
                             } else {
@@ -1683,7 +1697,7 @@ struct SwapMemberView: View {
                         }
                     }
                     .disabled(selectedFriend == nil)
-                    .font(.dmSans(size: 16, weight: .medium))
+                    .font(.lora(size: 16, weight: .medium))
                 }
             }
             .task {
@@ -1955,9 +1969,9 @@ struct AddMemberView: View {
                 } else if friends.isEmpty {
                     VStack(spacing: 12) {
                         Text("No available friends")
-                            .font(.dmSans(size: 16, weight: .medium))
+                            .font(.lora(size: 16, weight: .medium))
                         Text("Add more friends to build your phlock")
-                            .font(.dmSans(size: 14))
+                            .font(.lora(size: 14))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1985,11 +1999,11 @@ struct AddMemberView: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(friend.displayName)
-                                    .font(.dmSans(size: 16, weight: .medium))
+                                    .font(.lora(size: 16, weight: .medium))
 
                                 if friend.username != nil {
                                     Text("@\(friend.username ?? "")")
-                                        .font(.dmSans(size: 12, weight: .medium))
+                                        .font(.lora(size: 12, weight: .medium))
                                         .foregroundColor(.secondary)
                                 }
                             }
@@ -2025,7 +2039,7 @@ struct AddMemberView: View {
                         }
                     }
                     .disabled(selectedFriend == nil)
-                    .font(.dmSans(size: 16, weight: .medium))
+                    .font(.lora(size: 16, weight: .medium))
                 }
             }
             .task {

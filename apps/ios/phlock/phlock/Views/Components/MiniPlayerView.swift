@@ -60,7 +60,7 @@ struct MiniPlayerView: View {
                                 endPoint: .bottomTrailing
                             )
                             Image(systemName: "music.note")
-                                .font(.dmSans(size: 10, weight: .medium))
+                                .font(.lora(size: 10, weight: .medium))
                                 .foregroundColor(.white.opacity(0.7))
                         }
                         .frame(width: 48, height: 48)
@@ -70,13 +70,13 @@ struct MiniPlayerView: View {
                     // Track Info
                     VStack(alignment: .leading, spacing: 2) {
                         Text(track.name)
-                            .font(.dmSans(size: 15, weight: .medium))
+                            .font(.lora(size: 15, weight: .medium))
                             .lineLimit(1)
                             .foregroundColor(.primary)
 
                         if let artist = track.artistName {
                             Text(artist)
-                                .font(.dmSans(size: 14))
+                                .font(.lora(size: 14))
                                 .lineLimit(1)
                                 .foregroundColor(.secondary)
                         }
@@ -91,7 +91,7 @@ struct MiniPlayerView: View {
                         }
                     } label: {
                         Image(systemName: "arrow.up.right.square")
-                            .font(.dmSans(size: 20, weight: .semiBold))
+                            .font(.lora(size: 20, weight: .semiBold))
                             .foregroundColor(.secondary)
                             .frame(width: 44, height: 44)
                     }
@@ -107,7 +107,7 @@ struct MiniPlayerView: View {
                         }
                     } label: {
                         Image(systemName: playbackService.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.dmSans(size: 20, weight: .semiBold))
+                            .font(.lora(size: 20, weight: .semiBold))
                             .foregroundColor(.primary)
                             .frame(width: 44, height: 44)
                     }

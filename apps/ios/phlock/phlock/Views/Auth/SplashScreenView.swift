@@ -7,6 +7,7 @@ struct SplashScreenView: View {
     @State private var hasAppeared = false
     @State private var fadeOut = false // For fade transition when logged in
     @State private var moveToWelcomePosition = false // For moving logo to top
+    @State private var isRotating = false
 
     var onComplete: (() -> Void)? = nil
 
@@ -14,7 +15,7 @@ struct SplashScreenView: View {
         NavigationStack {
             ZStack {
                 // Adaptive background
-                Color(UIColor.systemBackground)
+                Color.white
                     .ignoresSafeArea()
 
                 VStack(spacing: 0) {
@@ -26,43 +27,62 @@ struct SplashScreenView: View {
                         Spacer()
                     }
 
-                    // Animated Phlock logo (sequential dot animation)
-                    ColorfulPhlockLogoView(
-                        size: 240,
-                        sequentialAnimation: true,
-                        onAnimationComplete: {
-                            print("🎨 Logo animation complete")
+                    // Static Phlock logo
+                    Image("PhlockLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 234, height: 234)
+                        .rotationEffect(.degrees(isRotating ? 360 : 0))
+                        .animation(.linear(duration: 8).repeatForever(autoreverses: false), value: isRotating)
+                        .id("animated-logo")
+                        .onAppear {
+                            isRotating = true
+                            
+                            // Simulate animation delay
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.75) { // Reduced delay by 30% (2.5 -> 1.75)
+                                print("🎨 Logo display complete")
 
-                            // Check if user is authenticated
-                            if authState.isAuthenticated {
-                                // Logged in: fade out to MainView (no rotation)
-                                print("🎨 User authenticated - fading to MainView")
-                                withAnimation(.easeOut(duration: 0.5)) {
-                                    fadeOut = true
-                                }
+                                // Check if user is authenticated
+                                if authState.isAuthenticated {
+                                    // Logged in: fade out to MainView
+                                    print("🎨 User authenticated - fading to MainView")
+                                    withAnimation(.easeOut(duration: 0.5)) {
+                                        fadeOut = true
+                                    }
 
-                                // Notify parent to transition to MainView
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                    onComplete?()
-                                }
-                            } else {
-                                // Not logged in: move logo to welcome position (no rotation yet)
-                                print("🎨 User not authenticated - moving logo to WelcomeView position")
+                                    // Notify parent to transition to MainView
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                        onComplete?()
+                                    }
+                                } else {
+                                    // Not logged in: fade out to WelcomeView
+                                    print("🎨 User not authenticated - fading to WelcomeView")
 
-                                // Animate logo to top position
-                                withAnimation(.easeInOut(duration: 0.8)) {
-                                    moveToWelcomePosition = true
-                                }
+                                    // Fade out
+                                    withAnimation(.easeOut(duration: 0.5)) {
+                                        fadeOut = true
+                                    }
 
-                                // Notify parent to show WelcomeView after animation
-                                // WelcomeView will start rotation when it appears
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                                    onComplete?()
+                                    // Notify parent to show WelcomeView
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                        onComplete?()
+                                    }
                                 }
                             }
                         }
-                    )
-                    .id("animated-logo")
+                    
+                    // Brand Name & Tagline
+                    VStack(spacing: 8) {
+                        Text("phlock")
+                            .font(.lora(size: 42, weight: .bold))
+                            .foregroundColor(.black)
+                        
+                        Text("heard together")
+                            .font(.lora(size: 20, weight: .regular))
+                            .foregroundColor(.gray)
+                    }
+                    .padding(.top, 40)
+                    .opacity(moveToWelcomePosition ? 0 : 1) // Fade out when moving to welcome view
 
                     // Bottom spacer - shrinks when transitioning to welcome
                     Spacer()

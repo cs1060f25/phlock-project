@@ -459,10 +459,21 @@ class PlaybackService: ObservableObject {
 
     /// Seek to specific time
     func seek(to time: Double) {
+        isPerformingSeek = true
         let cmTime = CMTime(seconds: time, preferredTimescale: 600)
-        player?.seek(to: cmTime)
+        
+        // Optimistically update current time so UI reflects target immediately
         currentTime = time
+        
+        player?.seek(to: cmTime) { [weak self] _ in
+            // Seek finished (or cancelled)
+            MainActor.assumeIsolated {
+                self?.isPerformingSeek = false
+            }
+        }
     }
+
+    private var isPerformingSeek = false
 
     // MARK: - Private Helpers
 
@@ -471,7 +482,10 @@ class PlaybackService: ObservableObject {
         timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
             // Use MainActor.assumeIsolated since we know we're on main queue
             MainActor.assumeIsolated { [weak self] in
-                self?.currentTime = CMTimeGetSeconds(time)
+                guard let self = self else { return }
+                // Ignore updates while seeking to prevent jumping back to old time
+                guard !self.isPerformingSeek else { return }
+                self.currentTime = CMTimeGetSeconds(time)
             }
         }
     }
@@ -485,7 +499,7 @@ class PlaybackService: ObservableObject {
         }
 
         // Pause at end but keep track info (don't clear currentTrack)
-        // Note: FeedView's onReceive will call skipForward for autoplay
+        // Note: PhlockView's onReceive will call skipForward for autoplay
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             // Double-check we haven't already moved to a new track

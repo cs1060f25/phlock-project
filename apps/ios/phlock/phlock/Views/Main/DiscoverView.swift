@@ -6,6 +6,20 @@ enum DiscoverDestination: Hashable {
     case profile
 }
 
+enum SearchFilter: String, CaseIterable {
+    case all = "All"
+    case tracks = "Tracks"
+    case artists = "Artists"
+
+    var searchType: SearchType {
+        switch self {
+        case .all: return .tracks // We'll search tracks but show both
+        case .tracks: return .tracks
+        case .artists: return .artists
+        }
+    }
+}
+
 struct DiscoverView: View {
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var navigationState: NavigationState
@@ -39,103 +53,119 @@ struct DiscoverView: View {
     @State private var dailySongToastMessage = ""
     @State private var selectedDailyTrackId: String?
 
-    enum SearchFilter: String, CaseIterable {
-        case all = "All"
-        case tracks = "Tracks"
-        case artists = "Artists"
-
-        var searchType: SearchType {
-            switch self {
-            case .all: return .tracks // We'll search tracks but show both
-            case .tracks: return .tracks
-            case .artists: return .artists
-            }
-        }
-    }
+    // Pending daily song state
+    @State private var pendingDailySong: MusicItem?
+    @State private var dailySongNote = ""
+    @FocusState private var isNoteFieldFocused: Bool
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            VStack(spacing: 0) {
-                // Daily Song Streak Banner
-                if let user = authState.currentUser, user.dailySongStreak > 0 || !user.hasSelectedToday {
-                    DailySongStreakBanner(
-                        user: user,
-                        todaysDailySong: todaysDailySong
+            ZStack(alignment: .bottom) {
+                VStack(spacing: 0) {
+                    // Daily Song Streak Banner
+                    if let user = authState.currentUser, user.dailySongStreak > 0 || !user.hasSelectedToday {
+                        DailySongStreakBanner(
+                            user: user,
+                            todaysDailySong: todaysDailySong
+                        )
+                    }
+
+                    // Search Bar
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.gray)
+
+                        TextField("search for music...", text: $searchText)
+                            .font(.lora(size: 14))
+                            .textFieldStyle(.plain)
+                            .autocorrectionDisabled()
+                            .focused($isSearchFieldFocused)
+                            .onChange(of: searchText) { newValue in
+                                performDebouncedSearch()
+                            }
+                            .onSubmit {
+                                isSearchFieldFocused = false
+                            }
+
+                        if !searchText.isEmpty {
+                            Button {
+                                searchText = ""
+                                searchResults = nil
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
                     )
-                }
+                    .padding(.horizontal)
+                    .padding(.top)
 
-                // Search Bar
-                HStack {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.gray)
-
-                    TextField("search for music...", text: $searchText)
-                        .font(.dmSans(size: 10))
-                        .textFieldStyle(.plain)
-                        .autocorrectionDisabled()
-                        .focused($isSearchFieldFocused)
-                        .onChange(of: searchText) { newValue in
-                            performDebouncedSearch()
-                        }
-                        .onSubmit {
-                            isSearchFieldFocused = false
-                        }
-
-                    if !searchText.isEmpty {
-                        Button {
-                            searchText = ""
-                            searchResults = nil
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.gray)
+                    // Filter Tabs - always allocated to prevent layout shift
+                    Picker("Filter", selection: $selectedFilter) {
+                        ForEach(SearchFilter.allCases, id: \.self) { filter in
+                            Text(filter.rawValue).tag(filter)
                         }
                     }
-                }
-                .padding(12)
-                .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
-                .cornerRadius(12)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                )
-                .padding(.horizontal)
-                .padding(.top)
-
-                // Filter Tabs - always allocated to prevent layout shift
-                Picker("Filter", selection: $selectedFilter) {
-                    ForEach(SearchFilter.allCases, id: \.self) { filter in
-                        Text(filter.rawValue).tag(filter)
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                    .padding(.top, 10)
+                    .padding(.bottom, 8)
+                    .opacity(!searchText.isEmpty || searchResults != nil ? 1 : 0)
+                    .disabled(searchText.isEmpty && searchResults == nil)
+                    .allowsHitTesting(!searchText.isEmpty || searchResults != nil)
+                    .onChange(of: selectedFilter) { newValue in
+                        if !searchText.isEmpty {
+                            performSearch()
+                        }
                     }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
-                .opacity(!searchText.isEmpty || searchResults != nil ? 1 : 0)
-                .disabled(searchText.isEmpty && searchResults == nil)
-                .allowsHitTesting(!searchText.isEmpty || searchResults != nil)
-                .onChange(of: selectedFilter) { newValue in
-                    if !searchText.isEmpty {
-                        performSearch()
+
+                    if !searchText.isEmpty || searchResults != nil {
+                        Divider()
                     }
-                }
 
-                if !searchText.isEmpty || searchResults != nil {
-                    Divider()
+                    resultsSection
                 }
-
-                resultsSection
+                
+                // Pending Selection Bar
+                if let pendingTrack = pendingDailySong {
+                    DailySongSelectionBar(
+                        track: pendingTrack,
+                        note: $dailySongNote,
+                        isFocused: _isNoteFieldFocused,
+                        onSend: {
+                            submitDailySong(track: pendingTrack, note: dailySongNote)
+                        },
+                        onCancel: {
+                            withAnimation {
+                                pendingDailySong = nil
+                                dailySongNote = ""
+                                selectedDailyTrackId = todaysDailySong?.trackId
+                            }
+                        }
+                    )
+                    .transition(.move(edge: .bottom))
+                    .zIndex(100)
+                }
             }
             .contentShape(Rectangle())
             .onTapGesture {
                 // Dismiss keyboard when tapping anywhere
                 isSearchFieldFocused = false
+                isNoteFieldFocused = false
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("browse")
-                        .font(.dmSans(size: 20, weight: .bold))
+                        .font(.lora(size: 20, weight: .bold))
                         .foregroundColor(.primary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -299,14 +329,14 @@ struct DiscoverView: View {
             } else {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("recently played")
-                        .font(.dmSans(size: 20, weight: .semiBold))
+                        .font(.lora(size: 20, weight: .semiBold))
                         .padding(.horizontal, 16)
                         .padding(.top, 4)
 
                     RecentlyPlayedGridView(
                         tracks: recentlyPlayedTracks,
                         platformType: authState.currentUser?.resolvedPlatformType ?? .spotify,
-                        onSelectDailySong: { track in selectDailySong(track, note: nil) },
+                        onSelectDailySong: { track in selectDailySong(track) },
                         todaysDailySong: todaysDailySong,
                         selectedDailyTrackId: $selectedDailyTrackId
                     )
@@ -321,7 +351,7 @@ struct DiscoverView: View {
                 platformType: authState.currentUser?.resolvedPlatformType ?? .spotify,
                 searchQuery: searchText,
                 navigationPath: $navigationPath,
-                onSelectDailySong: { track in selectDailySong(track, note: nil) },
+                onSelectDailySong: { track in selectDailySong(track) },
                 todaysDailySong: todaysDailySong,
                 selectedDailyTrackId: $selectedDailyTrackId,
                 scrollToTopTrigger: $scrollToTopTrigger,
@@ -353,13 +383,30 @@ struct DiscoverView: View {
         }
     }
 
-    func selectDailySong(_ track: MusicItem, note: String? = nil) {
+    func selectDailySong(_ track: MusicItem) {
+        // Toggle selection: if already selected, deselect
+        if pendingDailySong?.id == track.id {
+            withAnimation {
+                pendingDailySong = nil
+                selectedDailyTrackId = todaysDailySong?.trackId
+                dailySongNote = ""
+            }
+        } else {
+            // Otherwise select new track
+            withAnimation {
+                pendingDailySong = track
+                selectedDailyTrackId = track.id
+                dailySongNote = "" // Reset note
+            }
+        }
+    }
+
+    func submitDailySong(track: MusicItem, note: String) {
         guard let userId = authState.currentUser?.id else { return }
-        selectedDailyTrackId = track.id
 
         Task {
             do {
-                let share = try await ShareService.shared.selectDailySong(track: track, note: note, userId: userId)
+                let share = try await ShareService.shared.selectDailySong(track: track, note: note.isEmpty ? nil : note, userId: userId)
                 todaysDailySong = share
 
                 // Update user in authState to reflect streak change
@@ -374,6 +421,8 @@ struct DiscoverView: View {
 
                 await MainActor.run {
                     selectedDailyTrackId = share.trackId
+                    pendingDailySong = nil // Clear pending
+                    dailySongNote = ""
                     dismiss()
                 }
             } catch {
@@ -382,6 +431,88 @@ struct DiscoverView: View {
                 print("❌ Error selecting daily song: \(error)")
             }
         }
+    }
+}
+
+// MARK: - Daily Song Selection Bar
+
+struct DailySongSelectionBar: View {
+    let track: MusicItem
+    @Binding var note: String
+    @FocusState var isFocused: Bool
+    let onSend: () -> Void
+    let onCancel: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Divider()
+            
+            HStack(spacing: 12) {
+                // Album Art
+                if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
+                    AsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } placeholder: {
+                        Color.gray.opacity(0.2)
+                    }
+                    .frame(width: 40, height: 40)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                } else {
+                    Color.gray.opacity(0.2)
+                        .frame(width: 40, height: 40)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                }
+
+                // Track Info & Input
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(track.name)
+                        .font(.lora(size: 15, weight: .semiBold))
+                        .lineLimit(1)
+                    
+                    Text(track.artistName ?? "Unknown Artist")
+                        .font(.lora(size: 12))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                    
+                    TextField("add optional message...", text: $note)
+                        .font(.lora(size: 12))
+                        .textFieldStyle(.plain)
+                        .focused($isFocused)
+                        .submitLabel(.send)
+                        .onSubmit {
+                            onSend()
+                        }
+                }
+                
+                Spacer()
+                
+                // Close Button
+                Button(action: onCancel) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .padding(10)
+                        .background(Color.secondary.opacity(0.1))
+                        .clipShape(Circle())
+                }
+                
+                // Send Button
+                Button(action: onSend) {
+                    Image(systemName: "paperplane.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.accentColor)
+                        .padding(8)
+                        .background(Color.accentColor.opacity(0.1))
+                        .clipShape(Circle())
+                }
+            }
+            .padding(12)
+            .background(Color(uiColor: .systemBackground))
+        }
+        .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: -5)
     }
 }
 
@@ -399,13 +530,13 @@ struct ProfileIconView: View {
                     .scaledToFill()
             } placeholder: {
                 Image(systemName: "person.circle.fill")
-                    .font(.dmSans(size: 20, weight: .semiBold))
+                    .font(.lora(size: 20, weight: .semiBold))
             }
             .frame(width: 28, height: 28)
             .clipShape(Circle())
         } else {
             Image(systemName: "person.circle")
-                .font(.dmSans(size: 20, weight: .semiBold))
+                .font(.lora(size: 20, weight: .semiBold))
         }
     }
 }
@@ -423,9 +554,9 @@ struct DailySongStreakBanner: View {
             if user.dailySongStreak > 0 {
                 HStack(spacing: 4) {
                     Text(user.streakEmoji)
-                        .font(.dmSans(size: 20, weight: .semiBold))
+                        .font(.lora(size: 20, weight: .semiBold))
                     Text("\(user.dailySongStreak)")
-                        .font(.dmSans(size: 10, weight: .medium))
+                        .font(.lora(size: 10, weight: .medium))
                         .foregroundColor(.primary)
                 }
             }
@@ -434,14 +565,14 @@ struct DailySongStreakBanner: View {
             VStack(alignment: .leading, spacing: 2) {
                 if let dailySong = todaysDailySong {
                     Text("Today's song:")
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: 10))
                         .foregroundColor(.secondary)
                     Text(dailySong.trackName)
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: 10))
                         .lineLimit(1)
                 } else {
                     Text("Select your song for today")
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: 20))
                         .foregroundColor(.primary)
                 }
             }

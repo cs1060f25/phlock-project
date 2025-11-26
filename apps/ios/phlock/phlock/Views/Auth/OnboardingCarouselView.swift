@@ -29,7 +29,7 @@ struct OnboardingCarouselView: View {
                 }
             }
             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-            .frame(height: 150) // Reduced height further
+            .frame(height: 200) // Increased height for card styling
             
             // Custom Page Indicator
             HStack(spacing: 8) {
@@ -45,7 +45,7 @@ struct OnboardingCarouselView: View {
             // Action Button
             NavigationLink(destination: PlatformSelectionView()) {
                 Text(currentPage == slides.count - 1 ? "get started" : "next")
-                    .font(.dmSans(size: 17, weight: .semiBold))
+                    .font(.lora(size: 17, weight: .semiBold))
                     .foregroundColor(colorScheme == .dark ? .black : .white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
@@ -71,7 +71,7 @@ struct OnboardingCarouselView: View {
                         }
                     } label: {
                         Text("next")
-                            .font(.dmSans(size: 17, weight: .semiBold))
+                            .font(.lora(size: 17, weight: .semiBold))
                             .foregroundColor(colorScheme == .dark ? .black : .white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
@@ -81,7 +81,7 @@ struct OnboardingCarouselView: View {
                 } else {
                     NavigationLink(destination: PlatformSelectionView()) {
                         Text("get started")
-                            .font(.dmSans(size: 17, weight: .semiBold))
+                            .font(.lora(size: 17, weight: .semiBold))
                             .foregroundColor(colorScheme == .dark ? .black : .white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
@@ -91,7 +91,7 @@ struct OnboardingCarouselView: View {
                 }
             }
             .padding(.horizontal, 32)
-            .padding(.bottom, 50)
+            .padding(.bottom, 20)
         }
     }
 }
@@ -107,15 +107,21 @@ struct SlideView: View {
     var body: some View {
         VStack(spacing: 12) {
             Text(slide.title)
-                .font(.dmSans(size: 24, weight: .bold))
+                .font(.lora(size: 24, weight: .bold))
                 .foregroundColor(.primary)
 
             Text(slide.description)
-                .font(.dmSans(size: 18))
+                .font(.lora(size: 16))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+                .padding(.horizontal, 16)
         }
+        .padding(.vertical, 24)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
+        .background(Color(UIColor.secondarySystemBackground))
+        .cornerRadius(20)
+        .padding(.horizontal, 24) // Padding from screen edges
     }
 }
 

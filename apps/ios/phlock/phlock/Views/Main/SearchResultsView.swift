@@ -4,7 +4,7 @@ import SwiftUI
 
 struct SearchResultsList: View {
     let results: SearchResult
-    let filter: DiscoverView.SearchFilter
+    let filter: SearchFilter
     let platformType: PlatformType
     let searchQuery: String
     @Binding var navigationPath: NavigationPath
@@ -22,7 +22,7 @@ struct SearchResultsList: View {
 
     init(
         results: SearchResult,
-        filter: DiscoverView.SearchFilter,
+        filter: SearchFilter,
         platformType: PlatformType,
         searchQuery: String,
         navigationPath: Binding<NavigationPath>,
@@ -307,17 +307,13 @@ struct TrackResultRow: View {
             // Track Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(track.name)
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 15))
                     .lineLimit(1)
                     .foregroundColor(.primary)
 
-                if showType {
-                    Text("Track")
-                        .font(.dmSans(size: 10))
-                        .foregroundColor(.secondary)
-                } else if let artist = track.artistName {
+                if let artist = track.artistName {
                     Text(artist)
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: 13))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
@@ -326,10 +322,9 @@ struct TrackResultRow: View {
             Spacer()
 
             // Daily Song Button (only show if handler provided)
-            if let _ = onSelectDailySong {
+            if let selectHandler = onSelectDailySong {
                 Button {
-                    selectedDailyTrackId = track.id
-                    showDailyConfirm = true
+                    selectHandler(track)
                 } label: {
                     ZStack {
                         Circle()
@@ -341,7 +336,7 @@ struct TrackResultRow: View {
                             .frame(width: 24, height: 24)
                         if isCommittedAsDaily || isPendingSelection {
                             Image(systemName: "checkmark")
-                                .font(.dmSans(size: 10))
+                                .font(.lora(size: 10))
                                 .foregroundColor(.white)
                         }
                     }
@@ -349,18 +344,7 @@ struct TrackResultRow: View {
                 .buttonStyle(.plain)
             }
 
-            // Share Button
-            Button {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    navigationState.shareTrack = track
-                    navigationState.showShareSheet = true
-                }
-            } label: {
-                Image(systemName: "paperplane")
-                    .font(.dmSans(size: 20, weight: .semiBold))
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
+
 
             // Play Button
             Button {
@@ -371,7 +355,7 @@ struct TrackResultRow: View {
                 }
             } label: {
                 Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.dmSans(size: 20, weight: .bold))
+                    .font(.lora(size: 24, weight: .bold))
                     .foregroundColor(isCurrentTrack ? .primary : .secondary)
             }
             .buttonStyle(.plain)
@@ -386,25 +370,6 @@ struct TrackResultRow: View {
         .cornerRadius(8)
         }
         .toast(isPresented: $showToast, message: toastMessage, type: .success, duration: 3.0)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if onSelectDailySong != nil {
-                selectedDailyTrackId = track.id
-                showDailyConfirm = true
-            }
-        }
-        .confirmationDialog(
-            "Select \"\(track.name)\" as your daily song?",
-            isPresented: $showDailyConfirm,
-            titleVisibility: .visible
-        ) {
-            if let selectHandler = onSelectDailySong {
-                Button("Confirm") { selectHandler(track) }
-            }
-            Button("Cancel", role: .cancel) {
-                selectedDailyTrackId = todaysDailySong?.trackId
-            }
-        }
     }
 }
 
@@ -434,12 +399,12 @@ struct ArtistResultRow: View {
             // Artist Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(artist.name)
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 15))
                     .lineLimit(1)
 
                 if showType {
                     Text("Artist")
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: 13))
                         .foregroundColor(.secondary)
                 }
             }
@@ -458,14 +423,14 @@ struct EmptySearchView: View {
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "magnifyingglass")
-                .font(.dmSans(size: 48, weight: .bold))
+                .font(.lora(size: 48, weight: .bold))
                 .foregroundColor(.gray)
 
             Text("search for music")
-                .font(.dmSans(size: 20, weight: .semiBold))
+                .font(.lora(size: 20, weight: .semiBold))
 
             Text("find tracks and artists to send")
-                .font(.dmSans(size: 10))
+                .font(.lora(size: 10))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -480,14 +445,14 @@ struct NoResultsView: View {
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "music.note.slash")
-                .font(.dmSans(size: 48, weight: .bold))
+                .font(.lora(size: 48, weight: .bold))
                 .foregroundColor(.gray)
 
             Text("no results found")
-                .font(.dmSans(size: 20, weight: .semiBold))
+                .font(.lora(size: 20, weight: .semiBold))
 
             Text("try a different search term")
-                .font(.dmSans(size: 10))
+                .font(.lora(size: 10))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -501,14 +466,14 @@ struct ErrorView: View {
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.dmSans(size: 48, weight: .bold))
+                .font(.lora(size: 48, weight: .bold))
                 .foregroundColor(.orange)
 
             Text("search error")
-                .font(.dmSans(size: 20, weight: .semiBold))
+                .font(.lora(size: 20, weight: .semiBold))
 
             Text(message)
-                .font(.dmSans(size: 10))
+                .font(.lora(size: 10))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
@@ -516,7 +481,7 @@ struct ErrorView: View {
             Button("Try Again") {
                 retry()
             }
-            .font(.dmSans(size: 10))
+            .font(.lora(size: 10))
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
             .background(Color.black)
@@ -590,7 +555,6 @@ struct RecentTrackCard: View {
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var navigationState: NavigationState
     @Environment(\.colorScheme) var colorScheme
-    @State private var showDailyConfirm = false
 
     init(
         track: MusicItem,
@@ -658,10 +622,9 @@ struct RecentTrackCard: View {
                         Spacer()
 
                         // Top-right action: daily select button when in daily flow, otherwise share
-                        if let _ = onSelectDailySong {
+                        if let selectHandler = onSelectDailySong {
                             Button {
-                                selectedDailyTrackId = track.id
-                                showDailyConfirm = true
+                                selectHandler(track)
                             } label: {
                                 ZStack {
                                     Circle()
@@ -673,7 +636,7 @@ struct RecentTrackCard: View {
                                         .frame(width: 26, height: 26)
                                     if isCommittedAsDaily || isPendingSelection {
                                         Image(systemName: "checkmark")
-                                            .font(.dmSans(size: 10))
+                                            .font(.lora(size: 10))
                                             .foregroundColor(.white)
                                     }
                                 }
@@ -694,7 +657,7 @@ struct RecentTrackCard: View {
                                         .frame(width: 26, height: 26)
 
                                     Image(systemName: "paperplane.fill")
-                                        .font(.dmSans(size: 10))
+                                        .font(.lora(size: 10))
                                         .foregroundColor(.white)
                                 }
                             }
@@ -715,7 +678,7 @@ struct RecentTrackCard: View {
                     }
                 } label: {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.dmSans(size: 32, weight: .bold))
+                        .font(.lora(size: 32, weight: .bold))
                         .foregroundColor(.white)
                         .shadow(color: Color.black.opacity(0.5), radius: 8, x: 0, y: 3)
                         .padding(20)
@@ -727,7 +690,7 @@ struct RecentTrackCard: View {
             // Track Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(track.name)
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 13))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .foregroundColor(.primary)
@@ -735,7 +698,7 @@ struct RecentTrackCard: View {
 
                 if let artist = track.artistName {
                     Text(artist)
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: 11))
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .foregroundColor(.secondary)
@@ -743,25 +706,6 @@ struct RecentTrackCard: View {
                 }
             }
             .padding(.top, 6)
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if onSelectDailySong != nil {
-                selectedDailyTrackId = track.id
-                showDailyConfirm = true
-            }
-        }
-        .confirmationDialog(
-            "Select \"\(track.name)\" as your daily song?",
-            isPresented: $showDailyConfirm,
-            titleVisibility: .visible
-        ) {
-            if let selectHandler = onSelectDailySong {
-                Button("Confirm") { selectHandler(track) }
-            }
-            Button("Cancel", role: .cancel) {
-                selectedDailyTrackId = todaysDailySong?.trackId
-            }
         }
     }
 }

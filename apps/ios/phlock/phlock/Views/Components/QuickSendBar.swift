@@ -69,7 +69,7 @@ struct QuickSendBar: View {
                     ZStack {
                         // Centered title
                         Text("Share")
-                            .font(.dmSans(size: 10))
+                            .font(.lora(size: 10))
 
                         // X close button (positioned to trailing edge)
                         HStack {
@@ -78,7 +78,7 @@ struct QuickSendBar: View {
                                 onDismiss()
                             } label: {
                                 Image(systemName: "xmark")
-                                    .font(.dmSans(size: 10, weight: .medium))
+                                    .font(.lora(size: 10, weight: .medium))
                                     .foregroundColor(.primary.opacity(0.6))
                                     .frame(width: 30, height: 30)
                                     .background(Circle().fill(Color.gray.opacity(0.15)))
@@ -111,13 +111,13 @@ struct QuickSendBar: View {
                         // Track Info
                         VStack(alignment: .leading, spacing: 2) {
                             Text(track.name)
-                                .font(.dmSans(size: 10))
+                                .font(.lora(size: 10))
                                 .lineLimit(1)
                                 .foregroundColor(.primary)
 
                             if let artist = track.artistName {
                                 Text(artist)
-                                    .font(.dmSans(size: 10))
+                                    .font(.lora(size: 10))
                                     .lineLimit(1)
                                     .foregroundColor(.secondary)
                             }
@@ -146,7 +146,7 @@ struct QuickSendBar: View {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle())
                                 Text("Loading friends...")
-                                    .font(.dmSans(size: 10))
+                                    .font(.lora(size: 10))
                                     .foregroundColor(.secondary)
                             }
                             .padding(.top, 50)
@@ -154,10 +154,10 @@ struct QuickSendBar: View {
                             // Empty state
                             VStack(spacing: 12) {
                                 Image(systemName: searchText.isEmpty ? "person.3" : "magnifyingglass")
-                                    .font(.dmSans(size: 40, weight: .bold))
+                                    .font(.lora(size: 40, weight: .bold))
                                     .foregroundColor(.secondary)
                                 Text(searchText.isEmpty ? "No friends yet" : "No friends found")
-                                    .font(.dmSans(size: 10))
+                                    .font(.lora(size: 10))
                                     .foregroundColor(.secondary)
                             }
                             .padding(.top, 50)
@@ -243,10 +243,10 @@ struct QuickSendBar: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.secondary)
-                .font(.dmSans(size: 10))
+                .font(.lora(size: 10))
 
             TextField("Search", text: $searchText)
-                .font(.dmSans(size: 10))
+                .font(.lora(size: 10))
                 .textFieldStyle(.plain)
                 .focused($isSearchFocused)
                 .submitLabel(.search)
@@ -257,7 +257,7 @@ struct QuickSendBar: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.secondary)
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: 10))
                 }
                 .buttonStyle(.plain)
             }
@@ -334,13 +334,13 @@ struct QuickSendBar: View {
 
             HStack(spacing: 10) {
                 Image(systemName: "bubble.left")
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .foregroundColor(isMessageFieldFocused
                         ? (colorScheme == .dark ? .white : .black)
                         : (colorScheme == .dark ? .white.opacity(0.5) : .black.opacity(0.5)))
 
                 TextField("Write a message...", text: $message)
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .textFieldStyle(.plain)
                     .foregroundColor(.primary)
                     .focused($isMessageFieldFocused)
@@ -356,7 +356,7 @@ struct QuickSendBar: View {
                         message = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.dmSans(size: 10))
+                            .font(.lora(size: 10))
                             .foregroundColor(.secondary)
                     }
                     .buttonStyle(.plain)
@@ -391,7 +391,7 @@ struct QuickSendBar: View {
                                 .tint(.white)
                         }
                         Text(isSending ? "Sending..." : "Send")
-                            .font(.dmSans(size: 10))
+                            .font(.lora(size: 10))
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 18)
@@ -416,13 +416,13 @@ struct QuickSendBar: View {
             // Message input field
             HStack(spacing: 10) {
                 Image(systemName: "bubble.left")
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .foregroundColor(isMessageFieldFocused
                         ? (colorScheme == .dark ? .white : .black)
                         : (colorScheme == .dark ? .white.opacity(0.5) : .black.opacity(0.5)))
 
                 TextField("Write a message...", text: $message)
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .textFieldStyle(.plain)
                     .foregroundColor(.primary)
                     .focused($isMessageFieldFocused)
@@ -438,7 +438,7 @@ struct QuickSendBar: View {
                         message = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.dmSans(size: 10))
+                            .font(.lora(size: 10))
                             .foregroundColor(.secondary)
                     }
                     .buttonStyle(.plain)
@@ -473,7 +473,7 @@ struct QuickSendBar: View {
                             .tint(.white)
                     } else {
                         Text(selectedFriends.count > 1 ? "Send separately" : "Send")
-                            .font(.dmSans(size: 10))
+                            .font(.lora(size: 10))
                     }
                 }
                 .foregroundColor(.white)
@@ -656,7 +656,7 @@ struct FriendGridItem: View {
                             .frame(width: 24, height: 24)
                             .overlay(
                                 Image(systemName: "checkmark")
-                                    .font(.dmSans(size: 10))
+                                    .font(.lora(size: 10))
                                     .foregroundColor(.white)
                             )
                             .offset(x: 2, y: 2)
@@ -665,7 +665,7 @@ struct FriendGridItem: View {
 
                 // Name
                 Text(friend.displayName)
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .multilineTextAlignment(.center)
@@ -708,18 +708,18 @@ struct PlatformButton: View {
 
                     if let icon = icon {
                         Image(systemName: icon)
-                            .font(.dmSans(size: 20, weight: .semiBold))
+                            .font(.lora(size: 20, weight: .semiBold))
                             .foregroundColor(color)
                     } else if imageName != nil {
                         // For custom images like Instagram logo
                         Image(systemName: "camera.fill")
-                            .font(.dmSans(size: 20, weight: .semiBold))
+                            .font(.lora(size: 20, weight: .semiBold))
                             .foregroundColor(.purple)
                     }
                 }
 
                 Text(title)
-                    .font(.dmSans(size: 10))
+                    .font(.lora(size: 10))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
@@ -739,7 +739,7 @@ struct FriendInitialsView: View {
                 .fill(Color.blue.opacity(0.3))
 
             Text(displayName.prefix(1).uppercased())
-                .font(.dmSans(size: 20, weight: .semiBold))
+                .font(.lora(size: 20, weight: .semiBold))
                 .foregroundColor(.blue)
         }
     }

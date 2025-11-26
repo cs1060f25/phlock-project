@@ -6,6 +6,7 @@ struct PhlockButton: View {
     var variant: ButtonVariant = .primary
     var isLoading: Bool = false
     var fullWidth: Bool = false
+    var fontSize: CGFloat = 10
     @Environment(\.colorScheme) var colorScheme
 
     enum ButtonVariant {
@@ -40,7 +41,7 @@ struct PhlockButton: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: variant.foregroundColor(for: colorScheme)))
                 } else {
                     Text(title)
-                        .font(.dmSans(size: 10))
+                        .font(.lora(size: fontSize))
                 }
             }
             .frame(maxWidth: fullWidth ? .infinity : nil)

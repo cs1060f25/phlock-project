@@ -2,36 +2,10 @@ import Foundation
 import Supabase
 
 /// Service for phlock-related operations (fetching, building visualizations, etc.)
-private struct GroupedPhlockResponse: Decodable {
-    let trackId: String
-    let trackName: String?
-    let artistName: String?
-    let albumArtUrl: String?
-    let recipientCount: Int
-    let playedCount: Int
-    let savedCount: Int
-    let lastSentAt: Date
-
-    enum CodingKeys: String, CodingKey {
-        case trackId = "track_id"
-        case trackName = "track_name"
-        case artistName = "artist_name"
-        case albumArtUrl = "album_art_url"
-        case recipientCount = "recipient_count"
-        case playedCount = "played_count"
-        case savedCount = "saved_count"
-        case lastSentAt = "last_sent_at"
-    }
-}
-
 class PhlockService {
     static let shared = PhlockService()
 
     private let supabase = PhlockSupabaseClient.shared.client
-
-    // Cache for grouped phlocks to prevent slow repeated loads
-    private var phlocksCache: [UUID: (data: [GroupedPhlock], timestamp: Date)] = [:]
-    private let cacheExpirationSeconds: TimeInterval = 30 // Cache expires after 30 seconds
 
     private init() {}
 
@@ -243,139 +217,6 @@ class PhlockService {
         }
 
         return previews
-    }
-
-    // MARK: - Shares-Based Phlocks (New Approach)
-
-    /// Group user's sent shares by track to show songs they've shared
-    /// - Parameter userId: The user's ID
-    /// - Parameter forceRefresh: If true, bypasses cache and fetches fresh data
-    /// - Returns: Array of grouped phlocks with aggregated metrics
-    func getPhlocksGroupedByTrack(userId: UUID, forceRefresh: Bool = false) async throws -> [GroupedPhlock] {
-        // Check cache first (unless force refresh)
-        if !forceRefresh, let cached = phlocksCache[userId] {
-            let age = Date().timeIntervalSince(cached.timestamp)
-            if age < cacheExpirationSeconds {
-                print("✅ Using cached phlocks (\(Int(age))s old)")
-                return cached.data
-            } else {
-                print("⏰ Cache expired (\(Int(age))s old), fetching fresh data")
-            }
-        }
-
-        let startTime = Date()
-        print("🔍 Fetching phlocks for user \(userId) (forceRefresh: \(forceRefresh))")
-
-        let params = ["p_user_id": userId.uuidString]
-
-        // Use the faster function without auth check for better performance
-        // The auth check is already done at the Swift level via authState
-        let queryTask = Task {
-            try await supabase
-                .rpc("get_user_phlocks_grouped_fast", params: params)
-                .execute()
-                .value as [GroupedPhlockResponse]
-        }
-
-        let summaries: [GroupedPhlockResponse]
-        do {
-            summaries = try await queryTask.value
-        } catch {
-            print("❌ Database query failed: \(error)")
-            // If we have cached data, return it instead of failing
-            if let cached = phlocksCache[userId] {
-                print("⚠️ Using stale cache due to query error (age: \(Int(Date().timeIntervalSince(cached.timestamp)))s)")
-                return cached.data
-            } else {
-                throw error
-            }
-        }
-
-        let duration = Date().timeIntervalSince(startTime)
-        print("🎵 Grouped into \(summaries.count) unique tracks (took \(String(format: "%.2f", duration))s)")
-
-        let result = summaries.map { summary in
-            let recipientCount = summary.recipientCount
-            let listenRate = recipientCount > 0 ? Double(summary.playedCount) / Double(recipientCount) : 0.0
-            let saveRate = recipientCount > 0 ? Double(summary.savedCount) / Double(recipientCount) : 0.0
-
-            return GroupedPhlock(
-                trackId: summary.trackId,
-                trackName: summary.trackName ?? "Unknown Track",
-                artistName: summary.artistName ?? "Unknown Artist",
-                albumArtUrl: summary.albumArtUrl,
-                recipientCount: recipientCount,
-                totalReach: recipientCount,
-                generations: 1,
-                playedCount: summary.playedCount,
-                savedCount: summary.savedCount,
-                forwardedCount: 0,
-                listenRate: listenRate,
-                saveRate: saveRate,
-                lastSentAt: summary.lastSentAt
-            )
-        }
-
-        // Cache the result
-        phlocksCache[userId] = (data: result, timestamp: Date())
-
-        return result
-    }
-
-    /// Clear the phlocks cache for a specific user or all users
-    func clearCache(userId: UUID? = nil) {
-        if let userId = userId {
-            phlocksCache.removeValue(forKey: userId)
-            print("🗑️ Cleared phlocks cache for user \(userId)")
-        } else {
-            phlocksCache.removeAll()
-            print("🗑️ Cleared all phlocks cache")
-        }
-    }
-
-    /// Get all recipients for a specific track a user has sent
-    /// - Parameters:
-    ///   - trackId: The Spotify/Apple Music track ID
-    ///   - userId: The user who sent the shares
-    /// - Returns: Array of recipients with share metadata
-    func getPhlockRecipients(trackId: String, userId: UUID) async throws -> [PhlockRecipient] {
-        // Get all shares for this track sent by this user
-        let shares: [Share] = try await supabase
-            .from("shares")
-            .select("*")
-            .eq("sender_id", value: userId.uuidString)
-            .eq("track_id", value: trackId)
-            .order("created_at", ascending: false)
-            .execute()
-            .value
-
-        print("📨 Found \(shares.count) shares of track \(trackId)")
-
-        // Fetch recipient user data
-        let recipientIds = shares.map { $0.recipientId }
-        let recipients = try await fetchUsers(userIds: recipientIds)
-        let recipientDict = Dictionary(uniqueKeysWithValues: recipients.map { ($0.id, $0) })
-
-        // Create PhlockRecipient objects with share status
-        var phlockRecipients: [PhlockRecipient] = []
-
-        for share in shares {
-            guard let user = recipientDict[share.recipientId] else { continue }
-
-            let recipient = PhlockRecipient(
-                user: user,
-                shareId: share.id,
-                status: share.status,
-                sentAt: share.createdAt,
-                playedAt: share.playedAt,
-                savedAt: share.savedAt,
-                message: share.message
-            )
-
-            phlockRecipients.append(recipient)
-        }
-
-        return phlockRecipients
     }
 }
 
