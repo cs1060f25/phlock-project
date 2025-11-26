@@ -29,6 +29,7 @@ class NavigationState: ObservableObject {
     @Published var scrollFeedToTopTrigger = 0
     @Published var scrollFriendsToTopTrigger = 0
     @Published var scrollNotificationsToTopTrigger = 0
+    @Published var scrollProfileToTopTrigger = 0
 
     // MARK: - Player State
     @Published var showFullPlayer = false
@@ -92,6 +93,8 @@ class NavigationState: ObservableObject {
         case 2:
             refreshNotificationsTrigger += 1
             scrollNotificationsToTopTrigger += 1
+        case 3:
+            scrollProfileToTopTrigger += 1
         default:
             break
         }

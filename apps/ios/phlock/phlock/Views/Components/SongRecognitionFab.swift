@@ -31,7 +31,7 @@ struct SongRecognitionFab: View {
                         .shadow(color: fabShadowColor, radius: 10, x: 0, y: 8)
                         .overlay(
                             Image(systemName: "ear")
-                                .font(.system(size: 24, weight: .bold))
+                                .font(.dmSans(size: 20, weight: .semiBold))
                                 .foregroundColor(.white)
                         )
                 }
@@ -203,7 +203,7 @@ private struct SongRecognitionSheet: View {
                             }) {
                                 HStack {
                                     Image(systemName: "arrow.clockwise")
-                                        .font(.system(size: 16, weight: .semibold))
+                                        .font(.dmSans(size: 10))
                                     Text("Try again")
                                         .font(.system(.headline))
                                 }
@@ -501,7 +501,7 @@ private struct ListeningIndicatorView: View {
                 .scaleEffect(1.2)
         } else {
             Image(systemName: icon(for: state))
-                .font(.system(size: 30, weight: .bold))
+                .font(.dmSans(size: 30, weight: .bold))
                 .foregroundColor(.white)
         }
     }
@@ -545,7 +545,7 @@ private struct PreviewPlaybackButton: View {
                 // Content overlay
                 HStack(spacing: 8) {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.dmSans(size: 10))
                     Text(label)
                         .font(.system(.subheadline, weight: .semibold))
                     Spacer()

@@ -36,12 +36,12 @@ struct UserProfileView: View {
 
                     // Display Name
                     Text(user.displayName)
-                        .font(.lora(size: 28, weight: .bold))
+                        .font(.dmSans(size: 20, weight: .bold))
 
                     // Bio
                     if let bio = user.bio {
                         Text(bio)
-                            .font(.lora(size: 15))
+                            .font(.dmSans(size: 10))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
                     }
@@ -49,9 +49,9 @@ struct UserProfileView: View {
                     // Platform Badge
                     HStack(spacing: 6) {
                         Image(systemName: user.platformType == .spotify ? "music.note" : "applelogo")
-                            .font(.system(size: 12))
+                            .font(.dmSans(size: 10))
                         Text(user.platformType == .spotify ? "spotify" : "apple music")
-                            .font(.lora(size: 13, weight: .medium))
+                            .font(.dmSans(size: 10))
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 12)
@@ -72,7 +72,7 @@ struct UserProfileView: View {
                                     Image(systemName: "checkmark.circle.fill")
                                         .foregroundColor(.green)
                                     Text("friends")
-                                        .font(.lora(size: 15, weight: .semiBold))
+                                        .font(.dmSans(size: 10))
                                 }
                                 .foregroundColor(.primary)
                                 .frame(maxWidth: .infinity)
@@ -84,7 +84,7 @@ struct UserProfileView: View {
                                 if let friendship = friendship, friendship.userId1 == authState.currentUser?.id {
                                     // Current user sent the request
                                     Text("request sent")
-                                        .font(.lora(size: 15, weight: .semiBold))
+                                        .font(.dmSans(size: 10))
                                         .foregroundColor(.secondary)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 12)
@@ -97,7 +97,7 @@ struct UserProfileView: View {
                                             Task { await rejectFriendRequest() }
                                         } label: {
                                             Text("reject")
-                                                .font(.lora(size: 15, weight: .semiBold))
+                                                .font(.dmSans(size: 10))
                                                 .foregroundColor(.primary)
                                                 .frame(maxWidth: .infinity)
                                                 .padding(.vertical, 12)
@@ -109,7 +109,7 @@ struct UserProfileView: View {
                                             Task { await acceptFriendRequest() }
                                         } label: {
                                             Text("accept")
-                                                .font(.lora(size: 15, weight: .semiBold))
+                                                .font(.dmSans(size: 10))
                                                 .foregroundColor(.white)
                                                 .frame(maxWidth: .infinity)
                                                 .padding(.vertical, 12)
@@ -133,7 +133,7 @@ struct UserProfileView: View {
                                         .padding(.vertical, 12)
                                 } else {
                                     Text("add friend")
-                                        .font(.lora(size: 15, weight: .semiBold))
+                                        .font(.dmSans(size: 10))
                                         .foregroundColor(.white)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 12)
@@ -152,7 +152,7 @@ struct UserProfileView: View {
                 if let platformData = user.platformData {
                     VStack(spacing: 16) {
                         Text("music taste")
-                            .font(.lora(size: 20, weight: .bold))
+                            .font(.dmSans(size: 20, weight: .semiBold))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 24)
 
@@ -191,7 +191,27 @@ struct UserProfileView: View {
                     dismiss()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 22, weight: .medium))
+                        .font(.dmSans(size: 20, weight: .semiBold))
+                        .foregroundColor(.primary)
+                }
+            }
+            
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button(role: .destructive) {
+                        Task { await blockUser() }
+                    } label: {
+                        Label("Block User", systemImage: "hand.raised.fill")
+                    }
+                    
+                    Button(role: .destructive) {
+                        Task { await reportUser() }
+                    } label: {
+                        Label("Report User", systemImage: "exclamationmark.bubble.fill")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.dmSans(size: 20, weight: .semiBold))
                         .foregroundColor(.primary)
                 }
             }
@@ -274,6 +294,33 @@ struct UserProfileView: View {
             UserService.shared.clearCache(for: currentUserId)
 
             await loadFriendshipStatus()
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+    }
+
+    private func blockUser() async {
+        guard let currentUserId = authState.currentUser?.id else { return }
+        
+        do {
+            try await UserService.shared.blockUser(userId: user.id, currentUserId: currentUserId)
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+    }
+    
+    private func reportUser() async {
+        guard let currentUserId = authState.currentUser?.id else { return }
+        
+        // In a real app, we'd show a sheet to collect the reason
+        // For now, we'll report as "Inappropriate Content" by default
+        do {
+            try await UserService.shared.reportUser(userId: user.id, reporterId: currentUserId, reason: "Inappropriate Content")
+            errorMessage = "User reported. Thank you for keeping Phlock safe."
+            showError = true // Reusing error alert for success message for simplicity
         } catch {
             errorMessage = error.localizedDescription
             showError = true

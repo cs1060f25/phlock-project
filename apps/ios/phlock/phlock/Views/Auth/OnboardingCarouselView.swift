@@ -45,7 +45,7 @@ struct OnboardingCarouselView: View {
             // Action Button
             NavigationLink(destination: PlatformSelectionView()) {
                 Text(currentPage == slides.count - 1 ? "get started" : "next")
-                    .font(.lora(size: 17, weight: .medium))
+                    .font(.dmSans(size: 17, weight: .semiBold))
                     .foregroundColor(colorScheme == .dark ? .black : .white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
@@ -71,7 +71,7 @@ struct OnboardingCarouselView: View {
                         }
                     } label: {
                         Text("next")
-                            .font(.lora(size: 17, weight: .medium))
+                            .font(.dmSans(size: 17, weight: .semiBold))
                             .foregroundColor(colorScheme == .dark ? .black : .white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
@@ -81,7 +81,7 @@ struct OnboardingCarouselView: View {
                 } else {
                     NavigationLink(destination: PlatformSelectionView()) {
                         Text("get started")
-                            .font(.lora(size: 17, weight: .medium))
+                            .font(.dmSans(size: 17, weight: .semiBold))
                             .foregroundColor(colorScheme == .dark ? .black : .white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
@@ -107,11 +107,11 @@ struct SlideView: View {
     var body: some View {
         VStack(spacing: 12) {
             Text(slide.title)
-                .font(.lora(size: 24, weight: .bold))
+                .font(.dmSans(size: 24, weight: .bold))
                 .foregroundColor(.primary)
-            
+
             Text(slide.description)
-                .font(.lora(size: 18, weight: .regular))
+                .font(.dmSans(size: 18))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)

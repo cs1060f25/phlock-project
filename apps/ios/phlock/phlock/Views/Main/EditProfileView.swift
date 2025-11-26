@@ -58,11 +58,11 @@ struct EditProfileView: View {
 
                                 VStack(spacing: 8) {
                                     Image(systemName: "camera.fill")
-                                        .font(.system(size: 32))
+                                        .font(.dmSans(size: 32, weight: .bold))
                                         .foregroundColor(.gray)
 
                                     Text("add photo")
-                                        .font(.lora(size: 13, weight: .semiBold))
+                                        .font(.dmSans(size: 10))
                                         .foregroundColor(.gray)
                                 }
                             }
@@ -74,7 +74,7 @@ struct EditProfileView: View {
                                     .frame(width: 120, height: 120)
 
                                 Image(systemName: "camera.fill")
-                                    .font(.system(size: 28))
+                                    .font(.dmSans(size: 20, weight: .bold))
                                     .foregroundColor(.white)
                             }
                         }

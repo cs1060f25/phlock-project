@@ -9,7 +9,7 @@ struct LoadingView: View {
                 .scaleEffect(1.5)
 
             Text(message)
-                .font(.lora(size: 17, weight: .medium))
+                .font(.dmSans(size: 10))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

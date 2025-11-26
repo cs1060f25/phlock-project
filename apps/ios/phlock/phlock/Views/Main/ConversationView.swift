@@ -53,7 +53,7 @@ struct ConversationView: View {
                 VStack(spacing: 12) {
                     WaveformLoadingView(barCount: 5, color: .blue)
                     Text("Loading conversation...")
-                        .font(.lora(size: 15))
+                        .font(.dmSans(size: 10))
                 }
                 .frame(maxHeight: .infinity)
             } else if let error = errorMessage {
@@ -66,9 +66,9 @@ struct ConversationView: View {
                         if shares.isEmpty {
                             VStack(spacing: 12) {
                                 Text("No messages yet")
-                                    .font(.lora(size: 18, weight: .semiBold))
+                                    .font(.dmSans(size: 10, weight: .medium))
                                 Text("Search for a song below to start the conversation!")
-                                    .font(.lora(size: 14))
+                                    .font(.dmSans(size: 10))
                                     .foregroundColor(.secondary)
                                     .multilineTextAlignment(.center)
                             }
@@ -170,7 +170,7 @@ struct ConversationView: View {
                     dismiss()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 22, weight: .medium))
+                        .font(.dmSans(size: 20, weight: .semiBold))
                         .foregroundColor(.primary)
                 }
             }
@@ -344,11 +344,11 @@ struct ConversationSearchBar: View {
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(track.name)
-                                        .font(.lora(size: 14, weight: .semiBold))
+                                        .font(.dmSans(size: 10))
                                         .foregroundColor(.primary)
                                         .lineLimit(1)
                                     Text(track.artistName ?? "Unknown")
-                                        .font(.lora(size: 12))
+                                        .font(.dmSans(size: 10))
                                         .foregroundColor(.secondary)
                                         .lineLimit(1)
                                 }
@@ -410,10 +410,10 @@ struct ConversationSearchBar: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(track.name)
-                            .font(.lora(size: 14, weight: .semiBold))
+                            .font(.dmSans(size: 10))
                             .lineLimit(1)
                         Text(track.artistName ?? "Unknown")
-                            .font(.lora(size: 12))
+                            .font(.dmSans(size: 10))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
@@ -449,10 +449,10 @@ struct ConversationSearchBar: View {
                     HStack(spacing: 8) {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(.secondary)
-                            .font(.system(size: 16))
+                            .font(.dmSans(size: 10))
 
                         TextField("search for music...", text: $searchQuery)
-                            .font(.lora(size: 15))
+                            .font(.dmSans(size: 10))
                             .focused($isSearchFocused)
                             .onChange(of: searchQuery) { newValue in
                                 if newValue.count >= 2 {
@@ -470,11 +470,11 @@ struct ConversationSearchBar: View {
                     // Greyed out send button when no track
                     Image(systemName: "paperplane")
                         .foregroundColor(.gray.opacity(0.3))
-                        .font(.system(size: 20))
+                        .font(.dmSans(size: 20, weight: .semiBold))
                 } else {
                     // Message mode (track selected)
                     TextField("add a message (optional)...", text: $messageText, axis: .vertical)
-                        .font(.lora(size: 15))
+                        .font(.dmSans(size: 10))
                         .lineLimit(1...3)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
@@ -493,7 +493,7 @@ struct ConversationSearchBar: View {
                         } else {
                             Image(systemName: "paperplane.fill")
                                 .foregroundColor(.blue)
-                                .font(.system(size: 20))
+                                .font(.dmSans(size: 20, weight: .semiBold))
                         }
                     }
                     .buttonStyle(.plain)
@@ -555,7 +555,7 @@ private struct PlayPauseButton: View {
 
     var body: some View {
         Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-            .font(.system(size: 24))
+            .font(.dmSans(size: 20, weight: .semiBold))
             .foregroundColor(isPlaying ? .blue : .secondary)
             .contentShape(Rectangle())
             .highPriorityGesture(
@@ -623,17 +623,17 @@ struct ConversationShareCard: View {
                 // Track Info
                 VStack(alignment: .leading, spacing: 4) {
                     Text(share.trackName)
-                        .font(.lora(size: 15, weight: .semiBold))
+                        .font(.dmSans(size: 10))
                         .lineLimit(1)
 
                     Text(share.artistName)
-                        .font(.lora(size: 13))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
 
                     // Timestamp
                     Text(timeAgo(from: share.createdAt))
-                        .font(.lora(size: 11))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(.secondary)
                 }
 
@@ -644,7 +644,7 @@ struct ConversationShareCard: View {
                     handlePlayTap()
                 } label: {
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 32))
+                        .font(.dmSans(size: 32, weight: .bold))
                         .foregroundColor(isCurrentTrack ? .blue : .secondary)
                 }
                 .buttonStyle(.plain)
@@ -654,7 +654,7 @@ struct ConversationShareCard: View {
             // Message if present
             if let message = share.message, !message.isEmpty {
                 Text(message)
-                    .font(.lora(size: 14))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 12)
                     .padding(.bottom, 8)
@@ -671,12 +671,12 @@ struct ConversationShareCard: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "bubble.left")
-                        .font(.system(size: 14))
+                        .font(.dmSans(size: 10))
                     Text("Comments")
-                        .font(.lora(size: 14))
+                        .font(.dmSans(size: 10))
                     Spacer()
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 12))
+                        .font(.dmSans(size: 10))
                 }
                 .foregroundColor(.secondary)
                 .padding(.horizontal, 12)
@@ -695,7 +695,7 @@ struct ConversationShareCard: View {
                             .padding()
                     } else if comments.isEmpty {
                         Text("No comments yet")
-                            .font(.lora(size: 13))
+                            .font(.dmSans(size: 10))
                             .foregroundColor(.secondary)
                             .padding()
                     } else {
@@ -713,7 +713,7 @@ struct ConversationShareCard: View {
                     // Add Comment Input
                     HStack(spacing: 8) {
                         TextField("Add a comment (280 char max)...", text: $commentText, axis: .vertical)
-                            .font(.lora(size: 14))
+                            .font(.dmSans(size: 10))
                             .lineLimit(1...3)
                             .textFieldStyle(.plain)
                             .disabled(isAddingComment)
@@ -726,7 +726,7 @@ struct ConversationShareCard: View {
                                     .controlSize(.small)
                             } else {
                                 Image(systemName: "arrow.up.circle.fill")
-                                    .font(.system(size: 24))
+                                    .font(.dmSans(size: 20, weight: .semiBold))
                                     .foregroundColor(commentText.isEmpty ? .gray : .blue)
                             }
                         }
@@ -859,21 +859,21 @@ struct CommentRowView: View {
         HStack(alignment: .top, spacing: 12) {
             // User Avatar (placeholder)
             Image(systemName: "person.circle.fill")
-                .font(.system(size: 32))
+                .font(.dmSans(size: 32, weight: .bold))
                 .foregroundColor(.gray)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(comment.user?.displayName ?? "Unknown")
-                        .font(.lora(size: 14, weight: .semiBold))
+                        .font(.dmSans(size: 10))
 
                     Text(timeAgo(from: comment.createdAt))
-                        .font(.lora(size: 12))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(.secondary)
                 }
 
                 Text(comment.commentText)
-                    .font(.lora(size: 14))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.primary)
             }
 
@@ -917,13 +917,13 @@ struct EmptyConversationView: View {
 
             VStack(spacing: 12) {
                 Text("💬")
-                    .font(.system(size: 64))
+                    .font(.dmSans(size: 64, weight: .bold))
 
                 Text("No conversation yet")
-                    .font(.lora(size: 28, weight: .bold))
+                    .font(.dmSans(size: 20, weight: .bold))
 
                 Text("Start sharing music with \(otherUserName)\nto begin your conversation!")
-                    .font(.lora(size: 15))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
@@ -947,14 +947,14 @@ struct ConversationErrorView: View {
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 48))
+                .font(.dmSans(size: 48, weight: .bold))
                 .foregroundColor(.orange)
 
             Text("Error")
-                .font(.lora(size: 20, weight: .semiBold))
+                .font(.dmSans(size: 20, weight: .semiBold))
 
             Text(message)
-                .font(.lora(size: 15))
+                .font(.dmSans(size: 10))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
@@ -962,7 +962,7 @@ struct ConversationErrorView: View {
             Button("Try Again") {
                 retry()
             }
-            .font(.lora(size: 16, weight: .semiBold))
+            .font(.dmSans(size: 10))
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
             .background(Color.blue)

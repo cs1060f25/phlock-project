@@ -19,7 +19,7 @@ struct WelcomeView: View {
                     
                     // Welcome Title
                     Text("phlock: heard together")
-                        .font(.lora(size: 32, weight: .semiBold))
+                        .font(.dmSans(size: 32, weight: .bold))
                         .foregroundColor(.primary)
                         .padding(.bottom, 36)
                     

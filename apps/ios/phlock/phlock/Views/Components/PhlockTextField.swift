@@ -9,12 +9,12 @@ struct PhlockTextField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(label)
-                .font(.lora(size: 15, weight: .semiBold))
+                .font(.dmSans(size: 10))
                 .foregroundColor(.primary)
 
             if multiline {
                 TextEditor(text: $text)
-                    .font(.lora(size: 16, weight: .regular))
+                    .font(.dmSans(size: 10))
                     .frame(height: 100)
                     .padding(12)
                     .background(Color.gray.opacity(0.1))
@@ -25,7 +25,7 @@ struct PhlockTextField: View {
                     )
             } else {
                 TextField(placeholder, text: $text)
-                    .font(.lora(size: 16, weight: .regular))
+                    .font(.dmSans(size: 10))
                     .padding(16)
                     .background(Color.gray.opacity(0.1))
                     .cornerRadius(12)

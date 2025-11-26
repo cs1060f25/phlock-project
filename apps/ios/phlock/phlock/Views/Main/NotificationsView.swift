@@ -26,7 +26,7 @@ struct NotificationsView: View {
                         ProgressView()
                             .scaleEffect(1.4)
                         Text("Loading notifications...")
-                            .font(.lora(size: 15))
+                            .font(.dmSans(size: 14))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -69,16 +69,16 @@ struct NotificationsView: View {
                     .frame(width: 80, height: 80)
                 
                 Image(systemName: "bell.slash")
-                    .font(.system(size: 32))
+                    .font(.dmSans(size: 32, weight: .bold))
                     .foregroundColor(.secondary)
             }
 
             VStack(spacing: 8) {
                 Text("All caught up")
-                    .font(.lora(size: 20, weight: .bold))
-                
+                    .font(.dmSans(size: 20, weight: .semiBold))
+
                 Text("When friends add you or nudge you for a song,\nyou'll see it here.")
-                    .font(.lora(size: 15))
+                    .font(.dmSans(size: 14))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
@@ -153,7 +153,7 @@ struct NotificationsView: View {
 
     private func sectionHeader(_ title: String, isFirst: Bool) -> some View {
         Text(title)
-            .font(.lora(size: 13, weight: .bold))
+            .font(.dmSans(size: 12))
             .foregroundColor(.secondary)
             .textCase(.uppercase)
             .padding(.top, isFirst ? 0 : 16)
@@ -274,7 +274,7 @@ private struct NotificationRowView: View {
         case .friendRequestAccepted:
             if let actor = primaryActor {
                 var name = AttributedString(actor.displayName)
-                name.font = .lora(size: 15, weight: .bold)
+                name.font = .dmSans(size: 16)
                 text.append(name)
                 text.append(AttributedString(" accepted your friend request"))
             } else {
@@ -284,7 +284,7 @@ private struct NotificationRowView: View {
         case .friendRequestReceived:
             if let actor = primaryActor {
                 var name = AttributedString(actor.displayName)
-                name.font = .lora(size: 15, weight: .bold)
+                name.font = .dmSans(size: 16)
                 text.append(name)
                 text.append(AttributedString(" sent you a friend request"))
             } else {
@@ -294,7 +294,7 @@ private struct NotificationRowView: View {
         case .friendJoined:
             if let actor = primaryActor {
                 var name = AttributedString(actor.displayName)
-                name.font = .lora(size: 15, weight: .bold)
+                name.font = .dmSans(size: 16)
                 text.append(name)
                 text.append(AttributedString(" is on Phlock as "))
                 if let username = actor.username {
@@ -309,7 +309,7 @@ private struct NotificationRowView: View {
         case .friendPickedSong:
             if let actor = primaryActor {
                 var name = AttributedString(actor.displayName)
-                name.font = .lora(size: 15, weight: .bold)
+                name.font = .dmSans(size: 16)
                 text.append(name)
                 text.append(AttributedString(" picked a song for today"))
             } else {
@@ -319,7 +319,7 @@ private struct NotificationRowView: View {
         case .reactionReceived:
             if let actor = primaryActor {
                 var name = AttributedString(actor.displayName)
-                name.font = .lora(size: 15, weight: .bold)
+                name.font = .dmSans(size: 16)
                 text.append(name)
                 text.append(AttributedString(" reacted to your song pick"))
             } else {
@@ -335,21 +335,21 @@ private struct NotificationRowView: View {
                 text.append(AttributedString(notification.message ?? "You were nudged"))
             } else {
                 var namePart = AttributedString(names[0])
-                namePart.font = .lora(size: 15, weight: .bold)
+                namePart.font = .dmSans(size: 16)
                 text.append(namePart)
-                
+
                 if names.count == 1 {
                     text.append(AttributedString(" nudged you to pick today's song"))
                 } else if names.count == 2 {
                     text.append(AttributedString(" and "))
                     var name2 = AttributedString(names[1])
-                    name2.font = .lora(size: 15, weight: .bold)
+                    name2.font = .dmSans(size: 16)
                     text.append(name2)
                     text.append(AttributedString(" nudged you to pick today's song"))
                 } else {
                     text.append(AttributedString(", "))
                     var name2 = AttributedString(names[1])
-                    name2.font = .lora(size: 15, weight: .bold)
+                    name2.font = .dmSans(size: 16)
                     text.append(name2)
                     text.append(AttributedString(", and \(names.count - 2) others nudged you"))
                 }
@@ -365,7 +365,7 @@ private struct NotificationRowView: View {
             case .friendRequestAccepted, .friendRequestReceived, .reactionReceived, .streakMilestone:
                 Button(action: onProfileTap) {
                     Text("View")
-                        .font(.lora(size: 13, weight: .semiBold))
+                        .font(.dmSans(size: 14))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(Color.secondary.opacity(0.1))
@@ -377,7 +377,7 @@ private struct NotificationRowView: View {
             case .friendJoined:
                 Button(action: onProfileTap) {
                     Text("Add")
-                        .font(.lora(size: 13, weight: .semiBold))
+                        .font(.dmSans(size: 14))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(Color.blue)
@@ -389,7 +389,7 @@ private struct NotificationRowView: View {
             case .friendPickedSong:
                 Button(action: onDailyAction) {
                     Text("Listen")
-                        .font(.lora(size: 13, weight: .semiBold))
+                        .font(.dmSans(size: 14))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(Color.secondary.opacity(0.1))
@@ -397,11 +397,11 @@ private struct NotificationRowView: View {
                         .cornerRadius(16)
                 }
                 .buttonStyle(.plain)
-                
+
             case .dailyNudge:
                 Button(action: onDailyAction) {
                     Text("Pick Song")
-                        .font(.lora(size: 13, weight: .semiBold))
+                        .font(.dmSans(size: 14))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(Color.blue)
@@ -466,13 +466,13 @@ private struct NotificationRowView: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(attributedTitle)
-                            .font(.lora(size: 15))
+                            .font(.dmSans(size: 16))
                             .foregroundColor(.primary)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
 
                         Text(relativeTime(from: notification.createdAt))
-                            .font(.lora(size: 12))
+                            .font(.dmSans(size: 14))
                             .foregroundColor(.secondary)
                     }
                 }

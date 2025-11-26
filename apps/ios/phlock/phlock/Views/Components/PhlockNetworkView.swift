@@ -110,7 +110,7 @@ struct PhlockNetworkView: View {
                                     Image(systemName: "slider.horizontal.3")
                                     Text(highlightGeneration != nil ? "Gen \(highlightGeneration!)" : "Filter")
                                 }
-                                .font(.system(size: 13, weight: .medium))
+                                .font(.dmSans(size: 10))
                                 .foregroundColor(highlightGeneration != nil ? .white : .secondary)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
@@ -492,7 +492,7 @@ struct NodeDetailPanel: View {
                 .frame(width: 44, height: 44)
                 .overlay(
                     Text(String(node.name.prefix(1)))
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.dmSans(size: 10, weight: .medium))
                         .foregroundColor(.white)
                 )
 
@@ -502,22 +502,22 @@ struct NodeDetailPanel: View {
 
                 HStack(spacing: 8) {
                     Label("Gen \(node.depth)", systemImage: "arrow.down.right.circle")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(.secondary)
 
                     if node.saved {
                         Image(systemName: "heart.fill")
-                            .font(.system(size: 12))
+                            .font(.dmSans(size: 10))
                             .foregroundColor(.red)
                     }
                     if node.forwarded {
                         Image(systemName: "arrow.right.circle.fill")
-                            .font(.system(size: 12))
+                            .font(.dmSans(size: 10))
                             .foregroundColor(.green)
                     }
                     if node.played {
                         Image(systemName: "play.fill")
-                            .font(.system(size: 12))
+                            .font(.dmSans(size: 10))
                             .foregroundColor(.blue)
                     }
                 }
@@ -529,7 +529,7 @@ struct NodeDetailPanel: View {
                 onDismiss()
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 20))
+                    .font(.dmSans(size: 20, weight: .semiBold))
                     .foregroundColor(.secondary)
             }
         }
@@ -545,7 +545,7 @@ struct NetworkLegend: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Engagement")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.dmSans(size: 10))
                 .foregroundColor(.secondary)
 
             VStack(alignment: .leading, spacing: 6) {

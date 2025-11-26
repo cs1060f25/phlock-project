@@ -133,3 +133,42 @@ enum ShareStatus: String, Codable {
     case forwarded
     case dismissed
 }
+
+// Convenience initializer for manually constructing demo shares without decoding
+extension Share {
+    init(
+        id: UUID = UUID(),
+        senderId: UUID,
+        recipientId: UUID,
+        trackId: String,
+        trackName: String,
+        artistName: String,
+        albumArtUrl: String? = nil,
+        message: String? = nil,
+        status: ShareStatus = .sent,
+        createdAt: Date = Date(),
+        updatedAt: Date? = nil,
+        playedAt: Date? = nil,
+        savedAt: Date? = nil,
+        isDailySong: Bool = false,
+        selectedDate: Date? = nil,
+        previewUrl: String? = nil
+    ) {
+        self.id = id
+        self.senderId = senderId
+        self.recipientId = recipientId
+        self.trackId = trackId
+        self.trackName = trackName
+        self.artistName = artistName
+        self.albumArtUrl = albumArtUrl
+        self.message = message
+        self.status = status
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.playedAt = playedAt
+        self.savedAt = savedAt
+        self.isDailySong = isDailySong
+        self.selectedDate = selectedDate
+        self.previewUrl = previewUrl
+    }
+}

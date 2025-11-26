@@ -17,7 +17,7 @@ struct PhlockDetailView: View {
         ZStack {
             if isLoading {
                 ProgressView("Loading recipients...")
-                    .font(.lora(size: 15))
+                    .font(.dmSans(size: 10))
             } else if let error = errorMessage {
                 PhlockErrorView(message: error) {
                     Task { await loadRecipients() }
@@ -34,7 +34,7 @@ struct PhlockDetailView: View {
 
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Recipients (\(recipients.count))")
-                                .font(.lora(size: 20, weight: .bold))
+                                .font(.dmSans(size: 20, weight: .semiBold))
                                 .padding(.horizontal, 16)
 
                             VStack(spacing: 0) {
@@ -64,7 +64,7 @@ struct PhlockDetailView: View {
                     dismiss()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 22, weight: .medium))
+                        .font(.dmSans(size: 20, weight: .semiBold))
                         .foregroundColor(.primary)
                 }
             }
@@ -130,7 +130,7 @@ struct TrackHeaderView: View {
                     .cornerRadius(12)
                     .overlay(
                         Image(systemName: "music.note")
-                            .font(.system(size: 32))
+                            .font(.dmSans(size: 32, weight: .bold))
                             .foregroundColor(.gray)
                     )
             }
@@ -138,16 +138,16 @@ struct TrackHeaderView: View {
             // Track Info
             VStack(alignment: .leading, spacing: 6) {
                 Text(phlock.trackName)
-                    .font(.lora(size: 18, weight: .bold))
+                    .font(.dmSans(size: 10, weight: .medium))
                     .lineLimit(2)
 
                 Text(phlock.artistName)
-                    .font(.lora(size: 15))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
 
                 Text("Last sent \(phlock.lastSentAt.shortRelativeTimeString())")
-                    .font(.lora(size: 13))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.secondary)
             }
 
@@ -165,7 +165,7 @@ struct SummaryMetricsView: View {
     var body: some View {
         VStack(spacing: 16) {
             Text("Engagement Summary")
-                .font(.lora(size: 16, weight: .semiBold))
+                .font(.dmSans(size: 10))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 16) {
@@ -203,14 +203,14 @@ struct MetricBox: View {
     var body: some View {
         VStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 20))
+                .font(.dmSans(size: 20, weight: .semiBold))
                 .foregroundColor(.blue)
 
             Text(value)
-                .font(.lora(size: 20, weight: .bold))
+                .font(.dmSans(size: 20, weight: .semiBold))
 
             Text(label)
-                .font(.lora(size: 12))
+                .font(.dmSans(size: 10))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -256,21 +256,21 @@ struct RecipientRowView: View {
                 // User Info
                 VStack(alignment: .leading, spacing: 4) {
                     Text(recipient.user.displayName)
-                        .font(.lora(size: 16, weight: .semiBold))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(.primary)
 
                     HStack(spacing: 6) {
                         Image(systemName: recipient.statusIcon)
-                            .font(.system(size: 12))
+                            .font(.dmSans(size: 10))
 
                         Text(recipient.statusText)
-                            .font(.lora(size: 13))
+                            .font(.dmSans(size: 10))
                     }
                     .foregroundColor(statusSwiftUIColor(recipient.statusColor))
 
                     if let message = recipient.message, !message.isEmpty {
                         Text("\"\(message)\"")
-                            .font(.lora(size: 13, weight: .medium))
+                            .font(.dmSans(size: 10))
                             .foregroundColor(.secondary)
                             .lineLimit(2)
                             .padding(.top, 2)
@@ -306,14 +306,14 @@ struct PhlockErrorView: View {
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 48))
+                .font(.dmSans(size: 48, weight: .bold))
                 .foregroundColor(.orange)
 
             Text("Error")
-                .font(.lora(size: 20, weight: .semiBold))
+                .font(.dmSans(size: 20, weight: .semiBold))
 
             Text(message)
-                .font(.lora(size: 15))
+                .font(.dmSans(size: 10))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
@@ -321,7 +321,7 @@ struct PhlockErrorView: View {
             Button("Try Again") {
                 retry()
             }
-            .font(.lora(size: 16, weight: .semiBold))
+            .font(.dmSans(size: 10))
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
             .background(Color.blue)

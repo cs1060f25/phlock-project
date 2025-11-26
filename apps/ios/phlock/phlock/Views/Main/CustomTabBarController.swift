@@ -12,6 +12,7 @@ struct CustomTabBarView: View {
     @Binding var scrollFeedToTopTrigger: Int
     @Binding var scrollFriendsToTopTrigger: Int
     @Binding var scrollNotificationsToTopTrigger: Int
+    @Binding var scrollProfileToTopTrigger: Int
     @Environment(\.colorScheme) var colorScheme
 
     let feedView: AnyView
@@ -31,6 +32,7 @@ struct CustomTabBarView: View {
         scrollFeedToTopTrigger: Binding<Int>,
         scrollFriendsToTopTrigger: Binding<Int>,
         scrollNotificationsToTopTrigger: Binding<Int>,
+        scrollProfileToTopTrigger: Binding<Int>,
         feedView: AnyView,
         friendsView: AnyView,
         notificationsView: AnyView,
@@ -47,6 +49,7 @@ struct CustomTabBarView: View {
         _scrollFeedToTopTrigger = scrollFeedToTopTrigger
         _scrollFriendsToTopTrigger = scrollFriendsToTopTrigger
         _scrollNotificationsToTopTrigger = scrollNotificationsToTopTrigger
+        _scrollProfileToTopTrigger = scrollProfileToTopTrigger
         self.feedView = feedView
         self.friendsView = friendsView
         self.notificationsView = notificationsView
@@ -174,8 +177,14 @@ struct CustomTabBarView: View {
         if profileNavigationPath.count > 0 {
             profileNavigationPath = NavigationPath()
             print("✅ Profile navigation path reset")
-        } else if tapCount > 1 {
-            print("🔄 Refreshing profile view")
+        } else {
+            switch tapCount {
+            case 1:
+                scrollProfileToTopTrigger += 1
+                print("⬆️ Scrolling profile to top")
+            default:
+                print("🔄 Refreshing profile view")
+            }
         }
     }
 }
@@ -268,12 +277,12 @@ struct TabBarButton: View {
                     customIcon
                 } else {
                     Image(systemName: isSelected ? selectedIcon : icon)
-                        .font(.system(size: 24))
+                        .font(.dmSans(size: 20, weight: .semiBold))
                         .foregroundColor(iconColor)
                 }
 
                 Text(title)
-                    .font(.lora(size: 10, weight: .medium))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(iconColor)
             }
             .frame(maxWidth: .infinity)
@@ -353,7 +362,7 @@ struct ProfileTabIcon: View {
 
     private var initialsView: some View {
         Text(initials(from: displayName))
-            .font(.lora(size: 11, weight: .semiBold))
+            .font(.dmSans(size: 10))
             .foregroundColor(.primary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.gray.opacity(0.3))

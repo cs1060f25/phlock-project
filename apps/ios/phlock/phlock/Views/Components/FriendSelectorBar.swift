@@ -33,10 +33,10 @@ struct FriendSelectorBar: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
-                    .font(.system(size: 14))
+                    .font(.dmSans(size: 10))
 
                 TextField("Search friends", text: $searchText)
-                    .font(.lora(size: 14))
+                    .font(.dmSans(size: 10))
                     .textFieldStyle(.plain)
                     .focused($isSearchFocused)
                     .submitLabel(.search)
@@ -47,7 +47,7 @@ struct FriendSelectorBar: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
-                            .font(.system(size: 14))
+                            .font(.dmSans(size: 10))
                     }
                     .buttonStyle(.plain)
                 }
@@ -68,10 +68,10 @@ struct FriendSelectorBar: View {
             } else if filteredFriends.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: searchText.isEmpty ? "person.3" : "magnifyingglass")
-                        .font(.system(size: 24))
+                        .font(.dmSans(size: 20, weight: .semiBold))
                         .foregroundColor(.secondary)
                     Text(searchText.isEmpty ? "No friends yet" : "No friends found")
-                        .font(.lora(size: 14))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(.secondary)
                 }
                 .padding(.vertical, 20)
@@ -193,7 +193,7 @@ struct FriendSelectorItem: View {
                         .frame(width: 20, height: 20)
                         .overlay(
                             Image(systemName: "checkmark")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.dmSans(size: 10))
                                 .foregroundColor(.white)
                         )
                         .offset(x: 2, y: 2)
@@ -202,7 +202,7 @@ struct FriendSelectorItem: View {
 
             // Name
             Text(friend.displayName)
-                .font(.lora(size: 12))
+                .font(.dmSans(size: 10))
                 .lineLimit(1)
                 .foregroundColor(.primary)
                 .frame(width: 60)

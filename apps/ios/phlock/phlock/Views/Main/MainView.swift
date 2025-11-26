@@ -30,6 +30,7 @@ struct MainView: View {
                     scrollFeedToTopTrigger: $navigationState.scrollFeedToTopTrigger,
                     scrollFriendsToTopTrigger: $navigationState.scrollFriendsToTopTrigger,
                     scrollNotificationsToTopTrigger: $navigationState.scrollNotificationsToTopTrigger,
+                    scrollProfileToTopTrigger: $navigationState.scrollProfileToTopTrigger,
                     feedView: AnyView(
                         FeedView(navigationPath: $navigationState.feedNavigationPath, refreshTrigger: $navigationState.refreshFeedTrigger, scrollToTopTrigger: $navigationState.scrollFeedToTopTrigger)
                             .environmentObject(authState)
@@ -57,9 +58,11 @@ struct MainView: View {
                         .environmentObject(navigationState)
                     ),
                     profileView: AnyView(
-                        ProfileView()
-                            .environmentObject(authState)
-                            .environmentObject(playbackService)
+                        NavigationStack(path: $navigationState.profileNavigationPath) {
+                            ProfileView()
+                        }
+                        .environmentObject(authState)
+                        .environmentObject(playbackService)
                     )
                 )
                 .onAppear {
@@ -97,80 +100,102 @@ struct MainView: View {
 
             // QuickSendBar overlay - sits above everything including mini player
             if showMiniPlayerShareSheet, let track = miniPlayerTrackToShare {
-                QuickSendBar(
-                    track: track,
-                    onDismiss: {
-                        withAnimation(.easeOut(duration: 0.3)) {
-                            showMiniPlayerShareSheet = false
-                            miniPlayerTrackToShare = nil
-                        }
-                    },
-                    onSendComplete: { _ in
-                        showMiniPlayerShareSheet = false
-                        miniPlayerTrackToShare = nil
-                    },
-                    additionalBottomInset: QuickSendBar.Layout.overlayInset
-                )
-                .environmentObject(authState)
+                VStack {
+                    Spacer()
+                    ShareOptionsSheet(
+                        track: track,
+                        shareURL: ShareLinkBuilder.url(for: track),
+                        context: .miniPlayer,
+                        onDismiss: {
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                showMiniPlayerShareSheet = false
+                                miniPlayerTrackToShare = nil
+                            }
+                        },
+                        onCopy: { url in UIPasteboard.general.string = url.absoluteString },
+                        onOpen: { url in UIApplication.shared.open(url) },
+                        onFallback: { _ in }
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .zIndex(QuickSendBar.Layout.overlayZ)
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showMiniPlayerShareSheet)
+                .ignoresSafeArea(.keyboard, edges: .bottom)
             }
 
             if showRecognitionQuickSend, let track = recognitionTrackToShare {
-                QuickSendBar(
-                    track: track,
-                    onDismiss: {
-                        withAnimation(.easeOut(duration: 0.3)) {
-                            showRecognitionQuickSend = false
-                            recognitionTrackToShare = nil
-                        }
-                    },
-                    onSendComplete: { _ in
-                        showRecognitionQuickSend = false
-                        recognitionTrackToShare = nil
-                    },
-                    additionalBottomInset: QuickSendBar.Layout.overlayInset
-                )
-                .environmentObject(authState)
+                VStack {
+                    Spacer()
+                    ShareOptionsSheet(
+                        track: track,
+                        shareURL: ShareLinkBuilder.url(for: track),
+                        context: .miniPlayer,
+                        onDismiss: {
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                showRecognitionQuickSend = false
+                                recognitionTrackToShare = nil
+                            }
+                        },
+                        onCopy: { url in UIPasteboard.general.string = url.absoluteString },
+                        onOpen: { url in UIApplication.shared.open(url) },
+                        onFallback: { _ in }
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .zIndex(QuickSendBar.Layout.overlayZ)
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showRecognitionQuickSend)
+                .ignoresSafeArea(.keyboard, edges: .bottom)
             }
 
             // Share sheet presented at top level above tab bar
             if navigationState.showShareSheet, let track = navigationState.shareTrack {
-                QuickSendBar(
-                    track: track,
-                    onDismiss: {
-                        withAnimation(.easeOut(duration: 0.3)) {
-                            navigationState.showShareSheet = false
-                            navigationState.shareTrack = nil
-                        }
-                    },
-                    onSendComplete: { _ in
-                        navigationState.showShareSheet = false
-                        navigationState.shareTrack = nil
-                    },
-                    additionalBottomInset: QuickSendBar.Layout.overlayInset
-                )
-                .environmentObject(authState)
+                VStack {
+                    Spacer()
+                    ShareOptionsSheet(
+                        track: track,
+                        shareURL: ShareLinkBuilder.url(for: track),
+                        context: .overlay,
+                        onDismiss: {
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                navigationState.showShareSheet = false
+                                navigationState.shareTrack = nil
+                            }
+                        },
+                        onCopy: { url in UIPasteboard.general.string = url.absoluteString },
+                        onOpen: { url in UIApplication.shared.open(url) },
+                        onFallback: { _ in }
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .zIndex(QuickSendBar.Layout.overlayZ + 100) // Higher z-index to ensure it's above tab bar
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: navigationState.showShareSheet)
+                .ignoresSafeArea(.keyboard, edges: .bottom)
             }
+            // Full Screen Player Overlay
+            if navigationState.showFullPlayer {
+                FullScreenPlayerView(
+                    playbackService: playbackService,
+                    isPresented: $navigationState.showFullPlayer
+                )
+                .environmentObject(authState)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(100)
             }
-            .ignoresSafeArea(.keyboard, edges: .bottom)
-            .environment(\.miniPlayerBottomInset, miniPlayerInset)
+        }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .environment(\.miniPlayerBottomInset, miniPlayerInset)
         .environmentObject(playbackService)
         .environmentObject(navigationState)
-        .fullScreenCover(isPresented: $navigationState.showFullPlayer) {
-            FullScreenPlayerView(
-                playbackService: playbackService,
-                isPresented: $navigationState.showFullPlayer
-            )
-            .environmentObject(authState)
-        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.88), value: navigationState.showFullPlayer)
     }
 }
 

@@ -426,6 +426,47 @@ class SpotifyService: NSObject {
         return false
     }
 
+    /// Check if multiple tracks are saved in the user's Spotify library (batch check)
+    /// - Parameters:
+    ///   - trackIds: Array of Spotify track IDs (max 50)
+    ///   - accessToken: User's Spotify access token
+    /// - Returns: Dictionary mapping track ID to saved status
+    func areTracksSaved(trackIds: [String], accessToken: String) async throws -> [String: Bool] {
+        guard !trackIds.isEmpty else { return [:] }
+
+        // Spotify API supports up to 50 IDs at once
+        let limitedIds = Array(trackIds.prefix(50))
+        let idsString = limitedIds.joined(separator: ",")
+
+        guard let url = URL(string: "https://api.spotify.com/v1/me/tracks/contains?ids=\(idsString)") else {
+            throw SpotifyError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyError.apiError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            if let results = try? JSONDecoder().decode([Bool].self, from: data) {
+                var resultDict: [String: Bool] = [:]
+                for (index, trackId) in limitedIds.enumerated() where index < results.count {
+                    resultDict[trackId] = results[index]
+                }
+                return resultDict
+            }
+        } else if httpResponse.statusCode == 401 {
+            throw SpotifyError.apiError("Unauthorized - token may be expired")
+        }
+
+        return [:]
+    }
+
     // MARK: - Convenience Methods for Daily Playlist
 
     /// Add a track to the user's library

@@ -50,12 +50,12 @@ struct ShareToast: View {
         HStack(spacing: 12) {
             // Icon
             Image(systemName: type.icon)
-                .font(.system(size: 20))
+                .font(.dmSans(size: 20, weight: .semiBold))
                 .foregroundColor(type.color)
 
             // Message
             Text(message)
-                .font(.lora(size: 15))
+                .font(.dmSans(size: 10))
                 .foregroundColor(textColor)
 
             Spacer()
@@ -65,7 +65,7 @@ struct ShareToast: View {
                 Button("undo") {
                     onUndo()
                 }
-                .font(.lora(size: 14, weight: .semiBold))
+                .font(.dmSans(size: 10))
                 .foregroundColor(.blue)
             }
         }

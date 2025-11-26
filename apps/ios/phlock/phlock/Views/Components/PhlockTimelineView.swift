@@ -122,7 +122,7 @@ struct TimelineHeader: View {
                 .frame(width: 60, height: 60)
                 .overlay(
                     Image(systemName: "music.note")
-                        .font(.system(size: 24))
+                        .font(.dmSans(size: 20, weight: .semiBold))
                         .foregroundColor(.white)
                 )
 
@@ -130,10 +130,10 @@ struct TimelineHeader: View {
                 Text(phlock.trackName)
                     .font(.system(size: 18, weight: .bold, design: .rounded))
                 Text(phlock.artistName)
-                    .font(.system(size: 14))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.secondary)
                 Text("Timeline View")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.blue)
             }
 
@@ -275,7 +275,7 @@ struct TimelineCanvas: View {
 
             context.draw(
                 Text(timeText)
-                    .font(.system(size: 9))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.secondary),
                 at: CGPoint(x: x, y: size.height - 15),
                 anchor: .center
@@ -341,7 +341,7 @@ struct TimelineCanvas: View {
             // Draw initial letter
             context.draw(
                 Text(String(event.userName.prefix(1)))
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.dmSans(size: 10, weight: .medium))
                     .foregroundColor(.white.opacity(0.9)),
                 at: CGPoint(x: x, y: laneY),
                 anchor: .center
@@ -490,27 +490,27 @@ struct EventDetailCard: View {
                 .frame(width: 44, height: 44)
                 .overlay(
                     Text(String(event.userName.prefix(1)))
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.dmSans(size: 10, weight: .medium))
                         .foregroundColor(.white)
                 )
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(event.userName)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.dmSans(size: 10))
 
                 Text(event.action)
-                    .font(.system(size: 14))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.secondary)
 
                 Text(event.timestamp.formatted(date: .abbreviated, time: .shortened))
-                    .font(.system(size: 12))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.secondary)
             }
 
             Spacer()
 
             Text("Gen \(event.depth)")
-                .font(.system(size: 14, weight: .medium))
+                .font(.dmSans(size: 10))
                 .foregroundColor(.blue)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)

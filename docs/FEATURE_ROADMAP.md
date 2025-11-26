@@ -1,6 +1,6 @@
-# Phlock Feature Roadmap
+# Phlock Feature Roadmap (Legacy)
 
-This document tracks potential features for Phlock, with detailed descriptions of functionality and implementation approaches.
+This is the legacy viral-sharing roadmap. The active daily curation priorities and production blockers are tracked in `CRITICAL_FEATURES_AND_IMPLEMENTATION_PLAN.md` and `claude.md`.
 
 ---
 

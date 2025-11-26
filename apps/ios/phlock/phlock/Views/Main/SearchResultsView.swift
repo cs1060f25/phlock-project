@@ -307,17 +307,17 @@ struct TrackResultRow: View {
             // Track Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(track.name)
-                    .font(.lora(size: 16, weight: isCurrentTrack ? .bold : .semiBold))
+                    .font(.dmSans(size: 10))
                     .lineLimit(1)
                     .foregroundColor(.primary)
 
                 if showType {
                     Text("Track")
-                        .font(.lora(size: 13, weight: isCurrentTrack ? .semiBold : .regular))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(.secondary)
                 } else if let artist = track.artistName {
                     Text(artist)
-                        .font(.lora(size: 14, weight: isCurrentTrack ? .semiBold : .regular))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
@@ -341,7 +341,7 @@ struct TrackResultRow: View {
                             .frame(width: 24, height: 24)
                         if isCommittedAsDaily || isPendingSelection {
                             Image(systemName: "checkmark")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.dmSans(size: 10))
                                 .foregroundColor(.white)
                         }
                     }
@@ -357,7 +357,7 @@ struct TrackResultRow: View {
                 }
             } label: {
                 Image(systemName: "paperplane")
-                    .font(.system(size: 20))
+                    .font(.dmSans(size: 20, weight: .semiBold))
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
@@ -371,7 +371,7 @@ struct TrackResultRow: View {
                 }
             } label: {
                 Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 28))
+                    .font(.dmSans(size: 20, weight: .bold))
                     .foregroundColor(isCurrentTrack ? .primary : .secondary)
             }
             .buttonStyle(.plain)
@@ -434,12 +434,12 @@ struct ArtistResultRow: View {
             // Artist Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(artist.name)
-                    .font(.lora(size: 16, weight: .semiBold))
+                    .font(.dmSans(size: 10))
                     .lineLimit(1)
 
                 if showType {
                     Text("Artist")
-                        .font(.lora(size: 13))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(.secondary)
                 }
             }
@@ -458,14 +458,14 @@ struct EmptySearchView: View {
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 48))
+                .font(.dmSans(size: 48, weight: .bold))
                 .foregroundColor(.gray)
 
             Text("search for music")
-                .font(.lora(size: 20, weight: .semiBold))
+                .font(.dmSans(size: 20, weight: .semiBold))
 
             Text("find tracks and artists to send")
-                .font(.lora(size: 15))
+                .font(.dmSans(size: 10))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -480,14 +480,14 @@ struct NoResultsView: View {
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "music.note.slash")
-                .font(.system(size: 48))
+                .font(.dmSans(size: 48, weight: .bold))
                 .foregroundColor(.gray)
 
             Text("no results found")
-                .font(.lora(size: 20, weight: .semiBold))
+                .font(.dmSans(size: 20, weight: .semiBold))
 
             Text("try a different search term")
-                .font(.lora(size: 15))
+                .font(.dmSans(size: 10))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -501,14 +501,14 @@ struct ErrorView: View {
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 48))
+                .font(.dmSans(size: 48, weight: .bold))
                 .foregroundColor(.orange)
 
             Text("search error")
-                .font(.lora(size: 20, weight: .semiBold))
+                .font(.dmSans(size: 20, weight: .semiBold))
 
             Text(message)
-                .font(.lora(size: 15))
+                .font(.dmSans(size: 10))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
@@ -516,7 +516,7 @@ struct ErrorView: View {
             Button("Try Again") {
                 retry()
             }
-            .font(.lora(size: 16, weight: .semiBold))
+            .font(.dmSans(size: 10))
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
             .background(Color.black)
@@ -673,7 +673,7 @@ struct RecentTrackCard: View {
                                         .frame(width: 26, height: 26)
                                     if isCommittedAsDaily || isPendingSelection {
                                         Image(systemName: "checkmark")
-                                            .font(.system(size: 12, weight: .bold))
+                                            .font(.dmSans(size: 10))
                                             .foregroundColor(.white)
                                     }
                                 }
@@ -694,7 +694,7 @@ struct RecentTrackCard: View {
                                         .frame(width: 26, height: 26)
 
                                     Image(systemName: "paperplane.fill")
-                                        .font(.system(size: 11, weight: .bold))
+                                        .font(.dmSans(size: 10))
                                         .foregroundColor(.white)
                                 }
                             }
@@ -715,7 +715,7 @@ struct RecentTrackCard: View {
                     }
                 } label: {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 32, weight: .bold))
+                        .font(.dmSans(size: 32, weight: .bold))
                         .foregroundColor(.white)
                         .shadow(color: Color.black.opacity(0.5), radius: 8, x: 0, y: 3)
                         .padding(20)
@@ -727,7 +727,7 @@ struct RecentTrackCard: View {
             // Track Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(track.name)
-                    .font(.lora(size: 13, weight: .semiBold))
+                    .font(.dmSans(size: 10))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .foregroundColor(.primary)
@@ -735,7 +735,7 @@ struct RecentTrackCard: View {
 
                 if let artist = track.artistName {
                     Text(artist)
-                        .font(.lora(size: 11))
+                        .font(.dmSans(size: 10))
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .foregroundColor(.secondary)

@@ -1,6 +1,6 @@
-# Phlock Branching Strategy
+# Phlock Branching Strategy (Archived)
 
-This document outlines the git branching strategy for the Phlock monorepo, aligned with our 7-phase development roadmap.
+> Legacy phase-based model. Current work lives on `product/daily-curation` with `main` (stable) and `develop` (integration). Keep feature branches short-lived off `product/daily-curation`.
 
 ## Strategy Overview
 

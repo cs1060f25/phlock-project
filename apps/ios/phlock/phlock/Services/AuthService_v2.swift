@@ -834,6 +834,25 @@ class AuthServiceV2 {
         try await supabase.auth.signOut()
         print("👋 Signed out successfully")
     }
+    // MARK: - Account Deletion
+
+    /// Delete the current user's account
+    /// This calls a Supabase Edge Function to ensure all data (Auth + Public tables) is cleaned up
+    func deleteAccount() async throws {
+        print("⚠️ Initiating account deletion...")
+
+        // Call Edge Function to handle full deletion
+        // We use an Edge Function because deleting from auth.users requires admin privileges
+        // or a self-deletion policy, and we want to ensure all related data is wiped.
+        do {
+            let _: Void = try await supabase.functions.invoke("delete-account")
+            print("✅ Account deletion request sent successfully")
+        } catch {
+            print("❌ Failed to invoke delete-account function: \(error)")
+            // Fallback: Try to sign out at least so the user can't access the app
+            throw error
+        }
+    }
 }
 
 // Note: PlatformType is defined in User.swift

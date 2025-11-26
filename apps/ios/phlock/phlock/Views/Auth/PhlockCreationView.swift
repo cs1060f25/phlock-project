@@ -29,10 +29,10 @@ struct PhlockCreationView: View {
             // Header
             VStack(spacing: 8) {
                 Text("build your phlock")
-                    .font(.lora(size: 32, weight: .bold))
-                
+                    .font(.dmSans(size: 32, weight: .bold))
+
                 Text("add friends to share music with")
-                    .font(.lora(size: 17))
+                    .font(.dmSans(size: 17))
                     .foregroundColor(.secondary)
             }
             .padding(.top, 20)
@@ -41,11 +41,11 @@ struct PhlockCreationView: View {
             // Profile Input (Minimal)
             HStack {
                 Text("Display Name:")
-                    .font(.lora(size: 15, weight: .medium))
+                    .font(.dmSans(size: 15))
                     .foregroundColor(.secondary)
-                
+
                 TextField("Your Name", text: $displayName)
-                    .font(.lora(size: 17, weight: .semiBold))
+                    .font(.dmSans(size: 17))
                     .textFieldStyle(.plain)
             }
             .padding()
@@ -60,7 +60,7 @@ struct PhlockCreationView: View {
                     .foregroundColor(.secondary)
                 
                 TextField("Search for friends...", text: $searchText)
-                    .font(.lora(size: 16))
+                    .font(.dmSans(size: 16))
                     .textFieldStyle(.plain)
                     .autocorrectionDisabled()
                 
@@ -96,16 +96,16 @@ struct PhlockCreationView: View {
                                         .fill(Color.blue.opacity(0.1))
                                         .frame(width: 48, height: 48)
                                     Image(systemName: "person.crop.circle.badge.plus")
-                                        .font(.system(size: 24))
+                                        .font(.dmSans(size: 24, weight: .medium))
                                         .foregroundColor(.blue)
                                 }
                                 
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Find from Contacts")
-                                        .font(.lora(size: 16, weight: .bold))
+                                        .font(.dmSans(size: 16, weight: .medium))
                                         .foregroundColor(.primary)
                                     Text("See who's already on Phlock")
-                                        .font(.lora(size: 13))
+                                        .font(.dmSans(size: 13))
                                         .foregroundColor(.secondary)
                                 }
                                 
@@ -132,7 +132,7 @@ struct PhlockCreationView: View {
                             .padding(.top, 40)
                     } else if !searchText.isEmpty && searchResults.isEmpty {
                         Text("No users found")
-                            .font(.lora(size: 15))
+                            .font(.dmSans(size: 15))
                             .foregroundColor(.secondary)
                             .padding(.top, 40)
                     } else {
@@ -160,19 +160,19 @@ struct PhlockCreationView: View {
                                                 .frame(width: 48, height: 48)
                                                 .overlay(
                                                     Text(user.displayName.prefix(1).uppercased())
-                                                        .font(.lora(size: 20, weight: .bold))
+                                                        .font(.dmSans(size: 20, weight: .medium))
                                                         .foregroundColor(.secondary)
                                                 )
                                         }
                                         
                                         VStack(alignment: .leading, spacing: 4) {
                                             Text(user.displayName)
-                                                .font(.lora(size: 16, weight: .medium))
+                                                .font(.dmSans(size: 16, weight: .medium))
                                                 .foregroundColor(.primary)
-                                            
+
                                             if let username = user.username {
                                                 Text("@\(username)")
-                                                    .font(.lora(size: 13))
+                                                    .font(.dmSans(size: 13))
                                                     .foregroundColor(.secondary)
                                             }
                                         }
@@ -218,7 +218,7 @@ struct PhlockCreationView: View {
                         }
                         
                         Text(selectedFriends.isEmpty ? "Skip & Start Phlock" : "Add \(selectedFriends.count) Friends & Start")
-                            .font(.lora(size: 17, weight: .medium))
+                            .font(.dmSans(size: 17, weight: .semiBold))
                     }
                     .foregroundColor(colorScheme == .dark ? .black : .white)
                     .frame(maxWidth: .infinity)

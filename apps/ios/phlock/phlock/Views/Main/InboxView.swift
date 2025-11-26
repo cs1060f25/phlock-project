@@ -74,7 +74,7 @@ struct InboxView: View {
                         ProgressView()
                             .scaleEffect(1.5)
                         Text("Loading shares...")
-                            .font(.lora(size: 15))
+                            .font(.dmSans(size: 10))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxHeight: .infinity)
@@ -145,7 +145,7 @@ struct InboxView: View {
                     }
                 } label: {
                     Text(filter.rawValue)
-                        .font(.lora(size: 15, weight: selectedFilter == filter ? .bold : .regular))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(selectedFilter == filter ? .primary : .secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -176,29 +176,29 @@ struct InboxView: View {
 
             VStack(spacing: 12) {
                 Text(selectedFilter == .received ? "🎵" : "💜")
-                    .font(.system(size: 64))
+                    .font(.dmSans(size: 64, weight: .bold))
 
                 Text(selectedFilter == .received ? "no shares yet" : "no saved songs yet")
-                    .font(.lora(size: 28, weight: .bold))
+                    .font(.dmSans(size: 20, weight: .bold))
 
                 Text(selectedFilter == .received
                     ? "when friends share songs with you,\nthey'll appear here"
                     : "songs you save from shares\nwill appear here")
-                    .font(.lora(size: 15))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
 
                 if selectedFilter == .received {
                     Text("start by discovering music and\nsharing it with your friends!")
-                        .font(.lora(size: 13))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.top, 4)
                         .padding(.horizontal, 24)
                 } else {
                     Text("swipe right on received shares\nto save them to your collection!")
-                        .font(.lora(size: 13))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.top, 4)
@@ -323,7 +323,7 @@ struct InboxView: View {
 
     private func sectionHeader(for date: String, isFirst: Bool) -> some View {
         Text(date)
-            .font(.lora(size: 13, weight: .bold))
+            .font(.dmSans(size: 10))
             .foregroundColor(.secondary)
             .textCase(.uppercase)
             .padding(.top, isFirst ? 0 : 4)
@@ -591,13 +591,13 @@ struct ShareRowView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     // Track Name
                     Text(share.trackName)
-                        .font(.lora(size: 15, weight: isCurrentTrack ? .bold : .regular))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(.primary)
                         .lineLimit(1)
 
                     // Artist Name
                     Text(share.artistName)
-                        .font(.lora(size: 13))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
 
@@ -628,7 +628,7 @@ struct ShareRowView: View {
                             }
 
                             Text(sender.displayName)
-                                .font(.lora(size: 12, weight: .semiBold))
+                                .font(.dmSans(size: 10))
                                 .foregroundColor(.blue)
                         }
                     }
@@ -637,7 +637,7 @@ struct ShareRowView: View {
                     // Message on new line
                     if let message = share.message, !message.isEmpty {
                         Text(message)
-                            .font(.lora(size: 12, weight: .medium))
+                            .font(.dmSans(size: 10))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
@@ -655,7 +655,7 @@ struct ShareRowView: View {
                     }
                 } label: {
                     Image(systemName: "paperplane")
-                        .font(.system(size: 20))
+                        .font(.dmSans(size: 20, weight: .semiBold))
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -665,7 +665,7 @@ struct ShareRowView: View {
                     handlePlayTap()
                 } label: {
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 28))
+                        .font(.dmSans(size: 20, weight: .bold))
                         .foregroundColor(isCurrentTrack ? .primary : .secondary)
                 }
                 .buttonStyle(.plain)
@@ -762,24 +762,24 @@ struct SentShareRowView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         // Track Name
                         Text(share.trackName)
-                            .font(.lora(size: 15, weight: isCurrentTrack ? .bold : .regular))
+                            .font(.dmSans(size: 10))
                             .foregroundColor(.primary)
                             .lineLimit(1)
 
                         // Artist Name
                         Text(share.artistName)
-                            .font(.lora(size: 13))
+                            .font(.dmSans(size: 10))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
 
                         // Recipient Info
                         HStack(spacing: 4) {
                             Text("to")
-                                .font(.lora(size: 12))
+                                .font(.dmSans(size: 10))
                                 .foregroundColor(.secondary)
 
                             Text(recipient.displayName)
-                                .font(.lora(size: 12, weight: .semiBold))
+                                .font(.dmSans(size: 10))
                                 .foregroundColor(.blue)
 
                             // Status indicator
@@ -787,7 +787,7 @@ struct SentShareRowView: View {
                                 Text("·")
                                     .foregroundColor(.secondary)
                                 Text(statusText)
-                                    .font(.lora(size: 12, weight: .medium))
+                                    .font(.dmSans(size: 10))
                                     .foregroundColor(statusColor)
                             }
                         }
@@ -800,14 +800,14 @@ struct SentShareRowView: View {
                         showShareSheet.toggle()
                     } label: {
                         Image(systemName: showShareSheet ? "paperplane.fill" : "paperplane")
-                            .font(.system(size: 20))
+                            .font(.dmSans(size: 20, weight: .semiBold))
                             .foregroundColor(showShareSheet ? .primary : .secondary)
                     }
                     .buttonStyle(.plain)
 
                     // Play button
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 28))
+                        .font(.dmSans(size: 20, weight: .bold))
                         .foregroundColor(isCurrentTrack ? .primary : .secondary)
                 }
                 .contentShape(Rectangle())

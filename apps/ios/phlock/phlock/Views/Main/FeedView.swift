@@ -33,7 +33,8 @@ struct FeedView: View {
     @State private var toastMessage = ""
     @State private var toastType: ShareToast.ToastType = .success
 
-    @State private var currentPlayingIndex: Int? = nil
+    @State private var nudgedUserIds: Set<UUID> = []
+    @State private var nudgedResetDate = Calendar.current.startOfDay(for: Date())
     @State private var autoplayEnabled = true
     @State private var savedTrackIds: Set<String> = []
     @State private var myDailySong: Share?
@@ -42,6 +43,7 @@ struct FeedView: View {
     @State private var myDailySongClearTrigger = 0
     @State private var myDailySongRefreshTrigger = 0
     @State private var myDailySongScrollToTopTrigger = 0
+    @State private var hasLoadedPhlockOnce = false
 
     // Helper struct to organize feed items
     struct FeedItem: Identifiable {
@@ -90,29 +92,64 @@ struct FeedView: View {
         return items
     }
 
+    private var shouldGatePhlock: Bool {
+        guard authState.currentUser != nil else { return false }
+        let hasSongToday = myDailySong != nil || (authState.currentUser?.hasSelectedToday ?? false)
+        return !hasSongToday
+    }
+
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            VStack(spacing: 0) {
-                if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = errorMessage {
-                    FeedErrorStateView(
-                        error: error,
-                        onRetry: {
-                            Task { await loadDailyPlaylist() }
-                        }
-                    )
-                } else if dailySongs.isEmpty && phlockMembers.isEmpty {
-                    EmptyDailyPlaylistView(
-                        phlockMembers: phlockMembers,
-                        onAddMemberTapped: { position in
-                            selectedPositionToAdd = position
-                            showAddSheet = true
-                        }
-                    )
-                } else {
-                    dailyPlaylistList
+            ZStack {
+                VStack(spacing: 0) {
+                    if isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if let error = errorMessage {
+                        FeedErrorStateView(
+                            error: error,
+                            onRetry: {
+                                Task { await loadDailyPlaylist() }
+                            }
+                        )
+                    } else if dailySongs.isEmpty && phlockMembers.isEmpty {
+                        EmptyDailyPlaylistView(
+                            phlockMembers: phlockMembers,
+                            onAddMemberTapped: { position in
+                                selectedPositionToAdd = position
+                                showAddSheet = true
+                            }
+                        )
+                    } else {
+                        dailyPlaylistList
+                    }
+                }
+                .disabled(shouldGatePhlock)
+                .blur(radius: shouldGatePhlock ? 4 : 0)
+
+                if shouldGatePhlock {
+                    Rectangle()
+                        .fill(.thinMaterial)
+                        .opacity(0.6)
+                        .mask(
+                            LinearGradient(
+                                gradient: Gradient(stops: [
+                                    .init(color: .clear, location: 0.0),
+                                    .init(color: .white, location: 0.06),
+                                    .init(color: .white, location: 0.94),
+                                    .init(color: .clear, location: 1.0)
+                                ]),
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .ignoresSafeArea(edges: [.horizontal])
+                        .allowsHitTesting(false)
+
+                    DailySongGateView {
+                        showDailySongSheet = true
+                    }
+                    .transition(.opacity)
                 }
             }
             .navigationTitle("your phlock")
@@ -178,31 +215,37 @@ struct FeedView: View {
                 }
             }
         }
-            .toast(isPresented: $showToast, message: toastMessage, type: toastType)
-            .task {
-                await loadDailyPlaylist()
-                await loadMyDailySong()
-            }
-            .onChange(of: refreshTrigger) { newValue in
-                Task {
-                    // Scroll to top and reload data
-                    withAnimation {
-                        scrollToTopTrigger += 1
-                    }
-                    isRefreshing = true
-                    await loadDailyPlaylist()
-                    await loadMyDailySong()
-                    await MainActor.run {
-                        isRefreshing = false
-                    }
+        .toast(isPresented: $showToast, message: toastMessage, type: toastType)
+        .task {
+            // Load phlock playlist and user's daily song in parallel
+            async let playlistTask: () = loadDailyPlaylist()
+            async let mySongTask: () = loadMyDailySong()
+            await playlistTask
+            await mySongTask
+        }
+        .onChange(of: refreshTrigger) { newValue in
+            Task {
+                // Scroll to top and reload data
+                withAnimation {
+                    scrollToTopTrigger += 1
                 }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { _ in
-                if autoplayEnabled {
-                    playNextTrack()
+                isRefreshing = true
+                // Reload both in parallel
+                async let playlistTask: () = loadDailyPlaylist()
+                async let mySongTask: () = loadMyDailySong()
+                await playlistTask
+                await mySongTask
+                await MainActor.run {
+                    isRefreshing = false
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { _ in
+            if autoplayEnabled {
+                playbackService.skipForward(wrap: false)
+            }
+        }
+    }
 
 
     // MARK: - Daily Playlist List
@@ -231,7 +274,6 @@ struct FeedView: View {
                                 onPlayTapped: {
                                     // Find index in dailySongs for playback context
                                     if let songIndex = dailySongs.firstIndex(where: { $0.id == song.id }) {
-                                        currentPlayingIndex = songIndex
                                         playTrackAtIndex(songIndex)
                                     }
                                 },
@@ -261,6 +303,7 @@ struct FeedView: View {
                         if let member = item.member {
                             WaitingForSongRow(
                                 member: member,
+                                isNudged: nudgedUserIds.contains(member.id),
                                 onSwapTapped: {
                                     selectedMemberToSwap = member
                                     showSwapSheet = true
@@ -314,25 +357,25 @@ struct FeedView: View {
                                     .frame(width: 64, height: 64)
                                     .cornerRadius(12)
                                 Image(systemName: "sparkles")
-                                    .font(.system(size: 22, weight: .bold))
+                                    .font(.dmSans(size: 22, weight: .medium))
                                     .foregroundColor(.white)
                                     .shadow(color: Color.black.opacity(0.25), radius: 4, x: 0, y: 2)
                             }
 
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("select your song of the day")
-                                    .font(.lora(size: 17, weight: .bold))
+                                    .font(.dmSans(size: 17, weight: .medium))
                                     .foregroundColor(.primary)
                                 Text("share what you're feeling with your phlock")
-                                    .font(.lora(size: 13))
+                                    .font(.dmSans(size: 13))
                                     .foregroundColor(.secondary)
 
                                 HStack(spacing: 6) {
                                     Image(systemName: "hand.tap")
-                                        .font(.system(size: 12, weight: .bold))
+                                        .font(.dmSans(size: 12))
                                         .foregroundColor(.primary)
                                     Text("tap to pick")
-                                        .font(.lora(size: 12, weight: .semiBold))
+                                        .font(.dmSans(size: 12, weight: .medium))
                                         .foregroundColor(.primary)
                                         .textCase(.uppercase)
                                 }
@@ -341,7 +384,7 @@ struct FeedView: View {
                             Spacer()
 
                             Image(systemName: "chevron.right")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.dmSans(size: 16))
                                 .foregroundColor(.primary)
                         }
                         .padding(.horizontal, 16)
@@ -371,8 +414,11 @@ struct FeedView: View {
             .scrollDismissesKeyboard(.interactively)
             .refreshable {
                 isRefreshing = true
-                await loadDailyPlaylist()
-                await loadMyDailySong()
+                // Reload both in parallel
+                async let playlistTask: () = loadDailyPlaylist()
+                async let mySongTask: () = loadMyDailySong()
+                await playlistTask
+                await mySongTask
                 await MainActor.run {
                     isRefreshing = false
                 }
@@ -399,15 +445,25 @@ struct FeedView: View {
             isLoading = true
         }
         errorMessage = nil
+        let todayStart = Calendar.current.startOfDay(for: Date())
+        if todayStart != nudgedResetDate {
+            nudgedUserIds.removeAll()
+            nudgedResetDate = todayStart
+        }
 
         do {
             // Get phlock members
             phlockMembers = try await UserService.shared.getPhlockMembers(for: userId)
+            nudgedUserIds = nudgedUserIds.intersection(Set(phlockMembers.map { $0.user.id }))
             
             if phlockMembers.isEmpty {
-                dailySongs = []
-                isLoading = false
-                return
+                if !hasLoadedPhlockOnce && dailySongs.isEmpty {
+                    await useDemoPhlockState(existingMembers: phlockMembers, userId: userId)
+                    return
+                } else {
+                    isLoading = false
+                    return
+                }
             }
 
             // Get their daily songs
@@ -421,15 +477,53 @@ struct FeedView: View {
                 share.savedAt != nil ? share.trackId : nil
             })
 
+            // Use demo songs if no one has picked yet (demo mode for TestFlight)
+            if dailySongs.isEmpty {
+                dailySongs = await DemoPhlockContent.demoSongs(for: phlockMembers, recipientId: userId)
+                // Check actual Spotify library status for demo songs
+                await checkSpotifyLibraryStatus(for: dailySongs)
+                print("ℹ️ No daily songs found, using demo songs for \(phlockMembers.count) members")
+            }
+
+            hasLoadedPhlockOnce = true
             print("✅ Loaded \(dailySongs.count) daily songs from \(phlockMembers.count) phlock members")
         } catch is CancellationError {
             print("ℹ️ Daily playlist load cancelled")
         } catch {
-            errorMessage = error.localizedDescription
             print("❌ Error loading daily playlist: \(error)")
+            if !hasLoadedPhlockOnce && phlockMembers.isEmpty && dailySongs.isEmpty {
+                await useDemoPhlockState(existingMembers: phlockMembers, userId: userId)
+            } else {
+                errorMessage = error.localizedDescription
+                isLoading = false
+            }
+            return
         }
 
         isLoading = false
+    }
+
+    private func useDemoPhlockState(existingMembers: [FriendWithPosition], userId: UUID) async {
+        guard existingMembers.isEmpty else {
+            // If there are existing members, just mark loading as done
+            isLoading = false
+            hasLoadedPhlockOnce = true
+            return
+        }
+
+        let mergedMembers = DemoPhlockContent.placeholderMembers
+        let demoSongs = await DemoPhlockContent.demoSongs(for: mergedMembers, recipientId: userId)
+
+        phlockMembers = mergedMembers
+        dailySongs = demoSongs
+        // Check actual Spotify library status for demo songs
+        await checkSpotifyLibraryStatus(for: demoSongs)
+        nudgedUserIds.removeAll()
+        errorMessage = nil
+        isLoading = false
+        hasLoadedPhlockOnce = true
+
+        print("ℹ️ Showing demo phlock (3 of 5 members have songs)")
     }
 
     private func loadMyDailySong() async {
@@ -476,10 +570,6 @@ struct FeedView: View {
                 _ = await MainActor.run {
                     savedTrackIds.insert(song.trackId)
                 }
-
-                toastMessage = platformType == .spotify ? "Added to Spotify" : "Added in Apple Music"
-                toastType = .success
-                showToast = true
             } catch {
                 let message = (error as? LocalizedError)?.errorDescription ?? "Failed to add to library"
                 toastMessage = message
@@ -518,13 +608,13 @@ struct FeedView: View {
                     _ = await MainActor.run {
                         savedTrackIds.remove(song.trackId)
                     }
-                    toastMessage = "Removed from Spotify"
-                    toastType = .info
-                    showToast = true
                 case .appleMusic:
                     toastMessage = "Open Apple Music to remove track"
                     toastType = .info
                     showToast = true
+                    _ = await MainActor.run {
+                        savedTrackIds.remove(song.trackId)
+                    }
                 }
             } catch {
                 let message = (error as? LocalizedError)?.errorDescription ?? "Failed to remove from library"
@@ -619,6 +709,36 @@ struct FeedView: View {
         return rawId
     }
 
+    /// Check actual Spotify library status for tracks and update savedTrackIds
+    private func checkSpotifyLibraryStatus(for songs: [Share]) async {
+        guard let currentUser = authState.currentUser,
+              currentUser.resolvedPlatformType == .spotify else {
+            // For non-Spotify users or no user, just use demo savedAt
+            savedTrackIds = Set(songs.compactMap { $0.savedAt != nil ? $0.trackId : nil })
+            return
+        }
+
+        do {
+            let accessToken = try await fetchAccessToken(for: currentUser, platform: .spotify)
+            let trackIds = songs.map { sanitizeSpotifyId($0.trackId) }
+            let savedStatus = try await SpotifyService.shared.areTracksSaved(trackIds: trackIds, accessToken: accessToken)
+
+            // Build the set of saved track IDs
+            var newSavedIds: Set<String> = []
+            for song in songs {
+                let sanitizedId = sanitizeSpotifyId(song.trackId)
+                if savedStatus[sanitizedId] == true {
+                    newSavedIds.insert(song.trackId)
+                }
+            }
+            savedTrackIds = newSavedIds
+        } catch {
+            print("⚠️ Failed to check Spotify library status: \(error)")
+            // Fall back to demo savedAt
+            savedTrackIds = Set(songs.compactMap { $0.savedAt != nil ? $0.trackId : nil })
+        }
+    }
+
     private func resolveAppleMusicTrackId(for song: Share) async throws -> String {
         // If the trackId already looks like an Apple Music catalog ID, use it directly
         if !song.trackId.isEmpty,
@@ -696,10 +816,8 @@ struct FeedView: View {
                     type: .dailyNudge,
                     message: "\(currentUser.displayName) nudged you to pick today's song"
                 )
-                await MainActor.run {
-                    toastMessage = "Nudged \(member.displayName) to pick today's song"
-                    toastType = .info
-                    showToast = true
+                _ = await MainActor.run {
+                    nudgedUserIds.insert(member.id)
                 }
                 print("📣 Nudged \(member.id) to select daily song")
             } catch {
@@ -749,41 +867,50 @@ struct FeedView: View {
         let song = dailySongs[index]
 
         // Check if this track is already playing
-        if playbackService.currentTrack?.id == song.trackId && playbackService.isPlaying {
-            playbackService.pause()
+        if playbackService.currentTrack?.id == song.trackId {
+            if playbackService.isPlaying {
+                playbackService.pause()
+            } else {
+                playbackService.resume()
+            }
             return
         }
 
-        // Create MusicItem from Share
-        let track = MusicItem(
-            id: song.trackId,
-            name: song.trackName,
-            artistName: song.artistName,
-            previewUrl: song.previewUrl,
-            albumArtUrl: song.albumArtUrl,
-            isrc: nil,
-            playedAt: nil,
-            spotifyId: nil,
-            appleMusicId: nil,
-            popularity: nil,
-            followerCount: nil
-        )
+        let queueTracks = dailySongs.map { musicItem(from: $0) }
+        let sourceIds = dailySongs.map { Optional($0.id.uuidString) }
 
-        currentPlayingIndex = index
-        playbackService.play(
-            track: track,
-            sourceId: song.id.uuidString,
+        // Pass saved track IDs to PlaybackService for FullScreenPlayerView to use
+        playbackService.savedTrackIds = savedTrackIds
+
+        playbackService.startQueue(
+            tracks: queueTracks,
+            startAt: index,
+            sourceIds: sourceIds,
             showMiniPlayer: true
         )
     }
 
     private func playTrack(song: Share) {
-        let track = MusicItem(
-            id: song.trackId,
-            name: song.trackName,
-            artistName: song.artistName,
-            previewUrl: song.previewUrl,
-            albumArtUrl: song.albumArtUrl,
+        let track = musicItem(from: song)
+
+        // Pass saved track IDs to PlaybackService for FullScreenPlayerView to use
+        playbackService.savedTrackIds = savedTrackIds
+
+        playbackService.startQueue(
+            tracks: [track],
+            startAt: 0,
+            sourceIds: [Optional(song.id.uuidString)],
+            showMiniPlayer: true
+        )
+    }
+
+    private func musicItem(from share: Share) -> MusicItem {
+        MusicItem(
+            id: share.trackId,
+            name: share.trackName,
+            artistName: share.artistName,
+            previewUrl: share.previewUrl,
+            albumArtUrl: share.albumArtUrl,
             isrc: nil,
             playedAt: nil,
             spotifyId: nil,
@@ -791,25 +918,71 @@ struct FeedView: View {
             popularity: nil,
             followerCount: nil
         )
-
-        playbackService.play(
-            track: track,
-            sourceId: song.id.uuidString,
-            showMiniPlayer: true
-        )
     }
+}
 
-    private func playNextTrack() {
-        guard let currentIndex = currentPlayingIndex else { return }
+// MARK: - Daily Song Gate
 
-        let nextIndex = currentIndex + 1
-        if nextIndex < dailySongs.count {
-            print("🎵 Autoplaying next track at index \(nextIndex)")
-            playTrackAtIndex(nextIndex)
-        } else {
-            print("🎵 Reached end of playlist")
-            currentPlayingIndex = nil
+struct DailySongGateView: View {
+    let onPickSong: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        ZStack {
+            Color.black
+                .opacity(colorScheme == .dark ? 0.45 : 0.25)
+
+            VStack(spacing: 16) {
+                Image(systemName: "sparkles")
+                    .font(.dmSans(size: 32, weight: .medium))
+                    .foregroundColor(.primary)
+                    .padding(14)
+                    .background(
+                        LinearGradient(
+                            colors: [
+                                Color.accentColor.opacity(0.28),
+                                Color.accentColor.opacity(0.12)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .clipShape(Circle())
+
+                VStack(spacing: 6) {
+                    Text("pick your song to unlock")
+                        .font(.dmSans(size: 20, weight: .semiBold))
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, 6)
+
+                PhlockButton(
+                    title: "choose today's song",
+                    action: onPickSong,
+                    variant: .primary,
+                    fullWidth: true
+                )
+
+                Text("post yours to view everyone else's.")
+                    .font(.dmSans(size: 12))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(24)
+            .frame(maxWidth: 340)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color(UIColor.systemBackground))
+                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.45 : 0.18), radius: 16, x: 0, y: 8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
+            )
+            .padding(24)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -868,7 +1041,7 @@ struct DailyPlaylistRow: View {
 
                         // Play/pause indicator (non-interactive; tap handled by parent button)
                         Image(systemName: isCurrentlyPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 20, weight: .bold))
+                            .font(.dmSans(size: 20, weight: .medium))
                             .foregroundColor(.white)
                             .shadow(color: Color.black.opacity(0.5), radius: 4, x: 0, y: 2)
                             .opacity(song.previewUrl != nil ? 1.0 : 0.4)
@@ -878,12 +1051,12 @@ struct DailyPlaylistRow: View {
                     // Song info (Middle)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(song.trackName)
-                            .font(.lora(size: 16, weight: .bold))
+                            .font(.dmSans(size: 16, weight: .medium))
                             .foregroundColor(.primary)
                             .lineLimit(1)
-                        
+
                         Text(song.artistName)
-                            .font(.lora(size: 14, weight: .regular))
+                            .font(.dmSans(size: 14))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
@@ -904,7 +1077,7 @@ struct DailyPlaylistRow: View {
                     onSwapTapped()
                 } label: {
                     Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 20))
+                        .font(.dmSans(size: 20))
                         .foregroundColor(.primary)
                 }
                 .buttonStyle(.plain)
@@ -917,7 +1090,7 @@ struct DailyPlaylistRow: View {
                     }
                 } label: {
                     Image(systemName: isSaved ? "checkmark.circle.fill" : "plus.circle")
-                        .font(.system(size: 22))
+                        .font(.dmSans(size: 22))
                         .foregroundColor(isSaved ? .green : .primary)
                 }
                 .buttonStyle(.plain)
@@ -934,7 +1107,7 @@ struct DailyPlaylistRow: View {
                         onNudgeTapped()
                     } label: {
                         Image(systemName: "hand.wave")
-                            .font(.system(size: 20, weight: .semibold))
+                            .font(.dmSans(size: 20))
                             .foregroundColor(.primary)
                     }
                     .buttonStyle(.plain)
@@ -960,7 +1133,7 @@ struct DailyPlaylistRow: View {
                         .fill(Color.gray.opacity(0.3))
                         .overlay(
                             Text(String(member.displayName.prefix(1)))
-                                .font(.system(size: 12))
+                                .font(.dmSans(size: 12, weight: .medium))
                         )
                 }
                 .frame(width: 32, height: 32)
@@ -974,7 +1147,7 @@ struct DailyPlaylistRow: View {
                     .fill(Color.gray.opacity(0.3))
                     .overlay(
                         Image(systemName: "person.fill")
-                            .font(.system(size: 16))
+                            .font(.dmSans(size: 16, weight: .medium))
                             .foregroundColor(.gray)
                     )
                     .frame(width: 32, height: 32)
@@ -982,7 +1155,7 @@ struct DailyPlaylistRow: View {
 
             if let overlay = overlaySystemName {
                 Image(systemName: overlay)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.dmSans(size: 11))
                     .foregroundColor(.primary)
                     .padding(4)
                     .background(Color(UIColor.systemBackground))
@@ -995,6 +1168,7 @@ struct DailyPlaylistRow: View {
 
 struct WaitingForSongRow: View {
     let member: User
+    let isNudged: Bool
     let onSwapTapped: () -> Void
     let onNudgeTapped: () -> Void
     let onProfileTapped: () -> Void
@@ -1015,7 +1189,7 @@ struct WaitingForSongRow: View {
                             .fill(Color.gray.opacity(0.3))
                             .overlay(
                                 Text(String(member.displayName.prefix(1)))
-                                    .font(.system(size: 12))
+                                    .font(.dmSans(size: 12, weight: .medium))
                             )
                     }
                     .frame(width: 56, height: 56)
@@ -1034,11 +1208,11 @@ struct WaitingForSongRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(member.displayName)
-                    .font(.lora(size: 16, weight: .semiBold))
+                    .font(.dmSans(size: 16, weight: .medium))
                     .foregroundColor(.primary)
 
                 Text("Waiting for today's song...")
-                    .font(.lora(size: 14, weight: .regular))
+                    .font(.dmSans(size: 14))
                     .foregroundColor(.secondary)
                     .italic()
             }
@@ -1050,7 +1224,7 @@ struct WaitingForSongRow: View {
                     onSwapTapped()
                 } label: {
                     Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 20))
+                        .font(.dmSans(size: 20))
                         .foregroundColor(.primary)
                 }
                 .buttonStyle(.plain)
@@ -1058,11 +1232,13 @@ struct WaitingForSongRow: View {
                 Button {
                     onNudgeTapped()
                 } label: {
-                    Image(systemName: "hand.wave")
-                        .font(.system(size: 22))
-                        .foregroundColor(.primary)
+                    Image(systemName: isNudged ? "hand.wave.fill" : "hand.wave")
+                        .font(.dmSans(size: 22))
+                        .foregroundColor(isNudged ? .green : .primary)
                 }
                 .buttonStyle(.plain)
+                .disabled(isNudged)
+                .opacity(isNudged ? 0.7 : 1)
             }
         }
         .padding(.horizontal, 16)
@@ -1115,7 +1291,7 @@ struct MyDailySongRow: View {
                 }
 
                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.dmSans(size: 18, weight: .medium))
                     .foregroundColor(.white)
                     .shadow(color: Color.black.opacity(0.5), radius: 4, x: 0, y: 2)
                     .opacity(0.95)
@@ -1124,21 +1300,21 @@ struct MyDailySongRow: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(song.trackName)
-                    .font(.lora(size: 17, weight: .bold))
+                    .font(.dmSans(size: 17, weight: .medium))
                     .foregroundColor(.primary)
                     .lineLimit(1)
 
                 Text(song.artistName)
-                    .font(.lora(size: 14))
+                    .font(.dmSans(size: 14))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
 
                 HStack(spacing: 6) {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.dmSans(size: 12, weight: .medium))
                         .foregroundColor(.primary)
                     Text("your daily pick")
-                        .font(.lora(size: 12, weight: .semiBold))
+                        .font(.dmSans(size: 12, weight: .medium))
                         .foregroundColor(.primary)
                         .textCase(.uppercase)
                 }
@@ -1183,13 +1359,13 @@ struct EmptySlotRow: View {
                 .overlay(
                     Image(systemName: "plus")
                         .foregroundColor(.gray)
-                        .font(.system(size: 20))
+                        .font(.dmSans(size: 20, weight: .semiBold))
                 )
 
             // Text content
             VStack(alignment: .leading, spacing: 4) {
                 Text("Add a friend to your phlock")
-                    .font(.lora(size: 16, weight: .semiBold))
+                    .font(.dmSans(size: 16, weight: .medium))
                     .foregroundColor(.primary)
             }
 
@@ -1200,7 +1376,7 @@ struct EmptySlotRow: View {
                 onAddMemberTapped()
             } label: {
                 Text("Add")
-                    .font(.lora(size: 14, weight: .semiBold))
+                    .font(.dmSans(size: 14))
                     .foregroundColor(.white)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
@@ -1271,11 +1447,11 @@ struct EmptyDailyPlaylistView: View {
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(member.displayName)
-                                    .font(.lora(size: 16, weight: .semiBold))
+                                    .font(.dmSans(size: 16, weight: .medium))
                                     .foregroundColor(.primary)
-                                
+
                                 Text("Waiting for daily song...")
-                                    .font(.lora(size: 14, weight: .regular))
+                                    .font(.dmSans(size: 14))
                                     .italic()
                                     .foregroundColor(.secondary)
                             }
@@ -1291,17 +1467,17 @@ struct EmptyDailyPlaylistView: View {
                                 .overlay(
                                     Image(systemName: "plus")
                                         .foregroundColor(.gray)
-                                        .font(.system(size: 20))
+                                        .font(.dmSans(size: 20, weight: .semiBold))
                                 )
 
                             Text("Add a member to your phlock")
-                                .font(.lora(size: 16, weight: .semiBold))
+                                .font(.dmSans(size: 16, weight: .medium))
                                 .foregroundColor(.secondary)
 
                             Spacer()
 
                             Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 24))
+                                .font(.dmSans(size: 24, weight: .bold))
                                 .foregroundColor(.blue)
                         }
                     }
@@ -1332,14 +1508,14 @@ struct FeedErrorStateView: View {
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 50))
+                .font(.dmSans(size: 50, weight: .bold))
                 .foregroundColor(.orange)
 
             Text("Unable to load playlist")
-                .font(.lora(size: 20, weight: .bold))
+                .font(.dmSans(size: 20, weight: .semiBold))
 
             Text(error)
-                .font(.lora(size: 14, weight: .regular))
+                .font(.dmSans(size: 10))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
@@ -1348,7 +1524,7 @@ struct FeedErrorStateView: View {
                 onRetry()
             } label: {
                 Text("Try Again")
-                    .font(.lora(size: 16, weight: .semiBold))
+                    .font(.dmSans(size: 16, weight: .medium))
                     .foregroundColor(.white)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 12)
@@ -1400,7 +1576,7 @@ struct SwapMemberView: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Swap \(currentMember.displayName) with…")
-                            .font(.lora(size: 16, weight: .bold))
+                            .font(.dmSans(size: 16, weight: .medium))
                             .foregroundColor(.primary)
                     }
 
@@ -1417,9 +1593,9 @@ struct SwapMemberView: View {
                 } else if friends.isEmpty {
                     VStack(spacing: 12) {
                         Text("No available friends")
-                            .font(.lora(size: 16, weight: .semiBold))
+                            .font(.dmSans(size: 16, weight: .medium))
                         Text("All your friends are already in your phlock")
-                            .font(.lora(size: 14, weight: .regular))
+                            .font(.dmSans(size: 14))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1452,11 +1628,11 @@ struct SwapMemberView: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(friend.displayName)
-                                    .font(.lora(size: 16, weight: .semiBold))
+                                    .font(.dmSans(size: 16, weight: .medium))
 
                                 if friend.username != nil {
                                     Text("@\(friend.username ?? "")")
-                                        .font(.lora(size: 12, weight: .regular))
+                                        .font(.dmSans(size: 12, weight: .medium))
                                         .foregroundColor(.secondary)
                                 }
                             }
@@ -1470,7 +1646,7 @@ struct SwapMemberView: View {
                                         .frame(width: 8, height: 8)
 
                                     Text(hasSong ? "has today's song" : "no song yet")
-                                        .font(.lora(size: 11, weight: .regular))
+                                        .font(.dmSans(size: 11))
                                         .foregroundColor(hasSong ? .green : .secondary)
                                 }
                             } else {
@@ -1507,7 +1683,7 @@ struct SwapMemberView: View {
                         }
                     }
                     .disabled(selectedFriend == nil)
-                    .font(.lora(size: 16, weight: .semiBold))
+                    .font(.dmSans(size: 16, weight: .medium))
                 }
             }
             .task {
@@ -1563,6 +1739,201 @@ struct SwapMemberView: View {
     }
 }
 
+// MARK: - Demo Content
+
+private enum DemoPhlockContent {
+    struct TrackTemplate {
+        let id: String
+        let title: String
+        let artist: String
+        let fallbackArt: String
+        let fallbackPreview: String
+        let preferFallback: Bool
+    }
+
+    static let placeholderMembers: [FriendWithPosition] = [
+        FriendWithPosition(
+            user: User(
+                displayName: "Ava Stone",
+                profilePhotoUrl: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=200&q=80",
+                username: "ava",
+                dailySongStreak: 4,
+                lastDailySongDate: Calendar.current.startOfDay(for: Date())
+            ),
+            position: 1
+        ),
+        FriendWithPosition(
+            user: User(
+                displayName: "Leo Park",
+                profilePhotoUrl: "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=200&q=80",
+                username: "leo",
+                dailySongStreak: 2,
+                lastDailySongDate: Calendar.current.startOfDay(for: Date())
+            ),
+            position: 2
+        ),
+        FriendWithPosition(
+            user: User(
+                displayName: "Mia Chen",
+                profilePhotoUrl: "https://images.unsplash.com/photo-1524502397800-2eeaad3be9e4?auto=format&fit=crop&w=200&q=80",
+                username: "mia",
+                dailySongStreak: 6,
+                lastDailySongDate: Calendar.current.startOfDay(for: Date())
+            ),
+            position: 3
+        ),
+        FriendWithPosition(
+            user: User(
+                displayName: "Noah Patel",
+                profilePhotoUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80",
+                username: "noah",
+                dailySongStreak: 1,
+                lastDailySongDate: Calendar.current.startOfDay(for: Date())
+            ),
+            position: 4
+        ),
+        FriendWithPosition(
+            user: User(
+                displayName: "Zoe Brooks",
+                profilePhotoUrl: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?auto=format&fit=crop&w=200&q=80",
+                username: "zoe",
+                dailySongStreak: 3,
+                lastDailySongDate: Calendar.current.startOfDay(for: Date())
+            ),
+            position: 5
+        )
+    ]
+
+    static func mergedMembers(with existing: [FriendWithPosition]) -> [FriendWithPosition] {
+        var byPosition: [Int: FriendWithPosition] = [:]
+
+        for member in existing where (1...5).contains(member.position) {
+            byPosition[member.position] = member
+        }
+
+        for placeholder in placeholderMembers {
+            if byPosition.count >= 5 { break }
+            if byPosition[placeholder.position] == nil {
+                byPosition[placeholder.position] = placeholder
+            }
+        }
+
+        let ordered = byPosition.values.sorted { $0.position < $1.position }
+        return Array(ordered.prefix(5))
+    }
+
+    static let templates: [TrackTemplate] = [
+        TrackTemplate(
+            id: "1Q7EgiMOuwDcB0PJC6AzON",
+            title: "Best Part",
+            artist: "Daniel Caesar",
+            fallbackArt: "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/b6/cd/1a/b6cd1a5b-83af-a1e2-0ad7-ea530fcf2522/859722261219.jpg/400x400bb.jpg",
+            fallbackPreview: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/cc/95/ed/cc95edc8-4f9b-0c56-bc74-31ba76a057f9/mzaf_11346187551197903108.plus.aac.p.m4a",
+            preferFallback: true // lock to official Freudian artwork/preview to avoid mismatched versions
+        ),
+        TrackTemplate(
+            id: "7wRQIKvVqLWiTfMFwfUYlK",
+            title: "I Refuse",
+            artist: "Aaliyah",
+            fallbackArt: "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/9d/f3/55/9df35530-e066-5df9-2212-fe5ed7cf9b14/5034644712819.jpg/400x400bb.jpg",
+            fallbackPreview: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/9d/3f/3e/9d3f3e43-0960-12f9-e2fb-8c975fb9bb4d/mzaf_269865300524312841.plus.aac.p.m4a",
+            preferFallback: false
+        ),
+        TrackTemplate(
+            id: "2arETTjDUyUqXR0x5g6E8U",
+            title: "I Do",
+            artist: "Justin Bieber",
+            fallbackArt: "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/e0/cb/3e/e0cb3e1c-0dde-156d-d500-7943bc4ddebd/25UM1IM36272.rgb.jpg/400x400bb.jpg",
+            fallbackPreview: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/98/8a/94/988a946b-1c49-67ed-a2d9-6bbce5c30162/mzaf_4634555832945306175.plus.aac.p.m4a",
+            preferFallback: false
+        )
+    ]
+
+    static func demoSongs(for members: [FriendWithPosition], recipientId: UUID) async -> [Share] {
+
+        let now = Date()
+        let today = Calendar.current.startOfDay(for: now)
+        var songs: [Share] = []
+
+        let placeholderIds = Set(placeholderMembers.map { $0.user.id })
+        let prioritizedMembers = members.sorted { lhs, rhs in
+            let lhsIsPlaceholder = placeholderIds.contains(lhs.user.id)
+            let rhsIsPlaceholder = placeholderIds.contains(rhs.user.id)
+
+            if lhsIsPlaceholder == rhsIsPlaceholder {
+                return lhs.position < rhs.position
+            }
+
+            // Prefer real members before placeholders
+            return !lhsIsPlaceholder && rhsIsPlaceholder
+        }
+
+        for (index, member) in prioritizedMembers.prefix(templates.count).enumerated() {
+            let template = templates[index]
+            let art: String
+            let preview: String
+
+            if template.preferFallback {
+                // For tracks where we must lock to an exact release (e.g., Freudian for Best Part)
+                art = template.fallbackArt
+                preview = template.fallbackPreview
+            } else {
+                let metadata = await fetchAppleMusicMetadata(for: template)
+
+                // Only trust Apple metadata when both artwork and preview are present to avoid mismatched pairs
+                if let appleArt = metadata.artwork, !appleArt.isEmpty,
+                   let applePreview = metadata.preview, !applePreview.isEmpty {
+                    art = appleArt
+                    preview = applePreview
+                } else {
+                    art = template.fallbackArt
+                    preview = template.fallbackPreview
+                }
+            }
+            let timestamp = now.addingTimeInterval(TimeInterval(-index * 900))
+            let savedAt = index == 0 ? timestamp : nil
+
+            songs.append(
+                Share(
+                    senderId: member.user.id,
+                    recipientId: recipientId,
+                    trackId: template.id,
+                    trackName: template.title,
+                    artistName: template.artist,
+                    albumArtUrl: art,
+                    message: nil,
+                    status: .sent,
+                    createdAt: timestamp,
+                    updatedAt: timestamp,
+                    playedAt: nil,
+                    savedAt: savedAt,
+                    isDailySong: true,
+                    selectedDate: today,
+                    previewUrl: preview
+                )
+            )
+        }
+
+        return songs
+    }
+
+    private static func fetchAppleMusicMetadata(for template: TrackTemplate) async -> (artwork: String?, preview: String?) {
+        do {
+            if let track = try await AppleMusicService.shared.searchTrack(
+                name: template.title,
+                artist: template.artist,
+                isrc: nil
+            ) {
+                return (track.artworkURL, track.previewURL)
+            }
+        } catch {
+            print("⚠️ Demo Apple Music lookup failed for \(template.title): \(error)")
+        }
+
+        return (nil, nil)
+    }
+}
+
 // MARK: - Add Member View
 
 struct AddMemberView: View {
@@ -1584,9 +1955,9 @@ struct AddMemberView: View {
                 } else if friends.isEmpty {
                     VStack(spacing: 12) {
                         Text("No available friends")
-                            .font(.lora(size: 16, weight: .semiBold))
+                            .font(.dmSans(size: 16, weight: .medium))
                         Text("Add more friends to build your phlock")
-                            .font(.lora(size: 14, weight: .regular))
+                            .font(.dmSans(size: 14))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1614,11 +1985,11 @@ struct AddMemberView: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(friend.displayName)
-                                    .font(.lora(size: 16, weight: .semiBold))
+                                    .font(.dmSans(size: 16, weight: .medium))
 
                                 if friend.username != nil {
                                     Text("@\(friend.username ?? "")")
-                                        .font(.lora(size: 12, weight: .regular))
+                                        .font(.dmSans(size: 12, weight: .medium))
                                         .foregroundColor(.secondary)
                                 }
                             }
@@ -1654,7 +2025,7 @@ struct AddMemberView: View {
                         }
                     }
                     .disabled(selectedFriend == nil)
-                    .font(.lora(size: 16, weight: .semiBold))
+                    .font(.dmSans(size: 16, weight: .medium))
                 }
             }
             .task {

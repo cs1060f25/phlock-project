@@ -1,5 +1,6 @@
 import SwiftUI
 import Supabase
+import UIKit
 
 struct FullScreenPlayerView: View {
     @ObservedObject var playbackService: PlaybackService
@@ -15,145 +16,159 @@ struct FullScreenPlayerView: View {
     @State private var showShareSheet = false
     @State private var shareTrack: MusicItem? = nil
     @State private var dragOffset: CGFloat = 0
-    @State private var isDismissing: Bool = false
+    @State private var horizontalDragOffset: CGFloat = 0
+    @State private var isSkipping: Bool = false
+    @State private var activeGesture: ActiveGesture = .none
 
-    // Spotify-like animation constants
-    private let screenHeight = UIScreen.main.bounds.height
-    private let dismissThreshold: CGFloat = 120
-    private let velocityThreshold: CGFloat = 800
+    // Displayed track for artwork - controlled separately during skip animations
+    @State private var displayedTrack: MusicItem? = nil
 
-    // Computed properties for Spotify-like effects
-    private var dragProgress: CGFloat {
-        min(max(dragOffset / screenHeight, 0), 1)
-    }
-
-    private var scaleEffect: CGFloat {
-        1 - (dragProgress * 0.1) // Scale down to 0.9 at max drag
-    }
-
-    private var cornerRadiusEffect: CGFloat {
-        dragProgress * 40 // Round corners as you drag
-    }
-
-    private var opacityEffect: CGFloat {
-        1 - (dragProgress * 0.3) // Slightly fade as you drag
+    private enum ActiveGesture {
+        case none
+        case vertical
+        case horizontal
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                // Semi-transparent background that shows through during drag
-                Color.black.opacity(0.5 * (1 - dragProgress))
-                    .ignoresSafeArea()
+        ZStack {
+            // Background gradient with album art blur
+            backgroundLayer
+                .opacity(backgroundOpacity)
 
-                // Main player card
-                ZStack {
-                    // Background gradient with album art blur
-                    backgroundLayer
+            // Main content
+            VStack(spacing: 0) {
+                // Top bar with dismiss and menu
+                headerBar
+                    .padding(.horizontal, 20)
+                    .padding(.top, 50) // Account for status bar
 
-                    // Main content
-                    VStack(spacing: 0) {
-                        // Drag indicator pill (like Spotify)
-                        Capsule()
-                            .fill(Color.white.opacity(0.4))
-                            .frame(width: 36, height: 5)
-                            .padding(.top, 8)
+                // Album artwork
+                albumArtwork
+                    .padding(.horizontal, 30)
+                    .padding(.top, 30)
 
-                        // Top bar with dismiss and menu
-                        headerBar
-                            .padding(.horizontal, 20)
-                            .padding(.top, 12)
+                // Track info section
+                trackInfoSection
+                    .padding(.horizontal, 30)
+                    .padding(.top, 30)
 
-                        // Album artwork
-                        albumArtwork
-                            .padding(.horizontal, 30)
-                            .padding(.top, 24)
+                // Progress bar
+                progressBar
+                    .padding(.horizontal, 30)
+                    .padding(.top, 20)
 
-                        // Track info section
-                        trackInfoSection
-                            .padding(.horizontal, 30)
-                            .padding(.top, 24)
+                // Playback controls
+                playbackControlsSection
+                    .padding(.top, 30)
 
-                        // Progress bar
-                        progressBar
-                            .padding(.horizontal, 30)
-                            .padding(.top, 20)
+                Spacer(minLength: 20)
 
-                        // Playback controls
-                        playbackControlsSection
-                            .padding(.top, 24)
-
-                        Spacer(minLength: 16)
-
-                        // Bottom action buttons
-                        bottomActions
-                            .padding(.horizontal, 30)
-                            .padding(.bottom, geometry.safeAreaInsets.bottom + 20)
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadiusEffect, style: .continuous))
-                .scaleEffect(scaleEffect)
-                .offset(y: dragOffset)
-                .opacity(opacityEffect)
-                .gesture(
-                    DragGesture()
-                        .onChanged { gesture in
-                            guard !isDismissing else { return }
-                            // Only allow dragging down
-                            if gesture.translation.height > 0 {
-                                // Add slight resistance as you drag further
-                                let resistance: CGFloat = 0.7
-                                dragOffset = gesture.translation.height * resistance
-                            }
-                        }
-                        .onEnded { gesture in
-                            guard !isDismissing else { return }
-
-                            let velocity = gesture.predictedEndLocation.y - gesture.location.y
-                            let translation = gesture.translation.height
-
-                            // Dismiss if dragged past threshold OR flicked with high velocity
-                            let shouldDismiss = translation > dismissThreshold || velocity > velocityThreshold
-
-                            if shouldDismiss {
-                                dismissPlayer()
-                            } else {
-                                // Spring back
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                    dragOffset = 0
-                                }
-                            }
-                        }
-                )
+                // Bottom action buttons
+                bottomActions
+                    .padding(.horizontal, 30)
+                    .padding(.bottom, 40)
             }
         }
+        .offset(y: max(0, dragOffset)) // Only allow downward drag
         .ignoresSafeArea()
-        .preferredColorScheme(.dark)
+        .gesture(
+            DragGesture()
+                .onChanged { gesture in
+                    // Determine gesture direction if not yet determined
+                    if activeGesture == .none {
+                        let horizontalAmount = abs(gesture.translation.width)
+                        let verticalAmount = abs(gesture.translation.height)
+
+                        // Need significant movement to determine direction
+                        if horizontalAmount > 15 || verticalAmount > 15 {
+                            if verticalAmount > horizontalAmount && gesture.translation.height > 0 {
+                                activeGesture = .vertical
+                            } else if horizontalAmount > verticalAmount {
+                                activeGesture = .horizontal
+                            }
+                        }
+                    }
+
+                    // Only handle vertical dismiss gesture
+                    if activeGesture == .vertical && gesture.translation.height > 0 {
+                        dragOffset = gesture.translation.height
+                    }
+                }
+                .onEnded { gesture in
+                    if activeGesture == .vertical {
+                        let dismissThreshold: CGFloat = 150
+
+                        if gesture.translation.height > dismissThreshold {
+                            // Animate dismissal
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                dragOffset = UIScreen.main.bounds.height
+                            }
+
+                            // Dismiss after animation
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                isPresented = false
+                                dragOffset = 0 // Reset for next time
+                                activeGesture = .none
+                            }
+                        } else {
+                            // Spring back to original position
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                dragOffset = 0
+                            }
+                            activeGesture = .none
+                        }
+                    } else {
+                        activeGesture = .none
+                    }
+                }
+        )
         .toast(isPresented: $showToast, message: toastMessage, type: .success, duration: 3.0)
         .onAppear {
             refreshSavedState()
+            displayedTrack = playbackService.currentTrack
         }
         .onChange(of: playbackService.currentTrack?.id) { _ in
             refreshSavedState()
+            // Only sync displayed track if not skipping (skip animation handles it)
+            if !isSkipping {
+                displayedTrack = playbackService.currentTrack
+            }
+        }
+        .onChange(of: playbackService.currentTrack?.albumArtUrl) { _ in
+            // Sync when album art URL changes (e.g., fetched from API)
+            if !isSkipping {
+                displayedTrack = playbackService.currentTrack
+            }
         }
         .overlay(alignment: .bottom) {
             if showShareSheet, let track = shareTrack {
-                QuickSendBar(
-                    track: track,
-                    onDismiss: {
-                        withAnimation(.easeOut(duration: 0.3)) {
-                            showShareSheet = false
-                            shareTrack = nil
+                VStack {
+                    Spacer()
+                    ShareOptionsSheet(
+                        track: track,
+                        shareURL: ShareLinkBuilder.url(for: track),
+                        context: .fullPlayer,
+                        onDismiss: {
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                showShareSheet = false
+                                shareTrack = nil
+                            }
+                        },
+                        onCopy: { url in
+                            UIPasteboard.general.string = url.absoluteString
+                            showToastMessage("Link copied")
+                        },
+                        onOpen: { url in
+                            UIApplication.shared.open(url)
+                        },
+                        onFallback: { message in
+                            showToastMessage(message)
                         }
-                    },
-                    onSendComplete: { _ in
-                        showShareSheet = false
-                        shareTrack = nil
-                    },
-                    additionalBottomInset: QuickSendBar.Layout.embeddedInset
-                )
-                .environmentObject(authState)
-                .environmentObject(playbackService)
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .zIndex(10)
                 .ignoresSafeArea(.keyboard, edges: .bottom)
@@ -161,17 +176,9 @@ struct FullScreenPlayerView: View {
         }
     }
 
-    private func dismissPlayer() {
-        isDismissing = true
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-            dragOffset = screenHeight
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            isPresented = false
-            // Reset state for next presentation
-            dragOffset = 0
-            isDismissing = false
-        }
+    private var backgroundOpacity: Double {
+        let progress = min(max(Double(dragOffset / 220), 0), 1)
+        return 1 - progress
     }
 
     // MARK: - Background Layer
@@ -179,7 +186,7 @@ struct FullScreenPlayerView: View {
     private var backgroundLayer: some View {
         ZStack {
             // Base color
-            Color.black
+            Color(.systemBackground)
 
             // Blurred album art background
             if let artworkUrl = playbackService.currentTrack?.albumArtUrl,
@@ -190,12 +197,14 @@ struct FullScreenPlayerView: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
                         .blur(radius: 60)
-                        .overlay(Color.black.opacity(0.4))
+                        .overlay(
+                            Color.black.opacity(colorScheme == .dark ? 0.22 : 0.06)
+                        )
                 } placeholder: {
                     LinearGradient(
                         colors: [
-                            Color.purple.opacity(0.3),
-                            Color.blue.opacity(0.3)
+                            Color.purple.opacity(colorScheme == .dark ? 0.22 : 0.08),
+                            Color.blue.opacity(colorScheme == .dark ? 0.22 : 0.08)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -204,8 +213,8 @@ struct FullScreenPlayerView: View {
             } else {
                 LinearGradient(
                     colors: [
-                        Color.purple.opacity(0.3),
-                        Color.blue.opacity(0.3)
+                        Color.purple.opacity(colorScheme == .dark ? 0.22 : 0.08),
+                        Color.blue.opacity(colorScheme == .dark ? 0.22 : 0.08)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
@@ -221,10 +230,10 @@ struct FullScreenPlayerView: View {
         HStack {
             // Dismiss button
             Button {
-                dismissPlayer()
+                isPresented = false
             } label: {
                 Image(systemName: "chevron.down")
-                    .font(.lora(size: 20, weight: .semiBold))
+                    .font(.dmSans(size: 20, weight: .semiBold))
                     .foregroundColor(.white)
                     .frame(width: 40, height: 40)
                     .background(Color.white.opacity(0.15))
@@ -236,15 +245,15 @@ struct FullScreenPlayerView: View {
             // Now Playing label
             VStack(spacing: 2) {
                 Text("NOW PLAYING")
-                    .font(.lora(size: 10, weight: .bold))
+                    .font(.dmSans(size: 10))
                     .tracking(1.2)
                     .foregroundColor(.white.opacity(0.6))
 
                 HStack(spacing: 4) {
                     Image(systemName: platformIconName)
-                        .font(.lora(size: 10))
+                        .font(.dmSans(size: 10))
                     Text(platformName)
-                        .font(.lora(size: 11, weight: .semiBold))
+                        .font(.dmSans(size: 10))
                 }
                 .foregroundColor(.white.opacity(0.8))
             }
@@ -273,7 +282,7 @@ struct FullScreenPlayerView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.lora(size: 20, weight: .semiBold))
+                    .font(.dmSans(size: 20, weight: .semiBold))
                     .foregroundColor(.white)
                     .frame(width: 40, height: 40)
                     .background(Color.white.opacity(0.15))
@@ -286,7 +295,7 @@ struct FullScreenPlayerView: View {
 
     private var albumArtwork: some View {
         Group {
-            if let track = playbackService.currentTrack {
+            if let track = displayedTrack {
                 RemoteImage(
                     url: track.albumArtUrl,
                     spotifyId: track.spotifyId,
@@ -304,6 +313,173 @@ struct FullScreenPlayerView: View {
                     .cornerRadius(8)
             }
         }
+        .offset(x: horizontalDragOffset)
+        .opacity(1 - Double(abs(horizontalDragOffset)) / 300)
+        .rotation3DEffect(
+            .degrees(Double(horizontalDragOffset) / 20),
+            axis: (x: 0, y: 1, z: 0)
+        )
+        .contentShape(Rectangle()) // Ensure the entire area is tappable/draggable
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 20)
+                .onChanged { gesture in
+                    // Don't handle if vertical gesture is active
+                    guard activeGesture != .vertical else { return }
+
+                    // Only handle horizontal drags (ignore if vertical is dominant)
+                    let horizontalAmount = abs(gesture.translation.width)
+                    let verticalAmount = abs(gesture.translation.height)
+
+                    if horizontalAmount > verticalAmount && !isSkipping {
+                        // Mark as horizontal gesture
+                        if activeGesture == .none {
+                            activeGesture = .horizontal
+                        }
+
+                        // Check if we can skip in this direction
+                        let canSwipe = (gesture.translation.width > 0 && canSkipBackward) ||
+                                       (gesture.translation.width < 0 && canSkipForward)
+
+                        if canSwipe {
+                            horizontalDragOffset = gesture.translation.width
+                        } else {
+                            // Add resistance when can't skip
+                            horizontalDragOffset = gesture.translation.width * 0.2
+                        }
+                    }
+                }
+                .onEnded { gesture in
+                    // Don't process if vertical gesture was active
+                    guard activeGesture != .vertical else { return }
+
+                    let swipeThreshold: CGFloat = 80
+                    let velocityThreshold: CGFloat = 300
+
+                    let shouldTrigger = abs(gesture.translation.width) > swipeThreshold ||
+                                       abs(gesture.velocity.width) > velocityThreshold
+
+                    if shouldTrigger && !isSkipping {
+                        if gesture.translation.width > 0 && canSkipBackward {
+                            // Swipe right - go to previous track
+                            triggerSkipBackward()
+                        } else if gesture.translation.width < 0 && canSkipForward {
+                            // Swipe left - go to next track
+                            triggerSkipForward()
+                        } else {
+                            // Can't skip, spring back
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                horizontalDragOffset = 0
+                            }
+                        }
+                    } else {
+                        // Spring back
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            horizontalDragOffset = 0
+                        }
+                    }
+
+                    // Reset gesture state if this was horizontal
+                    if activeGesture == .horizontal {
+                        activeGesture = .none
+                    }
+                }
+        )
+    }
+
+    private func triggerSkipForward() {
+        isSkipping = true
+        let impact = UIImpactFeedbackGenerator(style: .medium)
+        impact.impactOccurred()
+
+        // Pre-calculate next track for seamless transition
+        let nextTrack = getNextTrack()
+
+        // Animate out to the left
+        withAnimation(.easeOut(duration: 0.2)) {
+            horizontalDragOffset = -UIScreen.main.bounds.width
+        }
+
+        // Skip and animate back in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            // Change the track in playback service
+            playbackService.skipForward()
+
+            // Reposition off-screen to the right (entry position) WITHOUT animation
+            horizontalDragOffset = UIScreen.main.bounds.width
+
+            // NOW update displayed track - use our pre-calculated one first to be instant
+            if let next = nextTrack {
+                displayedTrack = next
+            } else {
+                displayedTrack = playbackService.currentTrack
+            }
+
+            // Animate from entry position to center
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                horizontalDragOffset = 0
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                isSkipping = false
+                // Final sync to ensure we have the authoritative state
+                displayedTrack = playbackService.currentTrack
+            }
+        }
+    }
+
+    private func triggerSkipBackward() {
+        isSkipping = true
+        let impact = UIImpactFeedbackGenerator(style: .medium)
+        impact.impactOccurred()
+
+        // Pre-calculate previous track for seamless transition
+        let prevTrack = getPreviousTrack()
+
+        // Animate out to the right
+        withAnimation(.easeOut(duration: 0.2)) {
+            horizontalDragOffset = UIScreen.main.bounds.width
+        }
+
+        // Skip and animate back in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            // Change the track in playback service
+            playbackService.skipBackward()
+
+            // Reposition off-screen to the left (entry position) WITHOUT animation
+            horizontalDragOffset = -UIScreen.main.bounds.width
+
+            // NOW update displayed track - use our pre-calculated one first to be instant
+            if let prev = prevTrack {
+                displayedTrack = prev
+            } else {
+                displayedTrack = playbackService.currentTrack
+            }
+
+            // Animate from entry position to center
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                horizontalDragOffset = 0
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                isSkipping = false
+                // Final sync to ensure we have the authoritative state
+                displayedTrack = playbackService.currentTrack
+            }
+        }
+    }
+
+    private func getNextTrack() -> MusicItem? {
+        guard !playbackService.queue.isEmpty else { return nil }
+        let index = playbackService.currentQueueIndex ?? 0
+        let nextIndex = (index + 1) % playbackService.queue.count
+        return playbackService.queue[nextIndex].track
+    }
+
+    private func getPreviousTrack() -> MusicItem? {
+        guard !playbackService.queue.isEmpty else { return nil }
+        let index = playbackService.currentQueueIndex ?? 0
+        let prevIndex = index == 0 ? (playbackService.queue.count - 1) : (index - 1)
+        return playbackService.queue[prevIndex].track
     }
 
     // MARK: - Track Info Section
@@ -313,18 +489,18 @@ struct FullScreenPlayerView: View {
             if let track = playbackService.currentTrack {
                 // Track name
                 Text(track.name)
-                    .font(.lora(size: 20, weight: .bold))
+                    .font(.dmSans(size: 28, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(1)
 
                 // Artist name
                 Text(track.artistName ?? "Unknown Artist")
-                    .font(.lora(size: 16, weight: .medium))
+                    .font(.dmSans(size: 18))
                     .foregroundColor(.white.opacity(0.7))
                     .lineLimit(1)
             } else {
                 Text("No track playing")
-                    .font(.lora(size: 20, weight: .bold))
+                    .font(.dmSans(size: 28, weight: .bold))
                     .foregroundColor(.white.opacity(0.5))
             }
         }
@@ -335,41 +511,67 @@ struct FullScreenPlayerView: View {
 
     private var progressBar: some View {
         VStack(spacing: 8) {
-            // Slider
-            Slider(
-                value: Binding(
-                    get: {
-                        isDraggingSlider ? sliderValue : currentTimeSafe
-                    },
-                    set: { newValue in
-                        sliderValue = newValue
-                    }
-                ),
-                in: 0...max(durationSafe, 1),
-                onEditingChanged: { editing in
-                    if editing {
-                        sliderValue = currentTimeSafe
-                        isDraggingSlider = true
-                    } else {
-                        seek(to: sliderValue)
-                        DispatchQueue.main.async {
-                            isDraggingSlider = false
-                        }
-                    }
+            // Custom scrubbable progress bar
+            GeometryReader { geometry in
+                let progress = isDraggingSlider
+                    ? sliderValue / max(durationSafe, 1)
+                    : currentTimeSafe / max(durationSafe, 1)
+
+                ZStack(alignment: .leading) {
+                    // Background track
+                    Capsule()
+                        .fill(Color.white.opacity(0.3))
+                        .frame(height: 4)
+
+                    // Progress fill
+                    Capsule()
+                        .fill(Color.white)
+                        .frame(width: max(0, geometry.size.width * CGFloat(progress)), height: 4)
+
+                    // Thumb
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: isDraggingSlider ? 16 : 12, height: isDraggingSlider ? 16 : 12)
+                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                        .offset(x: max(0, min(geometry.size.width - 12, geometry.size.width * CGFloat(progress) - 6)))
+                        .animation(.easeOut(duration: 0.1), value: isDraggingSlider)
                 }
-            )
-            .tint(.white)
+                .frame(height: 20)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            if !isDraggingSlider {
+                                isDraggingSlider = true
+                                let impact = UIImpactFeedbackGenerator(style: .light)
+                                impact.impactOccurred()
+                            }
+                            let progress = max(0, min(1, value.location.x / geometry.size.width))
+                            sliderValue = Double(progress) * durationSafe
+                        }
+                        .onEnded { value in
+                            let progress = max(0, min(1, value.location.x / geometry.size.width))
+                            let seekTime = Double(progress) * durationSafe
+                            seek(to: seekTime)
+                            isDraggingSlider = false
+
+                            let impact = UIImpactFeedbackGenerator(style: .light)
+                            impact.impactOccurred()
+                        }
+                )
+            }
+            .frame(height: 20)
 
             // Time labels
             HStack {
                 Text(formatTime(isDraggingSlider ? sliderValue : currentTimeSafe))
-                    .font(.lora(size: 12))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.white.opacity(0.5))
 
                 Spacer()
 
                 Text(formatTime(durationSafe))
-                    .font(.lora(size: 12))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.white.opacity(0.5))
             }
         }
@@ -386,7 +588,7 @@ struct FullScreenPlayerView: View {
                 impact.impactOccurred()
             } label: {
                 Image(systemName: "backward.end.fill")
-                    .font(.lora(size: 28))
+                    .font(.dmSans(size: 20, weight: .bold))
                     .foregroundColor(canSkipBackward ? .white : .white.opacity(0.3))
             }
             .disabled(!canSkipBackward)
@@ -405,9 +607,9 @@ struct FullScreenPlayerView: View {
                         .frame(width: 72, height: 72)
 
                     Image(systemName: playbackService.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.lora(size: 30, weight: .bold))
+                        .font(.dmSans(size: 30, weight: .bold))
                         .foregroundColor(.black)
-                        .offset(x: playbackService.isPlaying ? 0 : 1.5)
+                        .offset(x: playbackService.isPlaying ? 0 : 1)
                 }
             }
             .buttonStyle(ScaleButtonStyle())
@@ -419,7 +621,7 @@ struct FullScreenPlayerView: View {
                 impact.impactOccurred()
             } label: {
                 Image(systemName: "forward.end.fill")
-                    .font(.lora(size: 28))
+                    .font(.dmSans(size: 20, weight: .bold))
                     .foregroundColor(canSkipForward ? .white : .white.opacity(0.3))
             }
             .disabled(!canSkipForward)
@@ -441,9 +643,9 @@ struct FullScreenPlayerView: View {
             } label: {
                 VStack(spacing: 6) {
                     Image(systemName: "paperplane")
-                        .font(.lora(size: 20))
+                        .font(.dmSans(size: 20, weight: .semiBold))
                     Text("Share")
-                        .font(.lora(size: 10, weight: .medium))
+                        .font(.dmSans(size: 10))
                 }
                 .foregroundColor(.white.opacity(0.7))
             }
@@ -462,9 +664,9 @@ struct FullScreenPlayerView: View {
             } label: {
                 VStack(spacing: 6) {
                     Image(systemName: isTrackSaved ? "checkmark.circle.fill" : "plus.circle")
-                        .font(.lora(size: 20))
+                        .font(.dmSans(size: 20, weight: .semiBold))
                     Text(isTrackSaved ? "Saved" : "Library")
-                        .font(.lora(size: 10, weight: .medium))
+                        .font(.dmSans(size: 10))
                 }
                 .foregroundColor(isTrackSaved ? .green : .white.opacity(0.7))
             }
@@ -477,9 +679,9 @@ struct FullScreenPlayerView: View {
             } label: {
                 VStack(spacing: 6) {
                     Image(systemName: "arrow.up.right.square")
-                        .font(.lora(size: 20))
+                        .font(.dmSans(size: 20, weight: .semiBold))
                     Text("Open")
-                        .font(.lora(size: 10, weight: .medium))
+                        .font(.dmSans(size: 10))
                 }
                 .foregroundColor(.white.opacity(0.7))
             }
@@ -511,7 +713,7 @@ struct FullScreenPlayerView: View {
     }
 
     private var canSkipBackward: Bool {
-        playbackService.canGoToPreviousTrack
+        playbackService.currentTrack != nil
     }
 
     private var canSkipForward: Bool {
@@ -588,15 +790,6 @@ struct FullScreenPlayerView: View {
         return rawId
     }
 
-    private func trackCacheKey(for track: MusicItem, platform: PlatformType) -> String {
-        switch platform {
-        case .spotify:
-            return sanitizeSpotifyId(track.spotifyId ?? track.id)
-        case .appleMusic:
-            return track.appleMusicId ?? track.id
-        }
-    }
-
     private func resolveAppleMusicTrackId(for track: MusicItem) async throws -> String {
         if let appleMusicId = track.appleMusicId, !appleMusicId.isEmpty {
             return appleMusicId
@@ -642,15 +835,18 @@ struct FullScreenPlayerView: View {
     // MARK: - Track Save State
 
     private func checkIfTrackSaved(track: MusicItem) async {
+        // First check if the track is in the saved set from the playback context
+        // This handles demo songs and tracks that FeedView already knows are saved
+        if playbackService.savedTrackIds.contains(track.id) {
+            await MainActor.run {
+                isTrackSaved = true
+                print("✅ Track saved status: true (from playback context)")
+            }
+            return
+        }
+
         guard let currentUser = authState.currentUser else { return }
         guard let platformType = currentUser.resolvedPlatformType else { return }
-
-        let cacheKey = trackCacheKey(for: track, platform: platformType)
-        let cachedSaved = SavedTrackCache.shared.contains(trackId: cacheKey, userId: currentUser.id)
-
-        await MainActor.run {
-            isTrackSaved = cachedSaved
-        }
 
         do {
             var isSaved = false
@@ -662,30 +858,28 @@ struct FullScreenPlayerView: View {
                 isSaved = try await SpotifyService.shared.isTrackSaved(trackId: spotifyId, accessToken: token)
 
             case .appleMusic:
-                // For Apple Music, check if we have a self-share that's saved
-                // This is a workaround since Apple Music doesn't provide API to check library status
+                // For Apple Music, check if we have any share with this track that's been saved
+                // This includes self-shares and shares received from others
                 let shares: [Share] = try await PhlockSupabaseClient.shared.client
                     .from("shares")
                     .select("*")
-                    .eq("sender_id", value: currentUser.id.uuidString)
                     .eq("recipient_id", value: currentUser.id.uuidString)
                     .eq("track_id", value: track.id)
-                    .neq("saved_at", value: "null")
+                    .not("saved_at", operator: .is, value: "null")
                     .execute()
                     .value
-                isSaved = cachedSaved || !shares.isEmpty
+                isSaved = !shares.isEmpty
             }
 
             await MainActor.run {
                 isTrackSaved = isSaved
+                print("✅ Track saved status: \(isSaved)")
             }
-
-            SavedTrackCache.shared.set(trackId: cacheKey, userId: currentUser.id, isSaved: isSaved)
         } catch {
             print("❌ Failed to check saved status: \(error)")
             // Default to false if we can't check
             await MainActor.run {
-                isTrackSaved = cachedSaved
+                isTrackSaved = false
             }
         }
     }
@@ -741,9 +935,6 @@ struct FullScreenPlayerView: View {
                 let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
                 impactFeedback.impactOccurred()
             }
-
-            let cacheKey = trackCacheKey(for: track, platform: platformType)
-            SavedTrackCache.shared.set(trackId: cacheKey, userId: currentUser.id, isSaved: true)
         } catch {
             print("❌ Failed to save track: \(error)")
             await MainActor.run {
@@ -776,10 +967,7 @@ struct FullScreenPlayerView: View {
                 // Apple Music doesn't support removing via API
                 await MainActor.run {
                     showToastMessage("Open Apple Music to remove")
-                    isTrackSaved = false
                 }
-                let cacheKey = trackCacheKey(for: track, platform: platformType)
-                SavedTrackCache.shared.set(trackId: cacheKey, userId: currentUser.id, isSaved: false)
                 return
             }
 
@@ -805,9 +993,6 @@ struct FullScreenPlayerView: View {
                 isTrackSaved = false
                 showToastMessage("Removed from library")
             }
-
-            let cacheKey = trackCacheKey(for: track, platform: platformType)
-            SavedTrackCache.shared.set(trackId: cacheKey, userId: currentUser.id, isSaved: false)
         } catch {
             print("Failed to remove track: \(error)")
             await MainActor.run {
@@ -884,38 +1069,5 @@ struct FullScreenPlayerView: View {
         }
 
         return token.accessToken
-    }
-}
-
-// Simple per-user cache to remember saved tracks across player sessions (helps Apple Music and avoids UI flicker)
-private final class SavedTrackCache {
-    static let shared = SavedTrackCache()
-    private let defaults = UserDefaults.standard
-
-    private init() {}
-
-    private func storageKey(for userId: UUID) -> String {
-        "saved_tracks_\(userId.uuidString.lowercased())"
-    }
-
-    private func load(userId: UUID) -> Set<String> {
-        let key = storageKey(for: userId)
-        let values = defaults.stringArray(forKey: key) ?? []
-        return Set(values)
-    }
-
-    func contains(trackId: String, userId: UUID) -> Bool {
-        load(userId: userId).contains(trackId)
-    }
-
-    func set(trackId: String, userId: UUID, isSaved: Bool) {
-        let key = storageKey(for: userId)
-        var current = load(userId: userId)
-        if isSaved {
-            current.insert(trackId)
-        } else {
-            current.remove(trackId)
-        }
-        defaults.set(Array(current), forKey: key)
     }
 }

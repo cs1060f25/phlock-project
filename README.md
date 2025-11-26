@@ -1,202 +1,64 @@
-# Phlock - Daily Music Curation Platform
+# Phlock - Daily Music Curation
 
-> A social music discovery app where users curate daily playlists for each other
+> Pick one song per day, listen to your 5-person phlock, and build social currency by being in other people’s phlocks.
 
-Phlock transforms music discovery through daily curation. Each user selects one song per day, and their "phlock" (5 curators they follow) provides their daily personalized playlist. Social currency is built through being included in others' phlocks - the more phlocks you're in, the more influential you become.
+## What’s in this repo
+- `apps/ios/phlock/phlock` — SwiftUI iOS app (iOS 16+, AuthServiceV2, daily curation flows)
+- `supabase/migrations` — Current database migrations (notifications table, daily fields)
+- `supabase/seed` — Demo data (e.g., `demo_notifications.sql`)
+- `supabase/functions` — Edge functions (track validation/search helpers)
+- `docs` — Roadmaps/strategy (see “Key docs” below)
+- TestFlight guides — `TESTFLIGHT_QUICKSTART.md`, `TESTFLIGHT_DEPLOYMENT_GUIDE.md`, `TESTFLIGHT_CHANGES_SUMMARY.md`
+- Project overview — `claude.md`
 
-## 🎵 Core Concept
+## Core concept
+- One song per user per day; streaks tracked.
+- Your playlist is your 5-person phlock (positions 1–5); swaps take effect at midnight.
+- Influence = how many phlocks include you.
+- Nudges/notifications remind users to pick and react.
 
-- **Daily Song Selection**: Pick one song per day to share with your followers
-- **Your Phlock**: Choose 5 people whose daily songs become your playlist
-- **Social Currency**: Phlock count (how many people include you) = influence
-- **Swap Mechanism**: Adjust your phlock anytime - changes take effect at midnight
-- **Streaks**: Build momentum by selecting songs daily
+## Current status (branch: `product/daily-curation`)
+- TestFlight-ready build on iOS 16+ (deployment target lowered; privacy manifest added).
+- Notifications UI + service + schema exist; DB supports nudges and friend accepts.
+- Daily pick flows are scaffolded; Discover includes picker hooks.
+- Critical gaps before production: friend discovery (contacts/invites), external sharing (iMessage/Instagram with universal links), push + deep links, notification type parity, move secrets out of `Config.swift`.
 
-## 📁 Repository Structure
-
-This is a monorepo containing the Phlock iOS app and backend infrastructure:
-
-```
-phlock-dev/
-├── apps/
-│   ├── ios/phlock/              # Native SwiftUI iOS app
-│   └── mobile-rn-archive/       # Archived React Native implementation
-├── packages/
-│   └── database/
-│       └── migrations/          # Supabase database migrations
-├── supabase/
-│   ├── functions/               # Edge Functions (auth, search)
-│   └── seed/                    # Test data
-├── docs/
-│   └── FEATURE_ROADMAP.md       # Future features
-├── CLAUDE.md                    # Complete project documentation
-└── README.md                    # This file
-```
-
-## 🚀 Quick Start
-
+## Quick start
 ### Prerequisites
+- Xcode 15+, iOS 16+ simulator or device
+- Supabase project
+- Spotify + Apple Music developer accounts
 
-- **iOS Development:**
-  - Xcode 15+
-  - iOS 15+ deployment target
-- **Backend:**
-  - Supabase project
-  - Spotify Developer account (for OAuth)
-  - Apple Developer account (for Apple Music)
-
-### Running the iOS App
-
+### Run the app
 ```bash
-# Open Xcode project
 open apps/ios/phlock/phlock.xcodeproj
-
-# Or use command line
+# or
 cd apps/ios/phlock
 xcodebuild -scheme phlock -sdk iphonesimulator
 ```
 
-### Database Setup
-
+### Database
 ```bash
-# Run migrations
-supabase db push
-
-# Or manually run each migration
-psql $DATABASE_URL < packages/database/migrations/001_initial_schema.sql
-# ... continue with subsequent migrations
-```
-
-## 🌳 Branch Structure
-
-We use **product-based branching** to explore different product directions:
-
-### Active Branches
-
-- **`main`** - Stable release branch
-- **`develop`** - Integration branch
-- **`product/viral-sharing`** - Original viral music sharing concept (complete)
-- **`product/daily-curation`** - **CURRENT** - Daily playlist curation model
-
-### Tags
-
-- `v1.0-viral-sharing` - Complete viral sharing implementation
-- `archive/daily-curation-ground-up` - Reference schema for ground-up rebuild
-
-## 🏗️ Current Architecture (Daily Curation Branch)
-
-### Database Schema
-
-**Core Tables:**
-- `users` - User profiles with Spotify/Apple Music OAuth
-  - Extended fields: `username`, `phlock_count`, `daily_song_streak`, `last_daily_song_date`
-- `shares` - Music shares between users
-  - Extended fields: `is_daily_song`, `selected_date`, `preview_url`
-- `friendships` - Social connections
-  - Extended fields: `position`, `is_phlock_member`, `last_swapped_at`
-- `swap_history` - Track daily phlock member swaps
-- `platform_tokens` - Encrypted OAuth tokens
-
-**Key Constraints:**
-- One song per user per day
-- Max 5 phlock members (free tier)
-- Unlimited swaps per day (take effect at midnight)
-- Streak tracking with auto-reset
-- Daily playlist generation at midnight user's timezone
-
-### iOS App Structure
-
-```
-phlock/
-├── Models/
-│   ├── User.swift              # Extended with phlock fields
-│   ├── Share.swift             # Extended with daily song fields
-│   ├── Friendship.swift
-│   └── MusicItem.swift
-├── Services/
-│   ├── AuthService_v2.swift    # OAuth with Spotify/Apple Music
-│   ├── ShareService.swift      # Music sharing (will add daily song methods)
-│   ├── UserService.swift       # Friend/phlock management
-│   ├── SpotifyService.swift    # Spotify API integration
-│   └── AppleMusicService.swift # Apple Music API integration
-├── Views/
-│   ├── Auth/                   # Authentication flow
-│   ├── Main/
-│   │   ├── DiscoverView.swift  # Search + daily song selection
-│   │   ├── FriendsView.swift   # Will become "My Phlock"
-│   │   ├── InboxView.swift     # Will become "Daily Playlist"
-│   │   ├── FeedView.swift      # Activity feed
-│   │   └── ProfileView.swift   # User profiles
-│   └── Components/             # Reusable UI components
-└── ViewModels/                 # State management
-```
-
-## 🎯 Implementation Status (product/daily-curation)
-
-### ✅ Completed
-
-- [x] Branch restructuring and cleanup
-- [x] Incremental database migration (non-breaking)
-- [x] Extended Swift models (Share, User)
-- [x] Helper methods for daily songs and streaks
-- [x] Triggers for auto-maintaining phlock counts and streaks
-
-### 🚧 In Progress
-
-- [ ] ShareService methods for daily song selection
-- [ ] DiscoverView modifications (add daily song picker)
-- [ ] My Phlock management UI
-- [ ] Daily Playlist view
-- [ ] Testing migration on Supabase
-
-### 📋 Planned
-
-- [ ] Swap functionality UI
-- [ ] Streak display and notifications
-- [ ] Premium tier (10 phlock members)
-- [ ] Discovery/browse features
-- [ ] Artist pitch system (monetization)
-
-## 🔧 Development Workflow
-
-### Current Branch: `product/daily-curation`
-
-This branch uses a **hybrid approach**:
-- Starts from working viral-sharing code
-- Incrementally adds daily curation features
-- Non-breaking changes (both models can coexist)
-- Always shippable at every commit
-
-### Typical Development Flow
-
-```bash
-# Work on daily curation features
-git checkout product/daily-curation
-
-# Make changes incrementally
-# ... modify code ...
-
-# Commit frequently
-git add -A
-git commit -m "feat: Add daily song selection to DiscoverView"
-git push origin product/daily-curation
-
-# Test in Xcode - app should always compile and run
-```
-
-### Database Migration Strategy
-
-```bash
-# Run latest migration
 cd supabase
-supabase db push
-
-# Or run specific migration
-psql $DATABASE_URL < ../packages/database/migrations/007_add_daily_curation_fields.sql
-
-# Verify
-supabase db execute "SELECT username, phlock_count, daily_song_streak FROM users LIMIT 5;"
+supabase db push               # apply latest migrations
+supabase db execute -f seed/demo_notifications.sql  # optional demo notifications
 ```
+
+## Branches / tags
+- `main` — stable
+- `develop` — integration
+- `product/daily-curation` — current work (always shippable)
+- Tags: `v1.0-viral-sharing`, `archive/daily-curation-ground-up`
+
+## Key docs
+- `claude.md` — project snapshot (daily curation direction)
+- `CRITICAL_FEATURES_AND_IMPLEMENTATION_PLAN.md` — blockers/priorities to production
+- `AUTHSERVICE_V2_IMPLEMENTATION.md` — auth details
+- `TESTFLIGHT_*` — deployment steps and status
+- `PRIVACY_POLICY.md` — host before App Store submission
+
+## Security note
+Real Supabase/Spotify/Apple keys are checked into `apps/ios/phlock/phlock/Services/Config.swift` for now. Move these to build configurations/secrets before production.
 
 ## 📊 Key Features
 

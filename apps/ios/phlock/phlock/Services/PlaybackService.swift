@@ -12,6 +12,11 @@ class PlaybackService: ObservableObject {
     private var player: AVPlayer?
     private var timeObserver: Any?
 
+    struct PlaybackQueueItem: Hashable {
+        let track: MusicItem
+        let sourceId: String?
+    }
+
     // Thread-safe cache for ISRC and preview URL lookups
     private let cacheQueue = DispatchQueue(label: "com.phlock.playback.cache", attributes: .concurrent)
     private nonisolated(unsafe) var _isrcCache: [String: String] = [:] // spotifyId -> ISRC
@@ -45,6 +50,12 @@ class PlaybackService: ObservableObject {
     @Published var duration: Double = 0
     @Published var shouldShowMiniPlayer = true // Controls whether mini player appears
     @Published var isShareOverlayPresented = false
+    @Published private(set) var queue: [PlaybackQueueItem] = []
+    @Published private(set) var currentQueueIndex: Int? = nil
+
+    /// Track IDs that are marked as saved in the current playback context
+    /// This is set by the view that starts playback and allows FullScreenPlayerView to show correct saved state
+    @Published var savedTrackIds: Set<String> = []
 
     nonisolated private init() {
         Task { @MainActor in
@@ -122,9 +133,20 @@ class PlaybackService: ObservableObject {
     // MARK: - Playback Control
 
     /// Play a track by its preview URL
-    func play(track: MusicItem, sourceId: String? = nil, showMiniPlayer: Bool = true) {
+    func play(
+        track: MusicItem,
+        sourceId: String? = nil,
+        showMiniPlayer: Bool = true,
+        resetQueue: Bool = true,
+        allowSameSourceToggle: Bool = true
+    ) {
         // Set whether mini player should be shown
         shouldShowMiniPlayer = showMiniPlayer
+
+        if resetQueue {
+            queue = [PlaybackQueueItem(track: track, sourceId: sourceId)]
+            currentQueueIndex = 0
+        }
 
         if #available(iOS 14.0, *) {
             PhlockLogger.playback.infoLog("Attempting to play track: \(track.name)")
@@ -134,7 +156,8 @@ class PlaybackService: ObservableObject {
         }
 
         // Check if this is the exact same instance already playing
-        if let sourceId = sourceId,
+        if allowSameSourceToggle,
+           let sourceId = sourceId,
            currentTrack?.id == track.id,
            currentSourceId == sourceId,
            player != nil {
@@ -350,7 +373,7 @@ class PlaybackService: ObservableObject {
 
         // Always stop and start fresh when playing from URL
         // The decision to reuse or restart should be made at higher level (play method)
-        stopPlayback()
+        stopPlayback(clearQueue: false)
 
         // Restore the flag after stopPlayback
         shouldShowMiniPlayer = preserveShowMiniPlayer
@@ -403,7 +426,7 @@ class PlaybackService: ObservableObject {
     }
 
     /// Stop playback and clear current track
-    func stopPlayback() {
+    func stopPlayback(clearQueue: Bool = true) {
         // First pause playback
         player?.pause()
 
@@ -423,7 +446,11 @@ class PlaybackService: ObservableObject {
         isPlaying = false
         currentTime = 0
         duration = 0
-        shouldShowMiniPlayer = true // Reset to default
+        if clearQueue {
+            queue.removeAll()
+            currentQueueIndex = nil
+            shouldShowMiniPlayer = true // Reset to default
+        }
 
         if #available(iOS 14.0, *) {
             PhlockLogger.playback.debugLog("Playback stopped")
@@ -449,14 +476,91 @@ class PlaybackService: ObservableObject {
         }
     }
 
-    @objc private func playerDidFinishPlaying() {
+    @objc private func playerDidFinishPlaying(_ notification: Notification) {
+        // Only handle if this notification is for the current player item
+        // This prevents race conditions when autoplay quickly starts the next track
+        guard let finishedItem = notification.object as? AVPlayerItem,
+              finishedItem == player?.currentItem else {
+            return
+        }
+
         // Pause at end but keep track info (don't clear currentTrack)
-        DispatchQueue.main.async {
+        // Note: FeedView's onReceive will call skipForward for autoplay
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            // Double-check we haven't already moved to a new track
+            guard finishedItem == self.player?.currentItem else { return }
+
             self.isPlaying = false
             self.player?.pause()
             // Reset to beginning
             self.player?.seek(to: .zero)
             self.currentTime = 0
         }
+    }
+
+    // MARK: - Queue Helpers
+
+    private func playQueueItem(at index: Int, showMiniPlayer: Bool) {
+        guard queue.indices.contains(index) else { return }
+        currentQueueIndex = index
+        let item = queue[index]
+        play(
+            track: item.track,
+            sourceId: item.sourceId,
+            showMiniPlayer: showMiniPlayer,
+            resetQueue: false,
+            allowSameSourceToggle: false
+        )
+    }
+
+    var canGoToPreviousTrack: Bool {
+        return currentTrack != nil && !queue.isEmpty
+    }
+
+    var canGoToNextTrack: Bool {
+        return currentTrack != nil && !queue.isEmpty
+    }
+
+    func startQueue(tracks: [MusicItem], startAt index: Int, sourceIds: [String?]? = nil, showMiniPlayer: Bool = true) {
+        guard !tracks.isEmpty, index >= 0, index < tracks.count else { return }
+
+        queue = tracks.enumerated().map { idx, track in
+            let sourceId = (sourceIds?.indices.contains(idx) == true) ? sourceIds?[idx] : nil
+            return PlaybackQueueItem(track: track, sourceId: sourceId)
+        }
+
+        playQueueItem(at: index, showMiniPlayer: showMiniPlayer)
+    }
+
+    func skipForward(wrap: Bool = true) {
+        guard !queue.isEmpty else { return }
+        let index = currentQueueIndex ?? 0
+
+        let nextIndex: Int
+        if index + 1 < queue.count {
+            nextIndex = index + 1
+        } else if wrap {
+            nextIndex = 0
+        } else {
+            return
+        }
+
+        playQueueItem(at: nextIndex, showMiniPlayer: shouldShowMiniPlayer)
+    }
+
+    func skipBackward() {
+        guard !queue.isEmpty else { return }
+        let restartThreshold: Double = 3.0
+
+        // If we're a few seconds into the song, jump to start
+        if currentTime > restartThreshold {
+            seek(to: 0)
+            return
+        }
+
+        let index = currentQueueIndex ?? 0
+        let previousIndex = index == 0 ? (queue.count - 1) : (index - 1)
+        playQueueItem(at: previousIndex, showMiniPlayer: shouldShowMiniPlayer)
     }
 }

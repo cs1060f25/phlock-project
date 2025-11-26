@@ -29,7 +29,7 @@ struct MyPhlocksView: View {
                         ProgressView()
                             .scaleEffect(1.5)
                         Text("Loading phlocks...")
-                            .font(.lora(size: 15))
+                            .font(.dmSans(size: 10))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -149,7 +149,7 @@ struct PhlockGalleryView: View {
 
                     VStack(spacing: 8) {
                         Text("Songs you've shared, organized by track")
-                            .font(.lora(size: 15))
+                            .font(.dmSans(size: 10))
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
@@ -213,7 +213,7 @@ struct PhlockCardView: View {
                     .frame(height: 200)
                     .overlay(
                         Image(systemName: "music.note")
-                            .font(.system(size: 48))
+                            .font(.dmSans(size: 48, weight: .bold))
                             .foregroundColor(.gray)
                     )
             }
@@ -223,11 +223,11 @@ struct PhlockCardView: View {
                 // Track & Artist
                 VStack(alignment: .leading, spacing: 4) {
                     Text(phlock.trackName)
-                        .font(.lora(size: 18, weight: .bold))
+                        .font(.dmSans(size: 10, weight: .medium))
                         .lineLimit(1)
 
                     Text(phlock.artistName)
-                        .font(.lora(size: 15))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
@@ -255,7 +255,7 @@ struct PhlockCardView: View {
 
                 // Timestamp
                 Text("Last sent \(phlock.lastSentAt.shortRelativeTimeString())")
-                    .font(.lora(size: 13))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.secondary)
             }
             .padding(16)
@@ -281,15 +281,15 @@ struct MetricBadge: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 12))
+                .font(.dmSans(size: 10))
                 .foregroundColor(.secondary)
 
             VStack(alignment: .leading, spacing: 0) {
                 Text(value)
-                    .font(.lora(size: 14, weight: .semiBold))
+                    .font(.dmSans(size: 10))
 
                 Text(label)
-                    .font(.lora(size: 10))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.secondary)
             }
         }
@@ -307,19 +307,19 @@ struct EmptyPhlocksView: View {
 
             VStack(spacing: 12) {
                 Text("📤")
-                    .font(.system(size: 64))
+                    .font(.dmSans(size: 64, weight: .bold))
 
                 Text("No songs shared yet")
-                    .font(.lora(size: 28, weight: .bold))
+                    .font(.dmSans(size: 20, weight: .bold))
 
                 Text("see all the songs you've sent to friends,\ngrouped by track with engagement metrics")
-                    .font(.lora(size: 15))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
 
                 Text("discover music and start sharing\nto see your phlocks here!")
-                    .font(.lora(size: 13))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.top, 4)
@@ -344,14 +344,14 @@ struct ErrorStateView: View {
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 48))
+                .font(.dmSans(size: 48, weight: .bold))
                 .foregroundColor(.orange)
 
             Text("Error Loading Phlocks")
-                .font(.lora(size: 20, weight: .semiBold))
+                .font(.dmSans(size: 20, weight: .semiBold))
 
             Text(message)
-                .font(.lora(size: 15))
+                .font(.dmSans(size: 10))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
@@ -359,7 +359,7 @@ struct ErrorStateView: View {
             Button("Try Again") {
                 retry()
             }
-            .font(.lora(size: 16, weight: .semiBold))
+            .font(.dmSans(size: 10))
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
             .background(Color.black)

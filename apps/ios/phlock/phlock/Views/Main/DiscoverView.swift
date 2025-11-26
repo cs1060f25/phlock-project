@@ -70,7 +70,7 @@ struct DiscoverView: View {
                         .foregroundColor(.gray)
 
                     TextField("search for music...", text: $searchText)
-                        .font(.lora(size: 16, weight: .regular))
+                        .font(.dmSans(size: 10))
                         .textFieldStyle(.plain)
                         .autocorrectionDisabled()
                         .focused($isSearchFieldFocused)
@@ -135,7 +135,7 @@ struct DiscoverView: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("browse")
-                        .font(.lora(size: 28, weight: .bold))
+                        .font(.dmSans(size: 20, weight: .bold))
                         .foregroundColor(.primary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -299,7 +299,7 @@ struct DiscoverView: View {
             } else {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("recently played")
-                        .font(.lora(size: 20, weight: .bold))
+                        .font(.dmSans(size: 20, weight: .semiBold))
                         .padding(.horizontal, 16)
                         .padding(.top, 4)
 
@@ -399,13 +399,13 @@ struct ProfileIconView: View {
                     .scaledToFill()
             } placeholder: {
                 Image(systemName: "person.circle.fill")
-                    .font(.system(size: 22))
+                    .font(.dmSans(size: 20, weight: .semiBold))
             }
             .frame(width: 28, height: 28)
             .clipShape(Circle())
         } else {
             Image(systemName: "person.circle")
-                .font(.system(size: 22))
+                .font(.dmSans(size: 20, weight: .semiBold))
         }
     }
 }
@@ -423,9 +423,9 @@ struct DailySongStreakBanner: View {
             if user.dailySongStreak > 0 {
                 HStack(spacing: 4) {
                     Text(user.streakEmoji)
-                        .font(.system(size: 20))
+                        .font(.dmSans(size: 20, weight: .semiBold))
                     Text("\(user.dailySongStreak)")
-                        .font(.lora(size: 18, weight: .bold))
+                        .font(.dmSans(size: 10, weight: .medium))
                         .foregroundColor(.primary)
                 }
             }
@@ -434,14 +434,14 @@ struct DailySongStreakBanner: View {
             VStack(alignment: .leading, spacing: 2) {
                 if let dailySong = todaysDailySong {
                     Text("Today's song:")
-                        .font(.lora(size: 12, weight: .semiBold))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(.secondary)
                     Text(dailySong.trackName)
-                        .font(.lora(size: 14, weight: .bold))
+                        .font(.dmSans(size: 10))
                         .lineLimit(1)
                 } else {
                     Text("Select your song for today")
-                        .font(.lora(size: 14, weight: .semiBold))
+                        .font(.dmSans(size: 10))
                         .foregroundColor(.primary)
                 }
             }

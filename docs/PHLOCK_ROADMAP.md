@@ -1,4 +1,6 @@
-# Phlock Roadmap: From musiclinkr to Full Vision
+# Phlock Roadmap (Archived - musiclinkr era)
+
+**Status:** Historical context from the pre-iOS (React Native/musiclinkr) vision. For the active daily curation plan and production blockers, see `CRITICAL_FEATURES_AND_IMPLEMENTATION_PLAN.md` and `claude.md`.
 
 **Last Updated:** October 15, 2025
 **Document Purpose:** Strategic roadmap for evolving musiclinkr into the full Phlock peer-to-peer music discovery network

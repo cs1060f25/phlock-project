@@ -11,6 +11,7 @@ class UserService {
     private var userCache: [UUID: User] = [:]
     private var friendsCache: [UUID: [User]] = [:]
     private var pendingRequestsCache: [UUID: [FriendshipWithUser]] = [:]
+    private var phlockMembersCache: [UUID: [FriendWithPosition]] = [:]
     private var cacheTimestamp: [String: Date] = [:]
     private let cacheExpiration: TimeInterval = 60 // 1 minute
 
@@ -317,12 +318,14 @@ class UserService {
         return friendshipsWithUsers
     }
 
-    /// Clear cache (call after accepting/rejecting friend requests)
+    /// Clear cache (call after accepting/rejecting friend requests or phlock changes)
     func clearCache(for userId: UUID) {
         friendsCache.removeValue(forKey: userId)
         pendingRequestsCache.removeValue(forKey: userId)
+        phlockMembersCache.removeValue(forKey: userId)
         cacheTimestamp.removeValue(forKey: "friends_\(userId.uuidString)")
         cacheTimestamp.removeValue(forKey: "pending_\(userId.uuidString)")
+        cacheTimestamp.removeValue(forKey: "phlock_\(userId.uuidString)")
     }
 
     /// Get friendship status between current user and another user
@@ -354,6 +357,15 @@ class UserService {
     /// Get the user's phlock members (up to 5 friends with positions 1-5)
     /// Returns friends ordered by position (1 is first in playlist)
     func getPhlockMembers(for userId: UUID) async throws -> [FriendWithPosition] {
+        // Check cache first
+        let cacheKey = "phlock_\(userId.uuidString)"
+        if let cachedMembers = phlockMembersCache[userId],
+           let timestamp = cacheTimestamp[cacheKey],
+           Date().timeIntervalSince(timestamp) < cacheExpiration {
+            print("⚡️ Using cached phlock members")
+            return cachedMembers
+        }
+
         // Get all friendships where user is either party and is_phlock_member = true
         let friendships: [Friendship] = try await supabase
             .from("friendships")
@@ -403,12 +415,23 @@ class UserService {
         }
 
         // Sort by position (1-5) and take first 5 if somehow more exist
-        return positionMap
+        let result = positionMap
             .values
             .filter { (1...5).contains($0.position) }
             .sorted { $0.position < $1.position }
             .prefix(5)
             .map { $0 }
+
+        // Cache the results
+        phlockMembersCache[userId] = result
+        cacheTimestamp[cacheKey] = Date()
+
+        // Also cache individual users
+        for member in result {
+            userCache[member.user.id] = member.user
+        }
+
+        return result
     }
 
     /// Add a friend to the user's phlock at a specific position (1-5)
@@ -731,6 +754,60 @@ class UserService {
     func getAvailablePhlockSlots(for userId: UUID) async throws -> Int {
         let members = try await getPhlockMembers(for: userId)
         return max(0, 5 - members.count)
+    }
+    // MARK: - Blocking and Reporting
+
+    /// Block a user
+    func blockUser(userId: UUID, currentUserId: UUID) async throws {
+        // 1. Remove friendship if exists
+        if let friendship = try? await getFriendship(currentUserId: currentUserId, otherUserId: userId) {
+            try await supabase
+                .from("friendships")
+                .delete()
+                .eq("id", value: friendship.id.uuidString)
+                .execute()
+        }
+
+        // 2. Add to blocked_users table
+        struct BlockInsert: Encodable {
+            let blocker_id: String
+            let blocked_id: String
+        }
+
+        let insert = BlockInsert(
+            blocker_id: currentUserId.uuidString,
+            blocked_id: userId.uuidString
+        )
+
+        try await supabase
+            .from("blocked_users")
+            .insert(insert)
+            .execute()
+
+        // 3. Clear cache
+        clearCache(for: currentUserId)
+    }
+
+    /// Report a user
+    func reportUser(userId: UUID, reporterId: UUID, reason: String) async throws {
+        struct ReportInsert: Encodable {
+            let reporter_id: String
+            let reported_id: String
+            let reason: String
+            let status: String
+        }
+
+        let insert = ReportInsert(
+            reporter_id: reporterId.uuidString,
+            reported_id: userId.uuidString,
+            reason: reason,
+            status: "pending"
+        )
+
+        try await supabase
+            .from("user_reports")
+            .insert(insert)
+            .execute()
     }
 }
 

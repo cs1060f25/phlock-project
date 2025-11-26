@@ -1,8 +1,8 @@
 # Phlock - Critical Missing Features & Beta Launch Plan
 
-**Date:** November 15, 2025
-**Status:** Pre-Beta - Critical Gaps Identified
-**Estimated Beta Launch:** 6-8 weeks
+**Date:** December 12, 2025
+**Status:** Daily Curation branch (`product/daily-curation`) - TestFlight-ready build, production gaps remain
+**Estimated Beta Launch:** 6-8 weeks (with P0 fixes)
 
 ---
 
@@ -76,6 +76,26 @@ private func shareViaWhatsApp() {
 
 ---
 
+### Issue 3: Notifications Stack Misaligned (P0/P1 mix)
+
+**Current Implementation:**
+- Notifications table exists with RLS and daily-nudge upsert logic.
+- iOS `NotificationsView` and `NotificationService` fetch/render notifications and aggregate nudges.
+
+**What's Missing:**
+1. DB only allows `friend_request_accepted` and `daily_nudge`; app expects 5 more types (`friend_request_received`, `friend_joined`, `friend_picked_song`, `reaction_received`, `streak_milestone`).
+2. No mark-as-read/delete API; UI toggles only local state.
+3. No push delivery: no device token registration, no send-push edge function.
+
+**Why It's a Blocker:**
+Notification parity and delivery are required for daily nudges and social loops; without push + proper types, users miss core actions.
+
+**Code/Schema Locations:**  
+- Schema: `supabase/migrations/20251201090000_create_notifications_table.sql`  
+- RLS fix: `supabase/migrations/20251212120000_fix_notifications_rls_for_nudges.sql`  
+- App enum: `apps/ios/phlock/phlock/Models/NotificationItem.swift`  
+- Service/UI: `apps/ios/phlock/phlock/Services/NotificationService.swift`, `apps/ios/phlock/phlock/Views/Main/NotificationsView.swift`
+
 ## Part 2: All Critical Missing Features
 
 ### Priority 0 (P0) - BLOCKERS - Cannot Launch Without These
@@ -83,12 +103,10 @@ private func shareViaWhatsApp() {
 | # | Feature | Current State | Why Critical | Complexity | Estimate |
 |---|---------|---------------|--------------|-----------|----------|
 | 1 | Friend Discovery | Only manual username search | Users can't find friends | LARGE | 2-3 weeks |
-| 2 | External Sharing (iMessage/IG) | Empty stubs | Can't share off-app | MEDIUM | 1 week |
-| 3 | Push Notifications | No implementation | Users won't know about shares | MEDIUM | 1 week |
-| 4 | Universal Links | No setup | Can't share track links | MEDIUM | 4 days |
-| 5 | Deep Link Handling | OAuth only | Can't navigate from links | SMALL | 2 days |
+| 2 | External Sharing (iMessage/IG) | Stubs in QuickSendBar | Can't share off-app | MEDIUM | 1 week |
+| 3 | Push + Universal/Deep Links | No APNs/device tokens; no Associated Domains; OAuth-only onOpenURL | No track/invite links, no push delivery | LARGE | 1-1.5 weeks |
 
-**Total P0 Effort:** 5-6 weeks
+**Total P0 Effort:** ~4-5 weeks
 
 ---
 
@@ -96,23 +114,25 @@ private func shareViaWhatsApp() {
 
 | # | Feature | Current State | Missing Implementation | Complexity | Estimate |
 |---|---------|---------------|------------------------|-----------|----------|
-| 6 | In-App Notifications | None | Notification center, badges | SMALL | 3 days |
-| 7 | Friend Invite System | None | Invite attribution, rewards | MEDIUM | 1 week |
-| 8 | Delete Account | Sign out only | Account deletion, data export | MEDIUM | 3 days |
-| 9 | Change Music Platform | Set once forever | Platform switching, re-link | LARGE | 1 week |
-| 10 | Account Recovery | OAuth only | Email verification, password reset | MEDIUM | 5 days |
-| 11 | Block/Report Users | None | Block feature, reporting | MEDIUM | 1 week |
-| 12 | Privacy Settings | All public | Private accounts, activity hiding | MEDIUM | 1 week |
-| 13 | Content Moderation | None | Profanity filter, image moderation | MEDIUM | 5 days |
-| 14 | Offline Mode | None | Local cache, queue, retry | LARGE | 2 weeks |
-| 15 | Error Handling | Generic alerts | User-friendly messages, retry | MEDIUM | 1 week |
-| 16 | Empty States | Basic only | Onboarding tooltips, guidance | SMALL | 3 days |
-| 17 | Save to Library | Preview only | Add to Spotify/Apple Music | MEDIUM | 1 week |
-| 18 | Full Track Playback | 30s previews | Spotify SDK, Apple Music auth | LARGE | 2-3 weeks |
-| 19 | Token Refresh | Untested | Auto-refresh, background refresh | MEDIUM | 5 days |
-| 20 | Cross-Platform Matching | ISRC only | Fallback search, manual mapping | MEDIUM | 1 week |
+| 4 | Notification Type Parity | DB supports only `friend_request_accepted`, `daily_nudge`; app expects 5 more types | Add enum values, emit events, mark-as-read/delete | SMALL | 2-3 days |
+| 5 | In-App Notifications | UI exists; backend mark-read missing | Mark read/delete APIs; badge sync | SMALL | 3 days |
+| 6 | Friend Invite System | None | Invite attribution, rewards | MEDIUM | 1 week |
+| 7 | Delete Account | Sign out only | Account deletion, data export | MEDIUM | 3 days |
+| 8 | Change Music Platform | Set once forever | Platform switching, re-link | LARGE | 1 week |
+| 9 | Account Recovery | OAuth only | Email verification, password reset | MEDIUM | 5 days |
+| 10 | Block/Report Users | None | Block feature, reporting | MEDIUM | 1 week |
+| 11 | Privacy Settings | All public | Private accounts, activity hiding | MEDIUM | 1 week |
+| 12 | Content Moderation | None | Profanity filter, image moderation | MEDIUM | 5 days |
+| 13 | Offline Mode | None | Local cache, queue, retry | LARGE | 2 weeks |
+| 14 | Error Handling | Generic alerts | User-friendly messages, retry | MEDIUM | 1 week |
+| 15 | Empty States | Basic only | Onboarding tooltips, guidance | SMALL | 3 days |
+| 16 | Save to Library | Preview only | Add to Spotify/Apple Music | MEDIUM | 1 week |
+| 17 | Full Track Playback | 30s previews | Spotify SDK, Apple Music auth | LARGE | 2-3 weeks |
+| 18 | Token Refresh | Untested | Auto-refresh, background refresh | MEDIUM | 5 days |
+| 19 | Cross-Platform Matching | ISRC only | Fallback search, manual mapping | MEDIUM | 1 week |
+| 20 | Secrets Management | Keys in `Config.swift` | Move to build configs/secrets | SMALL | 1 day |
 
-**Total P1 Effort:** 13-15 weeks
+**Total P1 Effort:** ~15-17 weeks
 
 ---
 
@@ -158,11 +178,11 @@ private func shareViaWhatsApp() {
 ### Files with Placeholder/Broken Implementations
 
 1. **`apps/ios/phlock/phlock/Views/Components/QuickSendBar.swift`**
-   - Lines 738-753: External sharing stubs (iMessage, Instagram)
-   - Lines 487-538: Group creation stub (does nothing)
+   - Lines ~599-613: External sharing stubs (iMessage, Instagram); WhatsApp plain text.
+   - Lines ~487-538: Group creation stub (does nothing).
 
 2. **`apps/ios/phlock/phlock/Views/Main/FriendsView.swift`**
-   - Lines 158-257: Only manual search, no contact sync
+   - Lines ~150-260: Only manual search, no contact sync/invites.
 
 3. **`apps/ios/phlock/phlock/Services/UserService.swift`**
    - Lines 11-15: Unbounded cache memory leak
@@ -173,21 +193,24 @@ private func shareViaWhatsApp() {
    ```
 
 4. **`apps/ios/phlock/phlock/Services/AuthService_v2.swift`**
-   - Lines 641-645: Spotify artist search deferred (returns empty string)
+   - Lines ~641-645: Spotify artist search deferred (returns empty string)
 
 5. **`apps/ios/phlock/phlock/Services/Config.swift`**
-   - Comment: "NOTE: refresh logic exists but not fully tested"
+   - Real keys committed; needs build-config secrets.
+
+6. **`supabase/migrations/20251201090000_create_notifications_table.sql`**
+   - Schema supports only `friend_request_accepted`, `daily_nudge`; app expects more notification types.
 
 ### Missing Files/Components
 
-- No `NotificationService.swift` (no push notification handling)
 - No `ContactsService.swift` (no contact integration)
 - No `BlockedUsersService.swift` (no moderation)
 - No Settings view
 - No Onboarding flow views
-- No Comment display views (despite backend support in `ShareService.swift:451-526`)
-- No `Info.plist` Associated Domains (no Universal Links)
-- No deep link routing in `phlockApp.swift` (only OAuth callbacks)
+- No Comment display views (despite backend support in `ShareService.swift`)
+- No Associated Domains in `Info.plist` (no Universal Links)
+- No deep link routing in `phlockApp.swift` beyond OAuth callback
+- No push token registration/APNs handler; no `send-push-notification` edge function
 
 ---
 
@@ -318,9 +341,8 @@ Get to a functional beta with real users sending music to each other within **6-
    - Handle token updates
 
 4. **Notification Handling**
-   - Create `NotificationService.swift`
-   - Handle foreground notifications
-   - Handle background notifications
+   - Wire UNUserNotificationCenter delegate
+   - Handle foreground/background notifications
    - Parse notification payload and navigate to content
 
 **Deliverables:**
@@ -330,7 +352,6 @@ Get to a functional beta with real users sending music to each other within **6-
 - Tapping notification navigates to relevant content
 
 **Files to Create:**
-- `NotificationService.swift`
 - `NotificationPermissionView.swift`
 - Database migration for `user_devices` table
 

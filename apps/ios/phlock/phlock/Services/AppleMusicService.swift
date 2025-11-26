@@ -1,6 +1,8 @@
 import Foundation
 import MusicKit
 import UIKit
+import StoreKit
+import MediaPlayer
 
 /// Service for Apple Music authentication and API interactions
 class AppleMusicService {
@@ -456,42 +458,58 @@ class AppleMusicService {
             throw AppleMusicError.authorizationDenied
         }
 
-        // Convert string ID to MusicItemID
-        let musicItemId = MusicItemID(trackId)
+        // MusicKit still relies on cloud service capabilities for library writes
+        let cloudStatus = await requestCloudServiceAuthorization()
+        guard cloudStatus == .authorized else {
+            print("❌ Apple Music cloud service authorization denied")
+            throw AppleMusicError.authorizationDenied
+        }
 
-        // Create a library request to add the song
+        let capabilities = try await requestCapabilities()
+        guard capabilities.contains(.addToCloudMusicLibrary) else {
+            print("❌ Missing add-to-library capability")
+            throw AppleMusicError.authorizationDenied
+        }
+
         do {
-            // Note: MusicKit doesn't provide a direct "add" method
-            // We need to use the Song ID and add it to the library
-            // This requires creating a MusicLibraryRequest with the edit capability
-
-            // Create the song reference from catalog ID
-            let catalogRequest = MusicCatalogResourceRequest<Song>(matching: \.id, equalTo: musicItemId)
-            let catalogResponse = try await catalogRequest.response()
-
-            guard let song = catalogResponse.items.first else {
-                print("❌ Could not find song in Apple Music catalog")
-                throw AppleMusicError.apiError("Song not found in catalog")
-            }
-
-            // Add to library using play parameters
-            // Note: MusicKit's library management is limited
-            // The primary way to add songs is through the Music app UI
-            // or using MusicPlayer to play and add
-            print("⚠️ Apple Music library addition requires user interaction")
-            print("   Opening song in Apple Music app for user to add...")
-
-            // Open the song in Apple Music app where user can add it
-            if let url = song.url {
-                await MainActor.run {
-                    UIApplication.shared.open(url)
-                }
-            }
-
-            print("✅ Opened track in Apple Music for adding to library")
+            try await addProductToLibrary(productId: trackId)
+            print("✅ Added track to Apple Music library")
         } catch {
             print("❌ Failed to save track to Apple Music library: \(error)")
             throw AppleMusicError.apiError("Failed to add to library: \(error.localizedDescription)")
+        }
+    }
+
+    private func requestCloudServiceAuthorization() async -> SKCloudServiceAuthorizationStatus {
+        await withCheckedContinuation { (continuation: CheckedContinuation<SKCloudServiceAuthorizationStatus, Never>) in
+            SKCloudServiceController.requestAuthorization { status in
+                continuation.resume(returning: status)
+            }
+        }
+    }
+
+    private func requestCapabilities() async throws -> SKCloudServiceCapability {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SKCloudServiceCapability, Error>) in
+            let controller = SKCloudServiceController()
+            controller.requestCapabilities { capability, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: capability)
+                }
+            }
+        }
+    }
+
+    private func addProductToLibrary(productId: String) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            MPMediaLibrary.default().addItem(withProductID: productId) { _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: ())
+                }
+            }
         }
     }
 

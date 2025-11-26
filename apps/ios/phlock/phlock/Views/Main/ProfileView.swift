@@ -8,6 +8,7 @@ struct ProfileView: View {
     @EnvironmentObject var playbackService: PlaybackService
     @Environment(\.colorScheme) var colorScheme
     @State private var showEditProfile = false
+    @State private var showSettings = false
     @State private var isRefreshing = false
     @State private var refreshCount = 0 // Force view refresh
     @StateObject private var insightsViewModel = ProfileInsightsViewModel()
@@ -30,7 +31,13 @@ struct ProfileView: View {
     @State private var showPhlockMenu = false
 
     var body: some View {
-        ScrollView {
+        ScrollViewReader { scrollProxy in
+            ScrollView {
+                // Top anchor for scroll-to-top functionality
+                Color.clear
+                    .frame(height: 1)
+                    .id("profileTop")
+
                 VStack(spacing: 24) {
                     if let user = authState.currentUser {
                         // Profile Header
@@ -54,7 +61,7 @@ struct ProfileView: View {
                             // Display Name with Platform Logo
                             HStack(spacing: 8) {
                                 Text(user.displayName)
-                                    .font(.lora(size: 28, weight: .bold))
+                                    .font(.dmSans(size: 28, weight: .bold))
 
                                 Image(user.platformType == .spotify ? "SpotifyLogo" : "AppleMusicLogo")
                                     .resizable()
@@ -65,7 +72,7 @@ struct ProfileView: View {
                             // Bio
                             if let bio = user.bio {
                                 Text(bio)
-                                    .font(.lora(size: 15))
+                                    .font(.dmSans(size: 15))
                                     .multilineTextAlignment(.center)
                                     .padding(.horizontal, 24)
                             }
@@ -77,18 +84,31 @@ struct ProfileView: View {
                                 } label: {
                                     HStack(spacing: 4) {
                                         Image(systemName: "pencil")
-                                            .font(.system(size: 11))
+                                            .font(.dmSans(size: 11))
                                         Text("edit profile")
-                                            .font(.lora(size: 13))
+                                            .font(.dmSans(size: 13))
+                                    }
+                                    .foregroundColor(.secondary)
+                                }
+                                
+                                // Settings Button (Fallback/Direct Access)
+                                Button {
+                                    showSettings = true
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "gearshape")
+                                            .font(.dmSans(size: 11))
+                                        Text("settings")
+                                            .font(.dmSans(size: 13))
                                     }
                                     .foregroundColor(.secondary)
                                 }
 
                                 HStack(spacing: 4) {
                                     Image(systemName: "person.2")
-                                        .font(.system(size: 11))
+                                        .font(.dmSans(size: 11))
                                     Text("friends")
-                                        .font(.lora(size: 13))
+                                        .font(.dmSans(size: 13))
                                 }
                                 .foregroundColor(.secondary)
                                 .opacity(0.5)
@@ -129,7 +149,7 @@ struct ProfileView: View {
                         if let platformData = user.platformData {
                             VStack(spacing: 16) {
                                 Text("your music")
-                                    .font(.lora(size: 20, weight: .bold))
+                                    .font(.dmSans(size: 20, weight: .semiBold))
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 24)
 
@@ -160,27 +180,19 @@ struct ProfileView: View {
                             .padding(.top, 16)
                         }
 
-                        // Sign Out Button
-                        PhlockButton(
-                            title: "sign out",
-                            action: { Task { await authState.signOut() } },
-                            variant: .secondary,
-                            fullWidth: true
-                        )
-                        .padding(.horizontal, 24)
-                        .padding(.top, 16)
+
 
                         // Version Information
                         VStack(spacing: 4) {
                             if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
                                let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
                                 Text("Phlock v\(version) (\(build))")
-                                    .font(.lora(size: 12))
+                                    .font(.dmSans(size: 12))
                                     .foregroundColor(.secondary)
                             }
 
                             Text("TestFlight Beta")
-                                .font(.lora(size: 11))
+                                .font(.dmSans(size: 11))
                                 .foregroundColor(.secondary.opacity(0.7))
                             
                             // DEBUG: Reset Onboarding
@@ -190,10 +202,10 @@ struct ProfileView: View {
                             } label: {
                                 VStack(spacing: 4) {
                                     Text("Reset Onboarding (Debug)")
-                                        .font(.lora(size: 11))
+                                        .font(.dmSans(size: 11))
                                         .foregroundColor(.red)
                                     Text("Note: Backend data persists. Use a test account for fresh experience.")
-                                        .font(.lora(size: 9))
+                                        .font(.dmSans(size: 9))
                                         .foregroundColor(.secondary)
                                         .multilineTextAlignment(.center)
                                 }
@@ -204,9 +216,22 @@ struct ProfileView: View {
                         .padding(.bottom, 40)
                     }
                 }
+            }
+            // Listen for scroll to top trigger (passed via environment or binding if we kept it, but we removed binding)
+            // We'll need to re-add the binding if we want scroll to top to work, but for now focus on the gear icon.
         }
         .navigationTitle("Profile")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                        .foregroundColor(.primary)
+                }
+            }
+        }
         .refreshable {
             // Pull to refresh
             print("🔄 User initiated pull-to-refresh on ProfileView")
@@ -219,6 +244,9 @@ struct ProfileView: View {
         .id(refreshCount) // Force view refresh when refreshCount changes
         .sheet(isPresented: $showEditProfile) {
             EditProfileView()
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
         }
         .sheet(isPresented: $showSongPickerSheet) {
             DiscoverView(
@@ -309,7 +337,7 @@ struct ProfilePhotoPlaceholder: View {
                 .fill(Color.black.opacity(0.1))
 
             Text(displayName.prefix(1).uppercased())
-                .font(.lora(size: 40, weight: .bold))
+                .font(.dmSans(size: 40, weight: .bold))
                 .foregroundColor(.black.opacity(0.4))
         }
     }
@@ -460,7 +488,7 @@ struct ProfileInsightsSection: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
                 Text("your activity")
-                    .font(.lora(size: 20, weight: .bold))
+                    .font(.dmSans(size: 20, weight: .semiBold))
                 if viewModel.isLoading {
                     ProgressView()
                         .scaleEffect(0.8)
@@ -486,7 +514,7 @@ struct ProfileInsightsSection: View {
 
             if let error = viewModel.errorMessage {
                 Text(error)
-                    .font(.lora(size: 12))
+                    .font(.dmSans(size: 12))
                     .foregroundColor(.secondary)
             }
         }
@@ -544,9 +572,9 @@ struct StatPill: View {
     let isLoading: Bool
     @Environment(\.colorScheme) var colorScheme
 
-    private let titleFont = Font.lora(size: 11.5, weight: .medium)
-    private let valueFont = Font.lora(size: 21, weight: .bold).monospacedDigit()
-    private let subtitleFont = Font.lora(size: 11)
+    private let titleFont = Font.dmSans(size: 11.5)
+    private let valueFont = Font.dmSans(size: 21, weight: .semiBold).monospacedDigit()
+    private let subtitleFont = Font.dmSans(size: 11)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -556,7 +584,7 @@ struct StatPill: View {
                         .foregroundColor(.secondary)
                 } else if let systemImage {
                     Image(systemName: systemImage)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.dmSans(size: 14))
                         .foregroundColor(.secondary)
                 }
                 Text(title)
@@ -623,25 +651,25 @@ struct TopArtistsSentCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("top artists you send (30d)")
-                .font(.lora(size: 16, weight: .semiBold))
+                .font(.dmSans(size: 16, weight: .medium))
 
             if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if artists.isEmpty {
                 Text("share a track to surface your go-to artists.")
-                    .font(.lora(size: 13))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.secondary)
             } else {
                 ForEach(Array(artists.enumerated()), id: \.element.id) { index, artist in
                     HStack(spacing: 10) {
                         Text("\(index + 1).")
-                            .font(.lora(size: 14, weight: .bold))
+                            .font(.dmSans(size: 14))
                             .foregroundColor(.secondary)
                             .frame(width: 24, alignment: .leading)
 
                         Text(artist.name)
-                            .font(.lora(size: 15, weight: .medium))
+                            .font(.dmSans(size: 15))
                             .lineLimit(1)
                             .foregroundColor(.primary)
 
@@ -653,13 +681,13 @@ struct TopArtistsSentCard: View {
                                 showPlatformSheet = true
                             } label: {
                                 Image(systemName: "arrow.up.forward.square")
-                                    .font(.system(size: 14))
+                                    .font(.dmSans(size: 14))
                                     .foregroundColor(.secondary)
                             }
                             .buttonStyle(.plain)
 
                             Text("\(artist.count)")
-                                .font(.lora(size: 14, weight: .semiBold))
+                                .font(.dmSans(size: 14))
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -716,14 +744,14 @@ struct GenreBreakdownCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("top genres from your shares")
-                .font(.lora(size: 16, weight: .semiBold))
+                .font(.dmSans(size: 16, weight: .medium))
 
             if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if genres.isEmpty {
                 Text("once you've shared a few tracks, we'll chart the genres you pass around.")
-                    .font(.lora(size: 13))
+                    .font(.dmSans(size: 10))
                     .foregroundColor(.secondary)
             } else {
                 let maxCount = max(genres.map { $0.count }.max() ?? 1, 1)
@@ -732,11 +760,11 @@ struct GenreBreakdownCard: View {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Text(genre.name.capitalized)
-                                .font(.lora(size: 14, weight: .medium))
+                                .font(.dmSans(size: 14))
                                 .lineLimit(1)
                             Spacer()
                             Text("\(genre.count)")
-                                .font(.lora(size: 12, weight: .semiBold))
+                                .font(.dmSans(size: 12))
                                 .foregroundColor(.secondary)
                         }
 
@@ -788,7 +816,7 @@ struct MusicStatsCard: View {
         case artist
     }
 
-    private var displayedItems: [MusicItem] {
+    private var deduplicatedItems: [MusicItem] {
         // Deduplicate items by ID, keeping only the most recent one
         var uniqueItems: [String: MusicItem] = [:]
 
@@ -811,27 +839,40 @@ struct MusicStatsCard: View {
         }
 
         // Sort by playedAt (most recent first) and maintain original order
-        let deduplicatedItems = items
+        return items
             .filter { item in
                 uniqueItems[item.id]?.playedAt == item.playedAt
             }
+    }
 
-        return isExpanded ? deduplicatedItems : Array(deduplicatedItems.prefix(5))
+    private var displayedItems: [MusicItem] {
+        let list = deduplicatedItems
+        return isExpanded ? list : Array(list.prefix(5))
     }
 
     var body: some View {
         ZStack {
             VStack(alignment: .leading, spacing: 12) {
                 Text(title)
-                    .font(.lora(size: 17, weight: .semiBold))
+                    .font(.dmSans(size: 17, weight: .medium))
                     .padding(.horizontal, 24)
 
             VStack(spacing: 0) {
                 ForEach(Array(displayedItems.enumerated()), id: \.offset) { index, item in
                     Button {
                         if itemType == .track {
-                            // Play track preview
-                            PlaybackService.shared.play(track: item)
+                            let isCurrentTrack = playbackService.currentTrack?.id == item.id
+                            if isCurrentTrack {
+                                playbackService.isPlaying ? playbackService.pause() : playbackService.resume()
+                            } else {
+                                let queueItems = deduplicatedItems
+                                let startIndex = queueItems.firstIndex(where: { $0.id == item.id }) ?? index
+                                playbackService.startQueue(
+                                    tracks: queueItems,
+                                    startAt: startIndex,
+                                    showMiniPlayer: true
+                                )
+                            }
                         } else {
                             // Show action sheet for artist
                             selectedArtist = item
@@ -850,7 +891,7 @@ struct MusicStatsCard: View {
                             }
 
                             Text("\(index + 1).")
-                                .font(.lora(size: 15, weight: .medium))
+                                .font(.dmSans(size: 15))
                                 .foregroundColor(.secondary)
                                 .frame(width: 24, alignment: .leading)
 
@@ -877,14 +918,14 @@ struct MusicStatsCard: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.name)
-                                    .font(.lora(size: 15, weight: isCurrentTrack ? .bold : .regular))
+                                    .font(.dmSans(size: 15))
                                     .lineLimit(1)
                                     .foregroundColor(.primary)
 
                                 // Show timestamp for tracks only (not artists)
                                 if itemType == .track, let playedAt = item.playedAt {
                                     Text(playedAt.shortRelativeTimeString())
-                                        .font(.lora(size: 12, weight: isCurrentTrack ? .semiBold : .regular))
+                                        .font(.dmSans(size: 12))
                                         .foregroundColor(.secondary)
                                 }
                             }
@@ -899,19 +940,19 @@ struct MusicStatsCard: View {
                                     showQuickSendBar = true
                                 } label: {
                                     Image(systemName: "paperplane")
-                                        .font(.system(size: 18))
+                                        .font(.dmSans(size: 18))
                                         .foregroundColor(.secondary)
                                 }
                                 .buttonStyle(.plain)
 
                                 // Show pause icon if playing, play icon if not
                                 Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                                    .font(.system(size: 22))
+                                    .font(.dmSans(size: 22))
                                     .foregroundColor(isCurrentTrack ? .primary : .secondary)
                             } else {
                                 // External link icon for artists (opens action sheet)
                                 Image(systemName: "arrow.up.forward.square")
-                                    .font(.system(size: 16))
+                                    .font(.dmSans(size: 16, weight: .medium))
                                     .foregroundColor(.secondary)
                             }
                         }
@@ -951,11 +992,11 @@ struct MusicStatsCard: View {
                             Spacer()
 
                             Text(isExpanded ? "show less" : "show more")
-                                .font(.lora(size: 13))
+                                .font(.dmSans(size: 13))
                                 .foregroundColor(.secondary)
 
                             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 10, weight: .medium))
+                                .font(.dmSans(size: 10))
                                 .foregroundColor(.secondary)
 
                             Spacer()
@@ -988,25 +1029,32 @@ struct MusicStatsCard: View {
                 }
             }
 
-            // QuickSendBar overlay
+            // Share sheet overlay
             if showQuickSendBar, let track = trackToShare {
-                QuickSendBar(
-                    track: track,
-                    onDismiss: {
-                        withAnimation(.easeOut(duration: 0.3)) {
-                            showQuickSendBar = false
-                            trackToShare = nil
-                        }
-                    },
-                    onSendComplete: { sentToFriends in
-                        showQuickSendBar = false
-                        trackToShare = nil
-                    }
-                )
-                .environmentObject(authState)
+                VStack {
+                    Spacer()
+                    ShareOptionsSheet(
+                        track: track,
+                    shareURL: ShareLinkBuilder.url(for: track),
+                    context: .overlay,
+                        onDismiss: {
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                showQuickSendBar = false
+                                trackToShare = nil
+                            }
+                        },
+                        onCopy: { url in UIPasteboard.general.string = url.absoluteString },
+                        onOpen: { url in UIApplication.shared.open(url) },
+                        onFallback: { _ in }
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .zIndex(QuickSendBar.Layout.overlayZ)
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showQuickSendBar)
+                .ignoresSafeArea(.keyboard, edges: .bottom)
             }
         }
     }
@@ -1167,7 +1215,7 @@ struct TodaysPickCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("today's pick")
-                .font(.lora(size: 17, weight: .semiBold))
+                .font(.dmSans(size: 17, weight: .medium))
                 .padding(.horizontal, 24)
 
             if let share = share {
@@ -1183,12 +1231,17 @@ struct TodaysPickCard: View {
                     // Toggle play/pause if this track is current, otherwise play it
                     if isCurrentTrack {
                         if playbackService.isPlaying {
-                            PlaybackService.shared.pause()
+                            playbackService.pause()
                         } else {
-                            PlaybackService.shared.resume()
+                            playbackService.resume()
                         }
                     } else {
-                        PlaybackService.shared.play(track: track)
+                        playbackService.startQueue(
+                            tracks: [track],
+                            startAt: 0,
+                            sourceIds: [Optional(share.id.uuidString)],
+                            showMiniPlayer: true
+                        )
                     }
                 } label: {
                     HStack(spacing: 16) {
@@ -1218,18 +1271,18 @@ struct TodaysPickCard: View {
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text(share.trackName)
-                                .font(.lora(size: 16, weight: .bold))
+                                .font(.dmSans(size: 16, weight: .medium))
                                 .foregroundColor(.primary)
                                 .lineLimit(1)
 
                             Text(share.artistName)
-                                .font(.lora(size: 14))
+                                .font(.dmSans(size: 14))
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
 
                             if let message = share.message, !message.isEmpty {
                                 Text("\"\(message)\"")
-                                    .font(.lora(size: 13, weight: .regular))
+                                    .font(.dmSans(size: 13))
                                     .italic()
                                     .foregroundColor(.secondary)
                                     .lineLimit(2)
@@ -1241,7 +1294,7 @@ struct TodaysPickCard: View {
                         
                         // Play/Pause Icon
                         Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 32))
+                            .font(.dmSans(size: 32, weight: .medium))
                             .foregroundColor(isCurrentTrack ? .primary : .secondary)
                     }
                     .padding(16)
@@ -1259,18 +1312,18 @@ struct TodaysPickCard: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("pick your song for today")
-                                .font(.lora(size: 16, weight: .bold))
+                                .font(.dmSans(size: 16, weight: .medium))
                                 .foregroundColor(.primary)
-                            
+
                             Text("keep your streak alive 🔥")
-                                .font(.lora(size: 13))
+                                .font(.dmSans(size: 13))
                                 .foregroundColor(.secondary)
                         }
                         
                         Spacer()
                         
                         Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 32))
+                            .font(.dmSans(size: 32, weight: .medium))
                             .foregroundColor(.primary)
                     }
                     .padding(16)
@@ -1282,7 +1335,7 @@ struct TodaysPickCard: View {
             } else {
                 // Empty state for other users
                 Text("no pick for today yet.")
-                    .font(.lora(size: 14, weight: .regular))
+                    .font(.dmSans(size: 10))
                     .italic()
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 24)
@@ -1298,17 +1351,18 @@ struct PastPicksView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("past picks")
-                .font(.lora(size: 17, weight: .semiBold))
+                .font(.dmSans(size: 17, weight: .medium))
                 .padding(.horizontal, 24)
-            
+
             if shares.isEmpty {
                 Text("no past picks yet.")
-                    .font(.lora(size: 14))
+                    .font(.dmSans(size: 14))
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 24)
             } else {
+                let limitedShares = Array(shares.prefix(10))
                 VStack(spacing: 0) {
-                    ForEach(Array(shares.prefix(10).enumerated()), id: \.element.id) { index, share in
+                    ForEach(Array(limitedShares.enumerated()), id: \.element.id) { index, share in
                         Button {
                             let track = MusicItem(
                                 id: share.trackId,
@@ -1317,7 +1371,26 @@ struct PastPicksView: View {
                                 previewUrl: share.previewUrl,
                                 albumArtUrl: share.albumArtUrl
                             )
-                            PlaybackService.shared.play(track: track)
+                            let tracks = limitedShares.map {
+                                MusicItem(
+                                    id: $0.trackId,
+                                    name: $0.trackName,
+                                    artistName: $0.artistName,
+                                    previewUrl: $0.previewUrl,
+                                    albumArtUrl: $0.albumArtUrl
+                                )
+                            }
+
+                            if playbackService.currentTrack?.id == track.id {
+                                playbackService.isPlaying ? playbackService.pause() : playbackService.resume()
+                            } else {
+                                playbackService.startQueue(
+                                    tracks: tracks,
+                                    startAt: index,
+                                    sourceIds: limitedShares.map { Optional($0.id.uuidString) },
+                                    showMiniPlayer: true
+                                )
+                            }
                         } label: {
                             HStack(spacing: 12) {
                                 // Artwork
@@ -1339,12 +1412,12 @@ struct PastPicksView: View {
                                 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(share.trackName)
-                                        .font(.lora(size: 15, weight: .medium))
+                                        .font(.dmSans(size: 15))
                                         .foregroundColor(.primary)
                                         .lineLimit(1)
-                                    
+
                                     Text(share.artistName)
-                                        .font(.lora(size: 13))
+                                        .font(.dmSans(size: 13))
                                         .foregroundColor(.secondary)
                                         .lineLimit(1)
                                 }
@@ -1353,7 +1426,7 @@ struct PastPicksView: View {
                                 
                                 // Date on the right
                                 Text(share.formattedDate)
-                                    .font(.lora(size: 12, weight: .medium))
+                                    .font(.dmSans(size: 12))
                                     .foregroundColor(.secondary)
                             }
                             .padding(.horizontal, 24)
@@ -1386,12 +1459,12 @@ struct PhlockMembersRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("my phlock")
-                .font(.lora(size: 17, weight: .semiBold))
+                .font(.dmSans(size: 17, weight: .medium))
                 .padding(.horizontal, 24)
-            
+
             if members.isEmpty && emptySlots > 0 {
                 Text("add members to your phlock to get started.")
-                    .font(.lora(size: 14))
+                    .font(.dmSans(size: 14))
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 24)
             }
@@ -1420,7 +1493,7 @@ struct PhlockMembersRow: View {
                                 }
                                 
                                 Text(member.user.displayName)
-                                    .font(.lora(size: 12))
+                                    .font(.dmSans(size: 12))
                                     .foregroundColor(.primary)
                                     .lineLimit(1)
                                     .frame(width: 70)
@@ -1445,12 +1518,12 @@ struct PhlockMembersRow: View {
                                     .frame(width: 60, height: 60)
                                 
                                 Image(systemName: "plus")
-                                    .font(.system(size: 20, weight: .medium))
+                                    .font(.dmSans(size: 20, weight: .semiBold))
                                     .foregroundColor(.secondary.opacity(0.5))
                             }
                             
                             Text(" ")
-                                .font(.lora(size: 12))
+                                .font(.dmSans(size: 12))
                                 .frame(width: 70)
                         }
                     }
@@ -1466,12 +1539,12 @@ struct PhlockMembersRow: View {
                                     .frame(width: 60, height: 60)
                                 
                                 Image(systemName: "ellipsis")
-                                    .font(.system(size: 20, weight: .semibold))
+                                    .font(.dmSans(size: 20, weight: .semiBold))
                                     .foregroundColor(.primary)
                             }
                             
                             Text("edit")
-                                .font(.lora(size: 12))
+                                .font(.dmSans(size: 12))
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
                                 .frame(width: 70)
