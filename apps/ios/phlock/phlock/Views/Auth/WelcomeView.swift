@@ -8,12 +8,7 @@ struct WelcomeView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                // Background color
-                Color.white
-                    .ignoresSafeArea()
-
-                VStack(spacing: 0) {
+            VStack(spacing: 0) {
                     Spacer()
                         .frame(minHeight: 100)
                     Spacer()
@@ -44,10 +39,10 @@ struct WelcomeView: View {
                     Spacer()
                         .frame(height: 10) // Reduced to pull bottom elements up further
                     
-                    // Carousel
-                    OnboardingCarouselView()
-                }
+                // Carousel
+                OnboardingCarouselView()
             }
+            .background(Color.white)
         }
     }
 }

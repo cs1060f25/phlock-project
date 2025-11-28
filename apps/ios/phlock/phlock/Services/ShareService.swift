@@ -258,11 +258,31 @@ class ShareService {
     ///   - shareId: The share's ID
     ///   - userId: The user who played it
     func markAsPlayed(shareId: UUID, userId: UUID) async throws {
+        // Get the share to find the sender
+        let shares: [Share] = try await supabase
+            .from("shares")
+            .select("*")
+            .eq("id", value: shareId.uuidString)
+            .limit(1)
+            .execute()
+            .value
+
         // Update share status
         try await updateShareStatus(shareId: shareId, status: .played)
 
         // Record engagement
         try await recordEngagement(shareId: shareId, userId: userId, action: "played")
+
+        // Notify the sender (anonymous aggregate) - only if it's a daily song and not playing own song
+        if let share = shares.first, share.isDailySong, share.senderId != userId {
+            Task {
+                do {
+                    try await NotificationService.shared.upsertSongPlayedNotification(userId: share.senderId)
+                } catch {
+                    print("⚠️ Failed to create song played notification: \(error)")
+                }
+            }
+        }
     }
 
     /// Mark a share as saved and record the engagement
@@ -270,11 +290,31 @@ class ShareService {
     ///   - shareId: The share's ID
     ///   - userId: The user who saved it
     func markAsSaved(shareId: UUID, userId: UUID) async throws {
+        // Get the share to find the sender
+        let shares: [Share] = try await supabase
+            .from("shares")
+            .select("*")
+            .eq("id", value: shareId.uuidString)
+            .limit(1)
+            .execute()
+            .value
+
         // Update share status
         try await updateShareStatus(shareId: shareId, status: .saved)
 
         // Record engagement
         try await recordEngagement(shareId: shareId, userId: userId, action: "saved")
+
+        // Notify the sender (anonymous aggregate) - only if it's a daily song and not saving own song
+        if let share = shares.first, share.isDailySong, share.senderId != userId {
+            Task {
+                do {
+                    try await NotificationService.shared.upsertSongSavedNotification(userId: share.senderId)
+                } catch {
+                    print("⚠️ Failed to create song saved notification: \(error)")
+                }
+            }
+        }
     }
 
     /// Mark a share as dismissed and record the engagement
@@ -589,7 +629,6 @@ class ShareService {
         }
 
         // Check if user already selected a song today
-        let today = Calendar.current.startOfDay(for: Date())
         if let existing = try await getTodaysDailySong(for: userId) {
             print("⚠️ User already selected daily song today: \(existing.trackName)")
             throw ShareError.customError("You've already selected '\(existing.trackName)' as today's song")
@@ -613,6 +652,10 @@ class ShareService {
             let preview_url: String
         }
 
+        // Use date-only format (yyyy-MM-dd) for consistent querying
+        // This avoids timezone issues that occur with ISO8601 timestamps
+        let todayString = Self.dateOnlyString(for: Date())
+
         let shareData = DailySongInsert(
             sender_id: userId.uuidString,
             recipient_id: userId.uuidString, // Self-share
@@ -623,7 +666,7 @@ class ShareService {
             message: note ?? "",
             status: ShareStatus.sent.rawValue,
             is_daily_song: true,
-            selected_date: ISO8601DateFormatter().string(from: today),
+            selected_date: todayString,
             preview_url: validatedTrack.previewUrl ?? ""
         )
 
@@ -636,15 +679,87 @@ class ShareService {
             .value
 
         print("✨ Selected daily song: '\(share.trackName)' for user \(userId)")
+
+        // Notify all users who have this user in their phlock
+        Task {
+            await notifyPhlockMembersOfNewSong(pickerId: userId, trackName: share.trackName)
+        }
+
+        // Check for streak milestones
+        Task {
+            await checkAndNotifyStreakMilestone(userId: userId)
+        }
+
         return share
+    }
+
+    /// Notify all users who have the picker in their phlock
+    private func notifyPhlockMembersOfNewSong(pickerId: UUID, trackName: String) async {
+        do {
+            let result = try await FollowService.shared.getWhoHasMeInPhlock(userId: pickerId)
+            guard let users = result.users, !users.isEmpty else {
+                print("📭 No one has this user in their phlock, skipping notifications")
+                return
+            }
+
+            print("📬 Notifying \(users.count) phlock members about new song")
+
+            for user in users {
+                do {
+                    try await NotificationService.shared.createPhlockSongReadyNotification(
+                        userId: user.id,
+                        pickerId: pickerId,
+                        trackName: trackName
+                    )
+                } catch {
+                    print("⚠️ Failed to notify user \(user.id): \(error)")
+                }
+            }
+        } catch {
+            print("⚠️ Failed to get phlock members for notification: \(error)")
+        }
+    }
+
+    /// Check if user hit a streak milestone and notify them
+    private func checkAndNotifyStreakMilestone(userId: UUID) async {
+        do {
+            // Fetch user's current streak from the database
+            struct UserStreak: Decodable {
+                let dailySongStreak: Int?
+
+                enum CodingKeys: String, CodingKey {
+                    case dailySongStreak = "daily_song_streak"
+                }
+            }
+
+            let users: [UserStreak] = try await supabase
+                .from("users")
+                .select("daily_song_streak")
+                .eq("id", value: userId.uuidString)
+                .limit(1)
+                .execute()
+                .value
+
+            guard let streak = users.first?.dailySongStreak else { return }
+
+            // Check for milestone (7, 30, 100 days)
+            let milestones = [7, 30, 100]
+            if milestones.contains(streak) {
+                try await NotificationService.shared.createStreakMilestoneNotification(
+                    userId: userId,
+                    streakDays: streak
+                )
+            }
+        } catch {
+            print("⚠️ Failed to check streak milestone: \(error)")
+        }
     }
 
     /// Get today's daily song for a user
     /// - Parameter userId: The user's ID
     /// - Returns: Today's daily song share, or nil if not selected
     func getTodaysDailySong(for userId: UUID) async throws -> Share? {
-        let today = Calendar.current.startOfDay(for: Date())
-        let todayString = ISO8601DateFormatter().string(from: today)
+        let todayString = Self.dateOnlyString(for: Date())
 
         let shares: [Share] = try await supabase
             .from("shares")
@@ -665,11 +780,8 @@ class ShareService {
     ///   - date: The date to fetch songs for (defaults to today)
     /// - Returns: Array of daily songs
     func getDailySongs(from userIds: [UUID], for date: Date = Date()) async throws -> [Share] {
-        // Format date as YYYY-MM-DD for database comparison
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        let dateString = formatter.string(from: date)
+        // Use the same date formatting as selectDailySong to ensure consistency
+        let dateString = Self.dateOnlyString(for: date)
 
         guard !userIds.isEmpty else {
             return []
@@ -712,17 +824,20 @@ class ShareService {
         print("✏️ Updated daily song note for user \(userId)")
     }
 
-    /// Get daily songs history for a user
+    /// Get daily songs history for a user (excludes today's pick)
     /// - Parameters:
     ///   - userId: The user's ID
     ///   - limit: Maximum number of days to fetch
-    /// - Returns: Array of daily songs, most recent first
+    /// - Returns: Array of past daily songs, most recent first (today excluded)
     func getDailySongHistory(for userId: UUID, limit: Int = 30) async throws -> [Share] {
+        let todayString = Self.dateOnlyString(for: Date())
+
         let shares: [Share] = try await supabase
             .from("shares")
             .select("*")
             .eq("sender_id", value: userId.uuidString)
             .eq("is_daily_song", value: true)
+            .neq("selected_date", value: todayString) // Exclude today
             .order("selected_date", ascending: false)
             .limit(limit)
             .execute()
@@ -733,8 +848,7 @@ class ShareService {
     /// Delete today's daily song for a user (Debug/Reset purposes)
     /// - Parameter userId: The user's ID
     func deleteDailySong(for userId: UUID) async throws {
-        let today = Calendar.current.startOfDay(for: Date())
-        let todayString = ISO8601DateFormatter().string(from: today)
+        let todayString = Self.dateOnlyString(for: Date())
 
         try await supabase
             .from("shares")
@@ -745,6 +859,17 @@ class ShareService {
             .execute()
 
         print("🗑️ Deleted all daily songs for user \(userId) on \(todayString)")
+    }
+
+    // MARK: - Date Helper
+
+    /// Get date-only string in yyyy-MM-dd format for the user's local timezone
+    /// This ensures consistent date handling regardless of time of day
+    private static func dateOnlyString(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone.current // Use local timezone
+        return formatter.string(from: date)
     }
 }
 

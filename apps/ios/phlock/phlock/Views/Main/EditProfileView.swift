@@ -156,7 +156,6 @@ struct EditProfileView: View {
             }
         }
         .dismissKeyboardOnTouch()
-        .keyboardResponsive()
     }
 
     private func saveProfile() async {

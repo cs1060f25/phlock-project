@@ -120,25 +120,12 @@ class SearchService {
         )
 
         return response.tracks.map { track in
-            // Get medium-sized image (usually index 1) or fallback to first available
-            let albumArtUrl: String? = {
-                guard !track.album.images.isEmpty else {
-                    print("⚠️ Track '\(track.name)' has no album images")
-                    return nil
-                }
-                // Spotify typically returns 3 sizes: 640x640, 300x300, 64x64
-                // Use the largest (first) for best quality, especially for full-screen player
-                let url = track.album.images.first?.url
-                print("🎨 Track '\(track.name)' album art: \(url ?? "nil") (from \(track.album.images.count) images)")
-                return url
-            }()
-
-            return MusicItem(
+            MusicItem(
                 id: track.id,
                 name: track.name,
                 artistName: track.artists.first?.name,
                 previewUrl: track.previewUrl,
-                albumArtUrl: albumArtUrl,
+                albumArtUrl: track.album.images.first?.url,
                 isrc: track.externalIds?.isrc,
                 playedAt: nil,
                 spotifyId: track.id,
@@ -275,40 +262,26 @@ class SearchService {
     func getRecentlyPlayed(userId: UUID, platformType: PlatformType) async throws -> [MusicItem] {
         switch platformType {
         case .spotify:
-            // Get access token from database
+            // Get access token from database for Spotify specifically
             let tokens: [PlatformToken] = try await supabase
                 .from("platform_tokens")
                 .select("*")
                 .eq("user_id", value: userId.uuidString)
+                .eq("platform_type", value: "spotify")
                 .execute()
                 .value
 
             guard let token = tokens.first else {
-                print("❌ No platform token found for user: \(userId)")
-                throw NSError(domain: "SearchService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No platform token found"])
+                throw NSError(domain: "SearchService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No Spotify token found. Please reconnect Spotify in Settings."])
             }
-
-            print("🎵 Fetching recently played from Spotify for user: \(userId)")
 
             // Fetch from Spotify API (with automatic token refresh on 401)
             do {
                 let response = try await spotifyService.getRecentlyPlayed(accessToken: token.accessToken)
-                print("✅ Got \(response.items.count) recently played tracks from Spotify")
 
                 // Convert to MusicItems first
+                let isoFormatter = ISO8601DateFormatter()
                 let allTracks = response.items.enumerated().map { (index, item) -> MusicItem in
-                    // Get medium-sized image
-                    let albumArtUrl: String? = {
-                        guard !item.track.album.images.isEmpty else { return nil }
-                        return item.track.album.images.first?.url
-                    }()
-
-                    // Convert ISO 8601 string to Date
-                    let playedDate: Date? = {
-                        let formatter = ISO8601DateFormatter()
-                        return formatter.date(from: item.playedAt)
-                    }()
-
                     // Use played_at timestamp + index to ensure unique IDs for duplicate tracks
                     let uniqueId = "\(item.track.id)_\(item.playedAt)_\(index)"
 
@@ -317,9 +290,9 @@ class SearchService {
                         name: item.track.name,
                         artistName: item.track.artists.first?.name,
                         previewUrl: item.track.previewUrl,
-                        albumArtUrl: albumArtUrl,
+                        albumArtUrl: item.track.album.images.first?.url,
                         isrc: item.track.externalIds?.isrc,
-                        playedAt: playedDate,
+                        playedAt: isoFormatter.date(from: item.playedAt),
                         spotifyId: item.track.id,
                         appleMusicId: nil,
                         popularity: nil
@@ -327,7 +300,6 @@ class SearchService {
                 }
 
                 // Remove duplicates by track ID (keep most recent play)
-                // Sort by playedAt descending (most recent first)
                 var seenTrackIds = Set<String>()
                 let uniqueTracks = allTracks
                     .sorted { ($0.playedAt ?? Date.distantPast) > ($1.playedAt ?? Date.distantPast) }
@@ -340,35 +312,17 @@ class SearchService {
                         return true
                     }
 
-                print("✅ Removed \(allTracks.count - uniqueTracks.count) duplicate tracks")
-
-                // Debug: Log the first 5 tracks with their played_at timestamps
-                if uniqueTracks.count > 0 {
-                    let dateFormatter = DateFormatter()
-                    dateFormatter.dateStyle = .short
-                    dateFormatter.timeStyle = .medium
-
-                    print("📅 Recently played tracks order (first 5):")
-                    for (index, track) in uniqueTracks.prefix(5).enumerated() {
-                        let timeStr = track.playedAt.map { dateFormatter.string(from: $0) } ?? "unknown"
-                        print("   \(index + 1). \(track.name) - played at: \(timeStr)")
-                    }
-                }
-
                 return uniqueTracks
             } catch {
-                print("❌ Spotify API error: \(error)")
-                if let decodingError = error as? DecodingError {
-                    print("❌ Decoding error details: \(decodingError)")
-                }
+                let isTokenExpired = (error as? SpotifyError) == .tokenExpired
 
-                // Check if token expired - try to refresh
+                // Try to refresh the token
                 guard let refreshToken = token.refreshToken else {
-                    print("❌ No refresh token available")
+                    if isTokenExpired {
+                        throw NSError(domain: "SearchService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Spotify session expired. Please reconnect Spotify in Settings."])
+                    }
                     throw error
                 }
-
-                print("🔄 Token might be expired, attempting refresh...")
 
                 do {
                     // Refresh the token
@@ -376,6 +330,7 @@ class SearchService {
 
                     // Update token in database
                     let now = Date()
+                    let isoFormatter = ISO8601DateFormatter()
                     let expiresAt = now.addingTimeInterval(TimeInterval(newAuth.expiresIn))
 
                     struct TokenUpdate: Encodable {
@@ -388,8 +343,8 @@ class SearchService {
                     let updatePayload = TokenUpdate(
                         access_token: newAuth.accessToken,
                         refresh_token: newAuth.refreshToken ?? refreshToken,
-                        token_expires_at: ISO8601DateFormatter().string(from: expiresAt),
-                        updated_at: ISO8601DateFormatter().string(from: now)
+                        token_expires_at: isoFormatter.string(from: expiresAt),
+                        updated_at: isoFormatter.string(from: now)
                     )
 
                     try await supabase
@@ -398,25 +353,11 @@ class SearchService {
                         .eq("id", value: token.id.uuidString)
                         .execute()
 
-                    print("✅ Token refreshed and updated in database")
-
                     // Retry with new token
                     let response = try await spotifyService.getRecentlyPlayed(accessToken: newAuth.accessToken)
-                    print("✅ Got \(response.items.count) recently played tracks from Spotify (after refresh)")
 
-                    // Convert to MusicItems first
+                    // Convert to MusicItems
                     let allTracks = response.items.enumerated().map { (index, item) -> MusicItem in
-                        let albumArtUrl: String? = {
-                            guard !item.track.album.images.isEmpty else { return nil }
-                            return item.track.album.images.first?.url
-                        }()
-
-                        let playedDate: Date? = {
-                            let formatter = ISO8601DateFormatter()
-                            return formatter.date(from: item.playedAt)
-                        }()
-
-                        // Use played_at timestamp + index to ensure unique IDs for duplicate tracks
                         let uniqueId = "\(item.track.id)_\(item.playedAt)_\(index)"
 
                         return MusicItem(
@@ -424,9 +365,9 @@ class SearchService {
                             name: item.track.name,
                             artistName: item.track.artists.first?.name,
                             previewUrl: item.track.previewUrl,
-                            albumArtUrl: albumArtUrl,
+                            albumArtUrl: item.track.album.images.first?.url,
                             isrc: item.track.externalIds?.isrc,
-                            playedAt: playedDate,
+                            playedAt: isoFormatter.date(from: item.playedAt),
                             spotifyId: item.track.id,
                             appleMusicId: nil,
                             popularity: nil
@@ -434,9 +375,8 @@ class SearchService {
                     }
 
                     // Remove duplicates by track ID (keep most recent play)
-                    // Sort by playedAt descending (most recent first)
                     var seenTrackIds = Set<String>()
-                    let uniqueTracks = allTracks
+                    return allTracks
                         .sorted { ($0.playedAt ?? Date.distantPast) > ($1.playedAt ?? Date.distantPast) }
                         .filter { track in
                             guard let spotifyId = track.spotifyId else { return true }
@@ -446,25 +386,7 @@ class SearchService {
                             seenTrackIds.insert(spotifyId)
                             return true
                         }
-
-                    print("✅ Removed \(allTracks.count - uniqueTracks.count) duplicate tracks")
-
-                    // Debug: Log the first 5 tracks with their played_at timestamps
-                    if uniqueTracks.count > 0 {
-                        let dateFormatter = DateFormatter()
-                        dateFormatter.dateStyle = .short
-                        dateFormatter.timeStyle = .medium
-
-                        print("📅 Recently played tracks order (first 5 - after refresh):")
-                        for (index, track) in uniqueTracks.prefix(5).enumerated() {
-                            let timeStr = track.playedAt.map { dateFormatter.string(from: $0) } ?? "unknown"
-                            print("   \(index + 1). \(track.name) - played at: \(timeStr)")
-                        }
-                    }
-
-                    return uniqueTracks
                 } catch {
-                    print("❌ Failed to refresh token or retry: \(error)")
                     throw error
                 }
             }
@@ -555,25 +477,12 @@ class SearchService {
         )
 
         return response.tracks.map { track in
-            // Get medium-sized image (usually index 1) or fallback to first available
-            let albumArtUrl: String? = {
-                guard !track.album.images.isEmpty else {
-                    print("⚠️ Track '\(track.name)' has no album images")
-                    return nil
-                }
-                // Spotify typically returns 3 sizes: 640x640, 300x300, 64x64
-                // Use the largest (first) for best quality, especially for full-screen player
-                let url = track.album.images.first?.url
-                print("🎨 Track '\(track.name)' album art: \(url ?? "nil") (from \(track.album.images.count) images)")
-                return url
-            }()
-
-            return MusicItem(
+            MusicItem(
                 id: track.id,
                 name: track.name,
                 artistName: track.artists.first?.name,
                 previewUrl: track.previewUrl,
-                albumArtUrl: albumArtUrl,
+                albumArtUrl: track.album.images.first?.url,
                 isrc: track.externalIds?.isrc,
                 playedAt: nil,
                 spotifyId: track.id,

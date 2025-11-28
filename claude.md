@@ -1,138 +1,126 @@
-# Phlock - Daily Music Curation Platform
+# CLAUDE.md
 
-## Project Overview
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Phlock is a daily music curation app where each user picks one song per day and listens to a 5-person “phlock” playlist from the friends they choose. The new direction emphasizes:
-- Daily picks that refresh at midnight
-- Lightweight social currency (how many phlocks you’re in)
-- Simple notifications and nudges to keep people picking
-- Fast TestFlight readiness on iOS 16+
+## Build & Development Commands
 
-**Current Branch:** `product/daily-curation` (always shippable)
-**Status:** TestFlight-ready build with daily song flows scaffolded; several launch gaps remain (friend discovery, external sharing, push/universal links).
+### iOS App
+```bash
+# Open project in Xcode
+open apps/ios/phlock/phlock.xcodeproj
 
-## Tech Stack
+# Build from command line (debug)
+xcodebuild -project apps/ios/phlock/phlock.xcodeproj -scheme phlock -sdk iphonesimulator -configuration Debug build
 
-### Frontend
-- SwiftUI + Swift 5, MVVM-ish view models
-- iOS 16.0+ (deployment target lowered; see TESTFLIGHT_CHANGES_SUMMARY.md)
-- Music integrations: Spotify Web API, Apple Music (MusicKit)
-- Authentication: Supabase OAuth via `AuthServiceV2`
-
-### Backend
-- Supabase Postgres + RLS
-- Supabase Auth (OAuth providers)
-- Supabase Storage for profile photos
-- Edge Functions (TypeScript/Deno): track validation (`validate-track`), search helpers, auth exchange (legacy)
-
-### Infrastructure
-- Monorepo (Turborepo layout)
-- Deployment: Supabase Cloud
-- Primary docs: `README.md`, `AUTHSERVICE_V2_IMPLEMENTATION.md`, `CRITICAL_FEATURES_AND_IMPLEMENTATION_PLAN.md`, `TESTFLIGHT_*`
-
-## Repository Structure (high level)
-
-```
-phlock-dev/
-├── apps/ios/phlock/phlock/        # iOS app (models, services, views, viewmodels, components)
-├── packages/database/migrations/  # DB migrations (legacy path; new ones also in supabase/migrations)
-├── supabase/
-│   ├── migrations/                # Latest SQL migrations (notifications, etc.)
-│   ├── seed/                      # Seed/demo data (e.g., demo_notifications.sql)
-│   └── functions/                 # Edge functions
-├── docs/                          # Roadmaps and guides
-└── TESTFLIGHT_*                   # Deployment quickstart and summaries
+# Archive for TestFlight
+xcodebuild archive -scheme phlock -archivePath build/phlock.xcarchive
+xcodebuild -exportArchive -archivePath build/phlock.xcarchive -exportPath build/ipa
 ```
 
-## Product Shape (Daily Curation)
+### Supabase Backend
+```bash
+# Apply database migrations
+supabase db push
 
-- One song per user per day; daily streak tracked.
-- A user’s playlist is the 5 people in their phlock (positions 1–5).
-- Swaps allowed anytime; take effect at midnight.
-- Social currency: phlock count (how many phlocks include you).
-- Notifications for nudges, friend accepts, daily picks (backend/UI partially present).
+# Run seed data
+supabase db execute -f supabase/seed/demo_notifications.sql
 
-## Implementation Status (high signal)
+# Deploy edge functions
+supabase functions deploy validate-track
+supabase functions deploy <function-name>
 
-### Completed / Working
-- Auth: Supabase OAuth via `AuthServiceV2`; session handling wired in `AuthenticationState`.
-- Daily songs: `ShareService` has daily pick helpers; DiscoverView modifications partly in place.
-- Notifications UI: `NotificationsView` renders fetched/fallback notifications.
-- Notifications backend: `NotificationService` with Supabase fetch/insert and daily-nudge upsert.
-- Notifications schema: `supabase/migrations/20251201090000_create_notifications_table.sql` adds table, RLS, indexes.
-- iOS 16 compatibility fixes; TestFlight manifest (`PrivacyInfo.xcprivacy`), privacy policy template, deployment guides.
+# Check status
+supabase status
+```
 
-### In Progress / Partial
-- Friend discovery: still manual search only (`FriendsView`); no contacts/invite links yet.
-- External sharing: QuickSendBar stubs for iMessage/Instagram; WhatsApp is plain text.
-- Push + deep links: no APNs setup, no Associated Domains/Universal Links; `phlockApp.swift` only handles OAuth callbacks.
-- Notification types mismatch: DB supports `friend_request_accepted`, `daily_nudge`; app expects more types (friend_request_received, friend_joined, friend_picked_song, reaction_received, streak_milestone). Needs migration + backend emitters.
-- Mark-as-read/delete: UI toggles locally; no backend call yet.
-- Secrets: real keys live in `apps/ios/phlock/phlock/Services/Config.swift` (must be moved to build configs for production).
+### Monorepo (Turborepo)
+```bash
+npm run build    # Build all packages
+npm run test     # Run all tests
+npm run lint     # Lint all packages
+```
 
-## Key Services (iOS)
+## Architecture Overview
 
-- `AuthService_v2.swift` — Supabase OAuth (Spotify/Apple), session management, profile linking.
-- `ShareService.swift` — Sharing and daily pick selection; uses `validate-track` edge function.
-- `UserService.swift` — Friends/phlock management; caches unbounded (needs eviction). Creates notifications on accept.
-- `NotificationService.swift` — Fetch/insert notifications; aggregates daily nudges; fallback demo data if table missing.
-- `PlaybackService.swift` — Preview playback with fallback.
-- `SearchService.swift` — Platform-aware search using user’s linked platform.
+### iOS App (`apps/ios/phlock/phlock/`)
 
-## Core Models / Schema Notes
+**MVVM-ish pattern** with SwiftUI:
+- `Services/` — Backend integration and business logic
+- `ViewModels/` — State management for views
+- `Views/` — SwiftUI view components
+- `Models/` — Data models and Codable structs
+- `Extensions/` — Swift type extensions
+- `Helpers/` & `Utilities/` — Shared utilities
 
-- `User`: extended with phlock fields (`phlock_count`, `daily_song_streak`, `last_daily_song_date`), optional platform ids.
-- `Share`: supports `is_daily_song`, `selected_date`, `preview_url`.
-- `Friendship`: positions + `is_phlock_member`, `last_swapped_at`.
-- `notifications` table: currently limited to two types; add types to match `NotificationType` enum in `Models/NotificationItem.swift`.
+**Key Services:**
+| Service | Purpose |
+|---------|---------|
+| `AuthService_v2.swift` | Supabase OAuth (Spotify/Apple), session management |
+| `ShareService.swift` | Daily song picks, sharing via `validate-track` edge function |
+| `UserService.swift` | Friends/phlock management, caching |
+| `PlaybackService.swift` | Audio preview playback |
+| `SearchService.swift` | Platform-aware search (Spotify/Apple Music) |
+| `NotificationService.swift` | Notifications with fallback demo data |
+| `PhlockService.swift` | Phlock membership and swaps |
 
-## UX Surface (current tabs)
+**Auth Flow:** `phlockApp.swift` handles OAuth callbacks via `onOpenURL`. Session state managed by `AuthenticationState` environment object.
 
-- Discover: search + daily song picker (needs refinement to force single daily pick).
-- Inbox / Daily Playlist: receive shares and daily picks (UI exists; ensure daily grouping).
-- Friends/My Phlock: manual search, friend list, phlock management UI in progress.
-- Notifications: list view with sections, fallback demo data.
-- Profile: shows version/build; general profile settings.
+### Supabase Backend
 
-## TestFlight Readiness (snapshot)
+**Edge Functions (`supabase/functions/`):**
+- `validate-track/` — Validates track data, fetches preview URLs
+- `search-spotify-tracks/` — Spotify search proxy
+- `get-spotify-track/` — Single track lookup
+- `process-scheduled-swaps/` — Midnight phlock swap processor
 
-- Build verified on iOS 16 simulator; deployment target lowered to 16.0.
-- Privacy manifest added; privacy policy template exists (must be hosted before submission).
-- Quickstart + deployment guides: `TESTFLIGHT_QUICKSTART.md`, `TESTFLIGHT_DEPLOYMENT_GUIDE.md`, `TESTFLIGHT_CHANGES_SUMMARY.md`.
-- Required manual steps: host privacy policy URL, create App Store Connect app, screenshots, archive/upload, configure testers.
+**Database Migrations (`supabase/migrations/`):** Applied via `supabase db push`. Key tables:
+- `users` — Extended with `phlock_count`, `daily_song_streak`, `last_daily_song_date`
+- `shares` — Supports `is_daily_song`, `selected_date`, `preview_url`
+- `friendships` — Positions 1-5, `is_phlock_member`, `last_swapped_at`
+- `notifications` — Types: `friend_request_accepted`, `daily_nudge` (more types needed)
 
-## Known Gaps Before Production
+### Data Flow
 
-1) Friend discovery: contact sync, invite links/QR, suggestions.  
-2) External sharing: implement iMessage/Instagram shares with universal links; enrich WhatsApp.  
-3) Push + deep links: APNs tokens, edge function to send pushes, Associated Domains, URL routing for invites/tracks.  
-4) Notifications schema mismatch: migrate DB to include all `NotificationType` values; emit on friend requests, daily picks, reactions.  
-5) Secrets/config: move Supabase/Spotify/Apple keys out of source; use per-env config.  
-6) Error handling + caching: add eviction to `UserService` caches; improve user-facing errors/retries.  
-7) Daily flows polish: enforce single daily pick, better empty states, badge/read handling for notifications.
+1. **Daily Song Selection:** User searches → picks song → `ShareService` calls `validate-track` → stores in `shares` with `is_daily_song=true`
+2. **Phlock Playlist:** User's 5 phlock members' daily songs fetched via `PhlockService` → displayed in inbox
+3. **Notifications:** `NotificationService` fetches from Supabase, falls back to demo data if table missing
 
-## Environment & Config
+## Product Context
 
-- iOS target: 16.0+ (see `TESTFLIGHT_CHANGES_SUMMARY.md`).
-- Config lives in `apps/ios/phlock/phlock/Services/Config.swift`; replace with build-configured secrets before production.
-- Supabase migrations: run `supabase/migrations/*` then seeds (e.g., `supabase/seed/demo_notifications.sql`).
+**Daily Curation Model:**
+- One song per user per day (tracked by streak)
+- Each user has a 5-person "phlock" (positions 1-5)
+- Your daily playlist = your 5 phlock members' picks
+- Phlock swaps: If the member has already picked for the day, the swap takes effect at midnight. If they haven't picked yet, the swap is immediate.
+- Social currency = how many other phlocks include you
 
-## Development Notes
+## Configuration
 
-- Main branch for this work: `product/daily-curation`.
-- Auth callback handled in `phlockApp.swift` via `onOpenURL`; add universal link/deep link routing when ready.
-- Fonts: Lora (navigation/title styling). Deployment target fixes applied for `.onChange` syntax and empty states.
+**Secrets Location:** `apps/ios/phlock/phlock/Services/Config.swift`
+Contains Supabase URL/keys, Spotify client ID, redirect URIs. Must move to build configs before production.
 
-## Resources
+**iOS Target:** 16.0+ (deployment target lowered for broader compatibility)
 
-- Auth details: `AUTHSERVICE_V2_IMPLEMENTATION.md`
-- Critical gaps & plan: `CRITICAL_FEATURES_AND_IMPLEMENTATION_PLAN.md`
-- TestFlight steps: `TESTFLIGHT_QUICKSTART.md`, `TESTFLIGHT_DEPLOYMENT_GUIDE.md`, `TESTFLIGHT_CHANGES_SUMMARY.md`
-- Notifications schema: `supabase/migrations/20251201090000_create_notifications_table.sql`
-- Demo data: `supabase/seed/demo_notifications.sql`
+**Fonts:** Lora for headers and hero text, DM Sans for body text
 
----
+## Current Branch
 
-**Last Updated:** December 12, 2025  
-**Current Phase:** Daily Curation TestFlight prep  
-**Next Focus:** Friend discovery + sharing + push/universal links to unblock production
+`product/daily-curation` — Always shippable, TestFlight-ready
+
+## Key Documentation
+
+- `TESTFLIGHT_QUICKSTART.md` — Step-by-step TestFlight deployment
+- `TESTFLIGHT_DEPLOYMENT_GUIDE.md` — Complete deployment walkthrough
+- `AUTHSERVICE_V2_IMPLEMENTATION.md` — OAuth integration details
+- `CRITICAL_FEATURES_AND_IMPLEMENTATION_PLAN.md` — Gaps and priorities
+
+## Known Gaps (Pre-Production)
+
+1. **Auth strategy undecided:** Need to determine whether to use phone number, email, Apple Sign-In, or Google Sign-In for primary authentication (currently using Spotify/Apple Music OAuth)
+2. **Username creation flow:** Need to design and implement username selection/creation during onboarding
+3. Friend discovery: No contacts sync or invite links
+4. External sharing: iMessage/Instagram stubs only
+5. Push notifications: No APNs setup
+6. Notification types: DB has 2 types, app expects 6+
+7. Secrets: Still in source code
+8. Caching: No eviction policy in UserService

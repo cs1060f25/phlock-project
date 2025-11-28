@@ -7,15 +7,80 @@
 
 import SwiftUI
 import Supabase
+import UserNotifications
+import GoogleSignIn
+
+// MARK: - App Delegate for Push Notifications
+
+class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // Set notification center delegate
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
+    // MARK: - Remote Notification Registration
+
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        PushNotificationService.shared.didRegisterForRemoteNotifications(withDeviceToken: deviceToken)
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        PushNotificationService.shared.didFailToRegisterForRemoteNotifications(withError: error)
+    }
+
+    // MARK: - UNUserNotificationCenterDelegate
+
+    // Handle notification when app is in foreground
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        Task {
+            let options = await PushNotificationService.shared.willPresent(notification: notification)
+            completionHandler(options)
+        }
+    }
+
+    // Handle notification tap
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        Task {
+            await PushNotificationService.shared.didReceive(response: response)
+            completionHandler()
+        }
+    }
+}
 
 @main
 struct phlockApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var authState = AuthenticationState()
 
+    // DEBUG: Set to true to force clear session on launch (for testing onboarding)
+    private static let forceSignOutOnLaunch = false
+
     init() {
-        // Hide the default refresh control spinner since we render our own
-        UIRefreshControl.appearance().tintColor = .clear
-        UIRefreshControl.appearance().backgroundColor = .clear
+        // DEBUG: Clear keychain session if flag is set
+        if Self.forceSignOutOnLaunch {
+            PhlockSupabaseClient.shared.clearKeychainSession()
+            UserDefaults.standard.set(false, forKey: "isOnboardingComplete")
+            print("⚠️ DEBUG: Forced sign out on launch")
+        }
+
 
         // Configure navigation bar to use Lora font
         configureNavigationBarAppearance()
@@ -54,6 +119,12 @@ struct phlockApp: App {
             ContentView()
                 .environmentObject(authState)
                 .onOpenURL { url in
+                    // Try Google Sign-In first
+                    if GIDSignIn.sharedInstance.handle(url) {
+                        print("✅ Google Sign-In callback handled: \(url)")
+                        return
+                    }
+
                     // Handle OAuth callback from Supabase
                     Task {
                         do {

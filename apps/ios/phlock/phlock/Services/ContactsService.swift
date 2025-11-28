@@ -54,7 +54,10 @@ final class ContactsService {
         let granted = try await requestAccessIfNeeded()
         guard granted else { throw ContactsServiceError.accessDenied }
 
-        let contacts = try fetchContactCandidates()
+        // Fetch contacts on a background thread to avoid blocking main thread
+        let contacts = try await Task.detached(priority: .userInitiated) {
+            try self.fetchContactCandidates()
+        }.value
         let phoneNumbers = Array(Set(contacts.map { $0.phone }.filter { !$0.isEmpty }))
         guard !phoneNumbers.isEmpty else { return [] }
 
@@ -81,7 +84,7 @@ final class ContactsService {
 
     // MARK: - Helpers
 
-    private func fetchContactCandidates() throws -> [ContactCandidate] {
+    private nonisolated func fetchContactCandidates() throws -> [ContactCandidate] {
         let keys: [CNKeyDescriptor] = [
             CNContactGivenNameKey as CNKeyDescriptor,
             CNContactFamilyNameKey as CNKeyDescriptor,
@@ -91,7 +94,9 @@ final class ContactsService {
         let request = CNContactFetchRequest(keysToFetch: keys)
         var contacts: [ContactCandidate] = []
 
-        try store.enumerateContacts(with: request) { contact, _ in
+        // Create a local CNContactStore for this nonisolated context
+        let localStore = CNContactStore()
+        try localStore.enumerateContacts(with: request) { contact, _ in
             let fullName = "\(contact.givenName) \(contact.familyName)".trimmingCharacters(in: .whitespaces)
 
             for number in contact.phoneNumbers {

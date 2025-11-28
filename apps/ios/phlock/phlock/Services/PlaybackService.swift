@@ -577,4 +577,13 @@ class PlaybackService: ObservableObject {
         let previousIndex = index == 0 ? (queue.count - 1) : (index - 1)
         playQueueItem(at: previousIndex, showMiniPlayer: shouldShowMiniPlayer)
     }
+
+    /// Always skips to the previous track without restart threshold check.
+    /// Used for swipe gestures where the user explicitly wants the previous track.
+    func skipToPreviousTrack() {
+        guard !queue.isEmpty else { return }
+        let index = currentQueueIndex ?? 0
+        let previousIndex = index == 0 ? (queue.count - 1) : (index - 1)
+        playQueueItem(at: previousIndex, showMiniPlayer: shouldShowMiniPlayer)
+    }
 }

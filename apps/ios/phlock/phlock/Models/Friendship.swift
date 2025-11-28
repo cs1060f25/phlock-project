@@ -9,10 +9,20 @@ struct Friendship: Codable, Identifiable {
     let status: FriendshipStatus
     let createdAt: Date?
 
-    // Daily curation / phlock fields
+    // Legacy phlock fields (deprecated - use directional fields below)
     let position: Int?
     let isPhlockMember: Bool
     let lastSwappedAt: Date?
+
+    // Directional phlock fields - each user independently manages their phlock
+    // user_1 = userId1's phlock settings for userId2
+    // user_2 = userId2's phlock settings for userId1
+    let user1HasInPhlock: Bool?
+    let user1PhlockPosition: Int?
+    let user1PhlockAddedAt: Date?
+    let user2HasInPhlock: Bool?
+    let user2PhlockPosition: Int?
+    let user2PhlockAddedAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -23,6 +33,42 @@ struct Friendship: Codable, Identifiable {
         case position
         case isPhlockMember = "is_phlock_member"
         case lastSwappedAt = "last_swapped_at"
+        case user1HasInPhlock = "user_1_has_in_phlock"
+        case user1PhlockPosition = "user_1_phlock_position"
+        case user1PhlockAddedAt = "user_1_phlock_added_at"
+        case user2HasInPhlock = "user_2_has_in_phlock"
+        case user2PhlockPosition = "user_2_phlock_position"
+        case user2PhlockAddedAt = "user_2_phlock_added_at"
+    }
+
+    /// Get whether a specific user has the other user in their phlock
+    func hasInPhlock(for userId: UUID) -> Bool {
+        if userId == userId1 {
+            return user1HasInPhlock ?? false
+        } else if userId == userId2 {
+            return user2HasInPhlock ?? false
+        }
+        return false
+    }
+
+    /// Get the phlock position for a specific user's perspective
+    func phlockPosition(for userId: UUID) -> Int? {
+        if userId == userId1 {
+            return user1PhlockPosition
+        } else if userId == userId2 {
+            return user2PhlockPosition
+        }
+        return nil
+    }
+
+    /// Get when a specific user added the other to their phlock
+    func phlockAddedAt(for userId: UUID) -> Date? {
+        if userId == userId1 {
+            return user1PhlockAddedAt
+        } else if userId == userId2 {
+            return user2PhlockAddedAt
+        }
+        return nil
     }
 }
 

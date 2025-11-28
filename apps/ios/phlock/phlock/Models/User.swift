@@ -29,6 +29,9 @@ struct User: Codable, Identifiable, Hashable {
     let dailySongStreak: Int
     let lastDailySongDate: Date?
 
+    // Privacy settings
+    let isPrivate: Bool
+
     enum CodingKeys: String, CodingKey {
         case id
         case displayName = "display_name"
@@ -51,6 +54,7 @@ struct User: Codable, Identifiable, Hashable {
         case phlockCount = "phlock_count"
         case dailySongStreak = "daily_song_streak"
         case lastDailySongDate = "last_daily_song_date"
+        case isPrivate = "is_private"
     }
 
     // Helper: Check if user selected a song today
@@ -99,6 +103,9 @@ struct User: Codable, Identifiable, Hashable {
         dailySongStreak = try container.decodeIfPresent(Int.self, forKey: .dailySongStreak) ?? 0
         lastDailySongDate = try? container.decode(Date.self, forKey: .lastDailySongDate)
 
+        // Privacy settings
+        isPrivate = try container.decodeIfPresent(Bool.self, forKey: .isPrivate) ?? false
+
         // Handle platform_data which might be a string or object
         if let platformDataString = try? container.decode(String.self, forKey: .platformData) {
             // It's a JSON string, decode it
@@ -142,6 +149,9 @@ struct User: Codable, Identifiable, Hashable {
         try container.encode(dailySongStreak, forKey: .dailySongStreak)
         try container.encodeIfPresent(lastDailySongDate, forKey: .lastDailySongDate)
 
+        // Encode privacy settings
+        try container.encode(isPrivate, forKey: .isPrivate)
+
         // Encode platform_data as object
         try container.encodeIfPresent(platformData, forKey: .platformData)
     }
@@ -177,7 +187,8 @@ struct User: Codable, Identifiable, Hashable {
         username: String? = nil,
         phlockCount: Int = 0,
         dailySongStreak: Int = 0,
-        lastDailySongDate: Date? = nil
+        lastDailySongDate: Date? = nil,
+        isPrivate: Bool = false
     ) {
         self.id = id
         self.displayName = displayName
@@ -200,6 +211,7 @@ struct User: Codable, Identifiable, Hashable {
         self.phlockCount = phlockCount
         self.dailySongStreak = dailySongStreak
         self.lastDailySongDate = lastDailySongDate
+        self.isPrivate = isPrivate
     }
 }
 

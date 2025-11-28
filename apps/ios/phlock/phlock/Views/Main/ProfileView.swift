@@ -28,7 +28,21 @@ struct ProfileView: View {
     
     // Phlock Member Interaction
     @State private var selectedUserForProfile: User?
-    @State private var showPhlockMenu = false
+    @State private var showPhlockManagerSheet = false
+
+    // Followers/Following
+    @State private var followerCount = 0
+    @State private var followingCount = 0
+    @State private var showFollowersList = false
+    @State private var followListInitialTab: FollowListType = .followers
+
+    // Refreshed user data (with fresh phlockCount, etc.)
+    @State private var refreshedUser: User?
+
+    // Actual phlock count fetched from follows table (more reliable than cached column)
+    @State private var actualPhlockCount: Int = 0
+    // Historical reach: unique users who have EVER had this user in their phlock
+    @State private var historicalReachCount: Int = 0
 
     var body: some View {
         ScrollViewReader { scrollProxy in
@@ -42,20 +56,28 @@ struct ProfileView: View {
                     if let user = authState.currentUser {
                         // Profile Header
                         VStack(spacing: 16) {
-                            // Profile Photo
-                            if let photoUrl = user.profilePhotoUrl, let url = URL(string: photoUrl) {
-                                AsyncImage(url: url) { image in
-                                    image
-                                        .resizable()
-                                        .scaledToFill()
-                                } placeholder: {
-                                    ProfilePhotoPlaceholder(displayName: user.displayName)
-                                }
-                                .frame(width: 100, height: 100)
-                                .clipShape(Circle())
-                            } else {
-                                ProfilePhotoPlaceholder(displayName: user.displayName)
+                            // Profile Photo with Streak Badge
+                            VStack(spacing: 0) {
+                                if let photoUrl = user.profilePhotoUrl, let url = URL(string: photoUrl) {
+                                    AsyncImage(url: url) { image in
+                                        image
+                                            .resizable()
+                                            .scaledToFill()
+                                    } placeholder: {
+                                        ProfilePhotoPlaceholder(displayName: user.displayName)
+                                    }
                                     .frame(width: 100, height: 100)
+                                    .clipShape(Circle())
+                                } else {
+                                    ProfilePhotoPlaceholder(displayName: user.displayName)
+                                        .frame(width: 100, height: 100)
+                                }
+
+                                // Streak badge overlapping the photo bottom
+                                if user.dailySongStreak > 0 {
+                                    StreakBadge(streak: user.dailySongStreak, size: .medium)
+                                        .offset(y: -12)
+                                }
                             }
 
                             // Display Name with Platform Logo
@@ -63,10 +85,12 @@ struct ProfileView: View {
                                 Text(user.displayName)
                                     .font(.lora(size: 28, weight: .bold))
 
-                                Image(user.platformType == .spotify ? "SpotifyLogo" : "AppleMusicLogo")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 20, height: 20)
+                                if let platform = user.resolvedPlatformType {
+                                    Image(platform == .spotify ? "SpotifyLogo" : "AppleMusicLogo")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 20, height: 20)
+                                }
                             }
 
                             // Bio
@@ -77,30 +101,53 @@ struct ProfileView: View {
                                     .padding(.horizontal, 24)
                             }
 
-                            // Action Buttons
-                            HStack(spacing: 16) {
+                            // Followers/Following Stats Row
+                            HStack(spacing: 32) {
                                 Button {
-                                    showEditProfile = true
+                                    followListInitialTab = .followers
+                                    showFollowersList = true
                                 } label: {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "pencil")
-                                            .font(.lora(size: 11))
-                                        Text("edit profile")
+                                    VStack(spacing: 2) {
+                                        Text("\(followerCount)")
+                                            .font(.lora(size: 18, weight: .bold))
+                                            .foregroundColor(.primary)
+                                        Text("followers")
                                             .font(.lora(size: 13))
+                                            .foregroundColor(.secondary)
                                     }
-                                    .foregroundColor(.secondary)
                                 }
-                                
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    followListInitialTab = .following
+                                    showFollowersList = true
+                                } label: {
+                                    VStack(spacing: 2) {
+                                        Text("\(followingCount)")
+                                            .font(.lora(size: 18, weight: .bold))
+                                            .foregroundColor(.primary)
+                                        Text("following")
+                                            .font(.lora(size: 13))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.top, 8)
+
+                            // Edit Profile Button
+                            Button {
+                                showEditProfile = true
+                            } label: {
                                 HStack(spacing: 4) {
-                                    Image(systemName: "person.2")
+                                    Image(systemName: "pencil")
                                         .font(.lora(size: 11))
-                                    Text("friends")
+                                    Text("edit profile")
                                         .font(.lora(size: 13))
                                 }
                                 .foregroundColor(.secondary)
-                                .opacity(0.5)
                             }
-                            .padding(.top, 8)
+                            .padding(.top, 4)
                         }
                         .padding(.top, 24)
                         
@@ -119,14 +166,16 @@ struct ProfileView: View {
                             onMemberTapped: { user in
                                 selectedUserForProfile = user
                             },
-                            onEditPhlockTapped: {
-                                showPhlockMenu = true
+                            onEditTapped: {
+                                showPhlockManagerSheet = true
                             }
                         )
 
                         ProfileInsightsSection(
-                            user: user,
-                            viewModel: insightsViewModel
+                            user: refreshedUser ?? user,
+                            viewModel: insightsViewModel,
+                            actualPhlockCount: actualPhlockCount,
+                            historicalReachCount: historicalReachCount
                         )
 
                         // Past Picks
@@ -227,7 +276,7 @@ struct ProfileView: View {
                 }
             }
         }
-        .refreshable {
+        .instagramRefreshable {
             // Pull to refresh
             print("🔄 User initiated pull-to-refresh on ProfileView")
             await authState.refreshMusicData()
@@ -266,23 +315,56 @@ struct ProfileView: View {
                     .environmentObject(authState)
             }
         }
-        .confirmationDialog("Edit Phlock", isPresented: $showPhlockMenu, titleVisibility: .visible) {
-            Button("Choose/Swap Members") {
-                // TODO: Navigate to phlock editing view
-                print("Edit phlock members")
+        .sheet(isPresented: $showFollowersList) {
+            if let user = authState.currentUser {
+                NavigationStack {
+                    FollowersListView(
+                        userId: user.id,
+                        initialTab: followListInitialTab,
+                        followerCount: followerCount,
+                        followingCount: followingCount
+                    )
+                    .environmentObject(authState)
+                }
+                .presentationDragIndicator(.visible)
             }
-            Button("Cancel", role: .cancel) { }
         }
-        .task {
+        .sheet(isPresented: $showPhlockManagerSheet) {
+            if let user = authState.currentUser {
+                PhlockManagerSheet(
+                    currentUserId: user.id,
+                    currentPhlockMembers: $phlockMembers,
+                    onMemberAdded: { selectedUser in
+                        Task {
+                            await addToPhlock(user: selectedUser)
+                        }
+                    },
+                    onMemberRemoved: { removedUser in
+                        Task {
+                            await removeFromPhlock(user: removedUser)
+                        }
+                    },
+                    onMemberSwapped: { oldUser, newUser in
+                        Task {
+                            await swapPhlockMember(oldUser: oldUser, newUser: newUser)
+                        }
+                    }
+                )
+                .presentationDragIndicator(.visible)
+            }
+        }
+        .task(id: authState.currentUser?.id) {
+            // Re-run whenever the current user changes (including from nil to a value)
             if let user = authState.currentUser {
                 await loadData(for: user)
             }
         }
-        .onChange(of: authState.currentUser?.id) { newId in
-            guard let id = newId, let user = authState.currentUser else { return }
-            insightsLoadedForUser = id
-            Task {
-                await loadData(for: user)
+        .onAppear {
+            // Also reload when view appears (e.g., switching tabs)
+            if let user = authState.currentUser {
+                Task {
+                    await loadData(for: user)
+                }
             }
         }
     }
@@ -291,19 +373,59 @@ struct ProfileView: View {
         // Load insights
         await insightsViewModel.load(for: user)
         insightsLoadedForUser = user.id
-        
-        // Load daily curation data
+
+        // Clear cache to ensure fresh data on profile load
+        FollowService.shared.clearCache(for: user.id)
+
+        // Load follow counts first - these should always succeed and are critical for UI
+        do {
+            async let followersTask = FollowService.shared.getFollowers(for: user.id)
+            async let followingTask = FollowService.shared.getFollowing(for: user.id)
+            async let whoHasMeTask = FollowService.shared.getWhoHasMeInPhlock(userId: user.id)
+            async let historicalReachTask = FollowService.shared.getHistoricalReach(userId: user.id)
+
+            let (followers, following, whoHasMe, reach) = try await (
+                followersTask,
+                followingTask,
+                whoHasMeTask,
+                historicalReachTask
+            )
+
+            await MainActor.run {
+                self.followerCount = followers.count
+                self.followingCount = following.count
+                self.actualPhlockCount = whoHasMe.count
+                self.historicalReachCount = reach
+            }
+            print("✅ Loaded follow data: followers=\(followers.count), following=\(following.count), phlockCount=\(whoHasMe.count), reach=\(reach)")
+        } catch {
+            print("❌ Failed to load follow data: \(error)")
+        }
+
+        // Load daily curation data, phlock members, and fresh user data
+        // These are independent and can fail without affecting the follow counts
         do {
             async let todaysPickTask = ShareService.shared.getTodaysDailySong(for: user.id)
             async let pastPicksTask = ShareService.shared.getDailySongHistory(for: user.id)
             async let phlockTask = UserService.shared.getPhlockMembers(for: user.id)
-            
-            let (today, past, phlock) = try await (todaysPickTask, pastPicksTask, phlockTask)
-            
+            async let freshUserTask = UserService.shared.getUser(userId: user.id)
+
+            let (today, past, phlock, freshUser) = try await (
+                todaysPickTask,
+                pastPicksTask,
+                phlockTask,
+                freshUserTask
+            )
+
             await MainActor.run {
                 self.todaysPick = today
                 self.pastPicks = past
                 self.phlockMembers = phlock
+                self.refreshedUser = freshUser
+            }
+
+            if let freshUser = freshUser {
+                print("✅ Refreshed user data: cachedPhlockCount=\(freshUser.phlockCount)")
             }
         } catch {
             print("❌ Failed to load profile data: \(error)")
@@ -320,6 +442,70 @@ struct ProfileView: View {
             return musicPlatform == "apple_music" ? .appleMusic : .spotify
         }
         return nil
+    }
+
+    // MARK: - Phlock Management
+
+    private func addToPhlock(user: User) async {
+        guard let currentUserId = authState.currentUser?.id else { return }
+
+        do {
+            // Find the next available position (1-5)
+            let occupiedPositions = Set(phlockMembers.map { $0.position })
+            let nextPosition = (1...5).first { !occupiedPositions.contains($0) } ?? 1
+
+            try await FollowService.shared.addToPhlock(
+                userId: user.id,
+                position: nextPosition,
+                currentUserId: currentUserId
+            )
+
+            // Refresh phlock members
+            phlockMembers = try await UserService.shared.getPhlockMembers(for: currentUserId)
+            print("✅ Added \(user.displayName) to phlock at position \(nextPosition)")
+        } catch {
+            print("❌ Failed to add to phlock: \(error)")
+        }
+    }
+
+    private func removeFromPhlock(user: User) async {
+        guard let currentUserId = authState.currentUser?.id else { return }
+
+        do {
+            try await FollowService.shared.removeFromPhlock(
+                userId: user.id,
+                currentUserId: currentUserId
+            )
+
+            // Refresh phlock members
+            phlockMembers = try await UserService.shared.getPhlockMembers(for: currentUserId)
+            print("✅ Removed \(user.displayName) from phlock")
+        } catch {
+            print("❌ Failed to remove from phlock: \(error)")
+        }
+    }
+
+    private func swapPhlockMember(oldUser: User, newUser: User) async {
+        guard let currentUserId = authState.currentUser?.id else { return }
+
+        do {
+            let wasImmediate = try await FollowService.shared.swapPhlockMember(
+                oldUserId: oldUser.id,
+                newUserId: newUser.id,
+                currentUserId: currentUserId
+            )
+
+            // Refresh phlock members
+            phlockMembers = try await UserService.shared.getPhlockMembers(for: currentUserId)
+
+            if wasImmediate {
+                print("✅ Swapped \(oldUser.displayName) with \(newUser.displayName) immediately")
+            } else {
+                print("✅ Swap scheduled for midnight: \(oldUser.displayName) → \(newUser.displayName)")
+            }
+        } catch {
+            print("❌ Failed to swap phlock members: \(error)")
+        }
     }
 }
 
@@ -353,8 +539,8 @@ struct GenreSendStat: Identifiable, Hashable {
 }
 
 struct ProfileInsightsSnapshot {
-    let sendStreak: Int
-    let saveCount30d: Int
+    let uniqueRecipientsCount: Int
+    let saveCountAllTime: Int
     let topArtists: [ArtistSendStat]
     let topGenres: [GenreSendStat]
 }
@@ -362,8 +548,8 @@ struct ProfileInsightsSnapshot {
 @MainActor
 class ProfileInsightsViewModel: ObservableObject {
     @Published var isLoading = false
-    @Published var sendStreak = 0
-    @Published var saveCount30d = 0
+    @Published var uniqueRecipientsCount = 0
+    @Published var saveCountAllTime = 0
     @Published var topArtists: [ArtistSendStat] = []
     @Published var topGenres: [GenreSendStat] = []
     @Published var errorMessage: String?
@@ -374,63 +560,74 @@ class ProfileInsightsViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
+            // Check for cancellation before starting
+            try Task.checkCancellation()
+
             let shares = try await ShareService.shared.getSentShares(userId: user.id, limit: 400)
+
+            // Check for cancellation after fetch
+            try Task.checkCancellation()
+
             let snapshot = ProfileInsightsCalculator.compute(
                 shares: shares,
                 knownArtists: user.platformData?.topArtists
             )
 
-            sendStreak = snapshot.sendStreak
-            saveCount30d = snapshot.saveCount30d
+            uniqueRecipientsCount = snapshot.uniqueRecipientsCount
+            saveCountAllTime = snapshot.saveCountAllTime
             topArtists = snapshot.topArtists
             topGenres = snapshot.topGenres
             errorMessage = nil
+
+            print("✅ Profile insights loaded: reach=\(uniqueRecipientsCount), saves=\(saveCountAllTime), artists=\(topArtists.count)")
+        } catch is CancellationError {
+            // Task was cancelled (e.g., view dismissed) - ignore silently
+            print("⚠️ Profile insights task cancelled")
+        } catch let error as NSError where error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled {
+            // URLSession cancellation - ignore silently
+            print("⚠️ Profile insights URL request cancelled")
         } catch {
-            errorMessage = error.localizedDescription
-            sendStreak = 0
-            saveCount30d = 0
-            topArtists = []
-            topGenres = []
+            // Only set error message for real errors, not cancellations
+            let errorDesc = error.localizedDescription.lowercased()
+            if errorDesc.contains("cancel") {
+                print("⚠️ Profile insights cancelled: \(error)")
+            } else {
+                print("❌ Profile insights error: \(error)")
+                errorMessage = error.localizedDescription
+                uniqueRecipientsCount = 0
+                saveCountAllTime = 0
+                topArtists = []
+                topGenres = []
+            }
         }
     }
 }
 
 enum ProfileInsightsCalculator {
     static func compute(shares: [Share], knownArtists: [MusicItem]?) -> ProfileInsightsSnapshot {
-        let normalizedShares = shares.sorted { $0.createdAt > $1.createdAt }
+        // Filter to only daily songs for some insights
+        let dailySongs = shares.filter { $0.isDailySong }
+        let normalizedShares = dailySongs.sorted { $0.createdAt > $1.createdAt }
 
         return ProfileInsightsSnapshot(
-            sendStreak: sendStreak(from: normalizedShares),
-            saveCount30d: saveCount30d(from: normalizedShares),
+            uniqueRecipientsCount: uniqueRecipients(from: shares), // Use all shares for reach
+            saveCountAllTime: saveCountAllTime(from: shares), // Use all shares for saves
             topArtists: topArtists(from: normalizedShares, limit: 3),
             topGenres: topGenres(from: normalizedShares, knownArtists: knownArtists ?? [])
         )
     }
 
-    private static func sendStreak(from shares: [Share]) -> Int {
-        guard !shares.isEmpty else { return 0 }
-        let calendar = Calendar.current
-        let shareDays = Set(shares.map { calendar.startOfDay(for: shareDate(for: $0)) })
-
-        var streak = 0
-        var currentDay = calendar.startOfDay(for: Date())
-
-        while shareDays.contains(currentDay) {
-            streak += 1
-            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: currentDay) else { break }
-            currentDay = previousDay
-        }
-
-        return streak
+    private static func uniqueRecipients(from shares: [Share]) -> Int {
+        // Count unique recipients, excluding self-shares (where sender = recipient)
+        Set(shares.compactMap { share -> UUID? in
+            // Only count if recipient is different from sender
+            guard share.recipientId != share.senderId else { return nil }
+            return share.recipientId
+        }).count
     }
 
-    private static func saveCount30d(from shares: [Share]) -> Int {
-        let calendar = Calendar.current
-        guard let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) else { return 0 }
-        return shares.filter {
-            guard let savedAt = $0.savedAt else { return false }
-            return savedAt >= thirtyDaysAgo
-        }.count
+    private static func saveCountAllTime(from shares: [Share]) -> Int {
+        shares.filter { $0.savedAt != nil }.count
     }
 
     private static func topArtists(from shares: [Share], limit: Int) -> [ArtistSendStat] {
@@ -478,11 +675,14 @@ enum ProfileInsightsCalculator {
 struct ProfileInsightsSection: View {
     let user: User
     @ObservedObject var viewModel: ProfileInsightsViewModel
+    var title: String = "activity"
+    var actualPhlockCount: Int? = nil // Fetched from follows table, overrides cached user.phlockCount
+    var historicalReachCount: Int? = nil // All-time unique users who ever had you in their phlock
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
-                Text("your activity")
+                Text(title)
                     .font(.lora(size: 17, weight: .medium))
                 if viewModel.isLoading {
                     ProgressView()
@@ -490,10 +690,15 @@ struct ProfileInsightsSection: View {
                 }
             }
 
+            // Use actualPhlockCount if provided (fetched from follows table), otherwise fall back to cached value
+            let phlockCount = actualPhlockCount ?? user.phlockCount
+            // Use historical reach count if provided, otherwise fall back to current phlock count
+            let reachCount = historicalReachCount ?? phlockCount
+
             ProfileStatsRow(
-                sendStreak: viewModel.sendStreak,
-                phlockCount: user.phlockCount,
-                saveCount30d: viewModel.saveCount30d,
+                reachCount: reachCount,
+                saveCountAllTime: viewModel.saveCountAllTime,
+                phlockCount: phlockCount,
                 isLoading: viewModel.isLoading
             )
 
@@ -518,40 +723,42 @@ struct ProfileInsightsSection: View {
 }
 
 struct ProfileStatsRow: View {
-    let sendStreak: Int
+    let reachCount: Int
+    let saveCountAllTime: Int
     let phlockCount: Int
-    let saveCount30d: Int
     let isLoading: Bool
 
     var body: some View {
         HStack(spacing: 12) {
+            // Reach = unique people who have ever had you in their phlock
             StatPill(
-                title: "send streak",
-                value: "\(sendStreak)",
-                subtitle: "days in a row",
-                systemImage: "flame.fill",
+                title: "reach",
+                value: "\(reachCount)",
+                subtitle: "people reached",
+                systemImage: "person.2.fill",
                 customIcon: nil,
                 isLoading: isLoading
             )
 
             StatPill(
+                title: "saves",
+                value: "\(saveCountAllTime)",
+                subtitle: "from my shares",
+                systemImage: "plus.circle",
+                customIcon: nil,
+                isLoading: isLoading
+            )
+
+            // Phlocks = current number of people who have you in their phlock
+            StatPill(
                 title: "phlocks",
                 value: "\(phlockCount)",
-                subtitle: "you're in",
+                subtitle: "i'm in",
                 systemImage: nil,
                 customIcon: AnyView(
                     MiniPhlockGlyph()
                         .frame(width: 14, height: 14)
                 ),
-                isLoading: isLoading
-            )
-
-            StatPill(
-                title: "saves (30d)",
-                value: "\(saveCount30d)",
-                subtitle: "from your shares",
-                systemImage: "plus.circle",
-                customIcon: nil,
                 isLoading: isLoading
             )
         }
@@ -645,15 +852,15 @@ struct TopArtistsSentCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("top artists you send (30d)")
+            Text("top artists i send (30d)")
                 .font(.lora(size: 16, weight: .medium))
 
             if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if artists.isEmpty {
-                Text("share a track to surface your go-to artists.")
-                    .font(.lora(size: 10))
+                Text("no artist data yet.")
+                    .font(.lora(size: 11))
                     .foregroundColor(.secondary)
             } else {
                 ForEach(Array(artists.enumerated()), id: \.element.id) { index, artist in
@@ -738,15 +945,15 @@ struct GenreBreakdownCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("top genres from your shares")
+            Text("top genres from my shares")
                 .font(.lora(size: 16, weight: .medium))
 
             if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if genres.isEmpty {
-                Text("once you've shared a few tracks, we'll chart the genres you pass around.")
-                    .font(.lora(size: 10))
+                Text("no genre data yet.")
+                    .font(.lora(size: 11))
                     .foregroundColor(.secondary)
             } else {
                 let maxCount = max(genres.map { $0.count }.max() ?? 1, 1)
@@ -817,7 +1024,7 @@ struct MusicStatsCard: View {
 
         print("🎵 MusicStatsCard rendering with \(items.count) items for \(title)")
         if let firstItem = items.first {
-            print("   First item: \(firstItem.name) - played at: \(firstItem.playedAt?.description ?? "no timestamp")")
+            print("   First item: \(firstItem.name) - albumArtUrl: \(firstItem.albumArtUrl ?? "nil") - played at: \(firstItem.playedAt?.description ?? "no timestamp")")
         }
 
         for item in items {
@@ -893,15 +1100,28 @@ struct MusicStatsCard: View {
                             // Album art for tracks, artist image for artists
                             Group {
                                 if let artworkUrl = item.albumArtUrl, let url = URL(string: artworkUrl) {
-                                    AsyncImage(url: url) { image in
-                                        image
-                                            .resizable()
-                                            .scaledToFill()
-                                    } placeholder: {
-                                        Color.gray.opacity(0.2)
+                                    AsyncImage(url: url) { phase in
+                                        switch phase {
+                                        case .success(let image):
+                                            image
+                                                .resizable()
+                                                .scaledToFill()
+                                        case .failure:
+                                            // Show initials on failure
+                                            artistInitialsPlaceholder(for: item.name)
+                                        case .empty:
+                                            Color.gray.opacity(0.2)
+                                        @unknown default:
+                                            Color.gray.opacity(0.2)
+                                        }
                                     }
                                 } else {
-                                    Color.gray.opacity(0.2)
+                                    // No URL - show initials for artists, gray for tracks
+                                    if itemType == .artist {
+                                        artistInitialsPlaceholder(for: item.name)
+                                    } else {
+                                        Color.gray.opacity(0.2)
+                                    }
                                 }
                             }
                             .frame(width: 40, height: 40)
@@ -1040,6 +1260,24 @@ struct MusicStatsCard: View {
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showQuickSendBar)
                 .ignoresSafeArea(.keyboard, edges: .bottom)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func artistInitialsPlaceholder(for name: String) -> some View {
+        let initials = name
+            .split(separator: " ")
+            .prefix(2)
+            .compactMap { $0.first }
+            .map { String($0).uppercased() }
+            .joined()
+
+        ZStack {
+            Circle()
+                .fill(Color.gray.opacity(0.3))
+            Text(initials.isEmpty ? "?" : initials)
+                .font(.lora(size: 14, weight: .semiBold))
+                .foregroundColor(.secondary)
         }
     }
 
@@ -1184,14 +1422,16 @@ struct TodaysPickCard: View {
     let share: Share?
     let isCurrentUser: Bool
     let onPickSong: () -> Void
+    var userId: UUID? = nil  // User ID for nudge functionality (when viewing other profiles)
+    var onNudge: (() -> Void)? = nil  // Callback when nudge button is tapped
     @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject var playbackService: PlaybackService
-    
+
     private var isCurrentTrack: Bool {
         guard let share = share else { return false }
         return playbackService.currentTrack?.id == share.trackId
     }
-    
+
     private var isPlaying: Bool {
         isCurrentTrack && playbackService.isPlaying
     }
@@ -1318,11 +1558,45 @@ struct TodaysPickCard: View {
                 .buttonStyle(.plain)
             } else {
                 // Empty state for other users
-                Text("no pick for today yet.")
-                    .font(.lora(size: 10))
-                    .italic()
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 24)
+                HStack {
+                    Text("i haven't chosen a song today yet")
+                        .font(.lora(size: 14))
+                        .foregroundColor(.secondary)
+
+                    Spacer()
+
+                    // Nudge button (shows "nudged" state when already nudged)
+                    if let onNudge = onNudge {
+                        Button(action: onNudge) {
+                            HStack(spacing: 4) {
+                                Text("👋")
+                                    .font(.system(size: 14))
+                                Text("nudge")
+                                    .font(.lora(size: 13, weight: .medium))
+                            }
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.gray.opacity(colorScheme == .dark ? 0.3 : 0.15))
+                            .cornerRadius(16)
+                        }
+                        .buttonStyle(.plain)
+                    } else if userId != nil {
+                        // Already nudged state
+                        HStack(spacing: 4) {
+                            Text("✓")
+                                .font(.system(size: 12, weight: .medium))
+                            Text("nudged")
+                                .font(.lora(size: 13, weight: .medium))
+                        }
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.gray.opacity(colorScheme == .dark ? 0.15 : 0.08))
+                        .cornerRadius(16)
+                    }
+                }
+                .padding(.horizontal, 24)
             }
         }
     }
@@ -1331,17 +1605,19 @@ struct TodaysPickCard: View {
 struct PastPicksView: View {
     let shares: [Share]
     @EnvironmentObject var playbackService: PlaybackService
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("past picks")
                 .font(.lora(size: 17, weight: .medium))
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 24)
 
             if shares.isEmpty {
                 Text("no past picks yet.")
                     .font(.lora(size: 14))
                     .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 24)
             } else {
                 let limitedShares = Array(shares.prefix(10))
@@ -1432,14 +1708,14 @@ struct PastPicksView: View {
 struct PhlockMembersRow: View {
     let members: [FriendWithPosition]
     let onMemberTapped: (User) -> Void
-    let onEditPhlockTapped: () -> Void
+    let onEditTapped: () -> Void
     @Environment(\.colorScheme) var colorScheme
-    
+
     // Calculate empty slots (max 5 members in a phlock)
     private var emptySlots: Int {
         max(0, 5 - members.count)
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("my phlock")
@@ -1452,30 +1728,43 @@ struct PhlockMembersRow: View {
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 24)
             }
-            
+
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 16) {
-                    // Existing members
+                HStack(alignment: .top, spacing: 16) {
+                    // Existing members with streak badges
                     ForEach(members) { member in
                         Button {
                             onMemberTapped(member.user)
                         } label: {
                             VStack(spacing: 8) {
-                                if let photoUrl = member.user.profilePhotoUrl, let url = URL(string: photoUrl) {
-                                    AsyncImage(url: url) { image in
-                                        image
-                                            .resizable()
-                                            .scaledToFill()
-                                    } placeholder: {
-                                        ProfilePhotoPlaceholder(displayName: member.user.displayName)
+                                // Fixed height container for photo + streak badge
+                                ZStack(alignment: .bottom) {
+                                    // Profile photo
+                                    Group {
+                                        if let photoUrl = member.user.profilePhotoUrl, let url = URL(string: photoUrl) {
+                                            AsyncImage(url: url) { image in
+                                                image
+                                                    .resizable()
+                                                    .scaledToFill()
+                                            } placeholder: {
+                                                ProfilePhotoPlaceholder(displayName: member.user.displayName)
+                                            }
+                                            .frame(width: 60, height: 60)
+                                            .clipShape(Circle())
+                                        } else {
+                                            ProfilePhotoPlaceholder(displayName: member.user.displayName)
+                                                .frame(width: 60, height: 60)
+                                        }
                                     }
-                                    .frame(width: 60, height: 60)
-                                    .clipShape(Circle())
-                                } else {
-                                    ProfilePhotoPlaceholder(displayName: member.user.displayName)
-                                        .frame(width: 60, height: 60)
+
+                                    // Streak badge overlapping bottom
+                                    if member.user.dailySongStreak > 0 {
+                                        StreakBadge(streak: member.user.dailySongStreak, size: .small)
+                                            .offset(y: 8)
+                                    }
                                 }
-                                
+                                .frame(height: 60) // Fixed height to match placeholders
+
                                 Text(member.user.displayName)
                                     .font(.lora(size: 12))
                                     .foregroundColor(.primary)
@@ -1485,48 +1774,56 @@ struct PhlockMembersRow: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    
-                    // Empty slot placeholders
-                    ForEach(0..<emptySlots, id: \.self) { _ in
-                        VStack(spacing: 8) {
-                            ZStack {
-                                Circle()
-                                    .strokeBorder(
-                                        style: StrokeStyle(lineWidth: 2, dash: [5, 3])
-                                    )
-                                    .foregroundColor(.secondary.opacity(0.4))
-                                    .frame(width: 60, height: 60)
-                                
-                                Circle()
-                                    .fill(Color.gray.opacity(colorScheme == .dark ? 0.15 : 0.08))
-                                    .frame(width: 60, height: 60)
-                                
-                                Image(systemName: "plus")
-                                    .font(.lora(size: 20, weight: .semiBold))
-                                    .foregroundColor(.secondary.opacity(0.5))
+
+                    // Empty slot placeholders - tap to open edit sheet
+                    ForEach(0..<emptySlots, id: \.self) { index in
+                        Button {
+                            onEditTapped()
+                        } label: {
+                            VStack(spacing: 8) {
+                                ZStack {
+                                    Circle()
+                                        .strokeBorder(
+                                            style: StrokeStyle(lineWidth: 2, dash: [5, 3])
+                                        )
+                                        .foregroundColor(.secondary.opacity(0.4))
+                                        .frame(width: 60, height: 60)
+
+                                    Circle()
+                                        .fill(Color.gray.opacity(colorScheme == .dark ? 0.15 : 0.08))
+                                        .frame(width: 60, height: 60)
+
+                                    Image(systemName: "plus")
+                                        .font(.lora(size: 20, weight: .semiBold))
+                                        .foregroundColor(.secondary.opacity(0.5))
+                                }
+                                .frame(height: 60) // Fixed height to match
+
+                                Text("add")
+                                    .font(.lora(size: 12))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 70)
                             }
-                            
-                            Text(" ")
-                                .font(.lora(size: 12))
-                                .frame(width: 70)
                         }
+                        .buttonStyle(.plain)
                     }
-                    
+
                     // Three-dot menu button
                     Button {
-                        onEditPhlockTapped()
+                        onEditTapped()
                     } label: {
                         VStack(spacing: 8) {
                             ZStack {
                                 Circle()
                                     .fill(Color.gray.opacity(colorScheme == .dark ? 0.25 : 0.12))
                                     .frame(width: 60, height: 60)
-                                
+
                                 Image(systemName: "ellipsis")
                                     .font(.lora(size: 20, weight: .semiBold))
                                     .foregroundColor(.primary)
                             }
-                            
+                            .frame(height: 60) // Fixed height to match
+
                             Text("edit")
                                 .font(.lora(size: 12))
                                 .foregroundColor(.secondary)
@@ -1539,5 +1836,327 @@ struct PhlockMembersRow: View {
                 .padding(.horizontal, 24)
             }
         }
+    }
+}
+
+// MARK: - Unified Phlock Manager Sheet
+
+struct PhlockManagerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+
+    let currentUserId: UUID
+    @Binding var currentPhlockMembers: [FriendWithPosition]
+    let onMemberAdded: (User) -> Void
+    let onMemberRemoved: (User) -> Void
+    let onMemberSwapped: (User, User) -> Void
+
+    @State private var followingList: [User] = []
+    @State private var isLoading = true
+    @State private var searchText = ""
+    @State private var memberToReplace: User?
+
+    // Filter out users already in phlock
+    private var availableUsers: [User] {
+        let phlockMemberIds = Set(currentPhlockMembers.map { $0.user.id })
+        return followingList.filter { !phlockMemberIds.contains($0.id) }
+    }
+
+    // Filter by search text
+    private var filteredUsers: [User] {
+        if searchText.isEmpty {
+            return availableUsers
+        }
+        return availableUsers.filter {
+            $0.displayName.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
+    // Get sorted slots (filled and empty)
+    private var sortedSlots: [(position: Int, member: FriendWithPosition?)] {
+        (1...5).map { position in
+            let member = currentPhlockMembers.first { $0.position == position }
+            return (position, member)
+        }
+    }
+
+    // Check if phlock is full
+    private var isPhlockFull: Bool {
+        currentPhlockMembers.count >= 5
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 0) {
+                    // MARK: - Current Members Section (5 slots)
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("my phlock")
+                            .font(.lora(size: 15, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 16)
+
+                        VStack(spacing: 0) {
+                            ForEach(sortedSlots, id: \.position) { slot in
+                                if let member = slot.member {
+                                    // Filled slot
+                                    filledSlotRow(member: member, position: slot.position)
+                                } else {
+                                    // Empty slot
+                                    emptySlotRow(position: slot.position)
+                                }
+
+                                if slot.position < 5 {
+                                    Divider()
+                                        .padding(.leading, 72)
+                                }
+                            }
+                        }
+                        .background(Color.gray.opacity(colorScheme == .dark ? 0.15 : 0.06))
+                        .cornerRadius(12)
+                        .padding(.horizontal, 16)
+                    }
+
+                    // MARK: - Available Friends Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("add from following")
+                            .font(.lora(size: 15, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 24)
+
+                        // Search bar
+                        HStack {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.secondary)
+                            TextField("search", text: $searchText)
+                                .font(.lora(size: 16))
+                        }
+                        .padding(12)
+                        .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
+                        .cornerRadius(12)
+                        .padding(.horizontal, 16)
+
+                        if isLoading {
+                            HStack {
+                                Spacer()
+                                ProgressView()
+                                Spacer()
+                            }
+                            .padding(.vertical, 40)
+                        } else if availableUsers.isEmpty {
+                            VStack(spacing: 8) {
+                                Text("no friends available")
+                                    .font(.lora(size: 14, weight: .medium))
+                                Text("follow more people to add them")
+                                    .font(.lora(size: 13))
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 32)
+                        } else if filteredUsers.isEmpty {
+                            VStack(spacing: 8) {
+                                Text("no matches found")
+                                    .font(.lora(size: 14, weight: .medium))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 32)
+                        } else {
+                            VStack(spacing: 0) {
+                                ForEach(filteredUsers, id: \.id) { user in
+                                    availableFriendRow(user: user)
+
+                                    if user.id != filteredUsers.last?.id {
+                                        Divider()
+                                            .padding(.leading, 72)
+                                    }
+                                }
+                            }
+                            .background(Color.gray.opacity(colorScheme == .dark ? 0.15 : 0.06))
+                            .cornerRadius(12)
+                            .padding(.horizontal, 16)
+                        }
+                    }
+
+                    Spacer(minLength: 40)
+                }
+            }
+            .navigationTitle("edit phlock")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("done") {
+                        dismiss()
+                    }
+                    .font(.lora(size: 16, weight: .medium))
+                }
+            }
+        }
+        .task {
+            await loadFollowing()
+        }
+    }
+
+    // MARK: - Filled Slot Row
+
+    @ViewBuilder
+    private func filledSlotRow(member: FriendWithPosition, position: Int) -> some View {
+        HStack(spacing: 12) {
+            // Profile photo with streak
+            ProfilePhotoWithStreak(
+                photoUrl: member.user.profilePhotoUrl,
+                displayName: member.user.displayName,
+                streak: member.user.dailySongStreak,
+                size: 44,
+                badgeSize: .small
+            )
+            .frame(width: 44, height: 54) // Extra height for streak badge
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(member.user.displayName)
+                    .font(.lora(size: 16, weight: .medium))
+                if let username = member.user.username {
+                    Text("@\(username)")
+                        .font(.lora(size: 13))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer()
+
+            // Replace button
+            Button {
+                memberToReplace = member.user
+            } label: {
+                Image(systemName: "arrow.triangle.swap")
+                    .font(.system(size: 18))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 8)
+
+            // Remove button
+            Button {
+                // Clear memberToReplace if this member was selected for replacement
+                if memberToReplace?.id == member.user.id {
+                    memberToReplace = nil
+                }
+                onMemberRemoved(member.user)
+            } label: {
+                Image(systemName: "minus.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundColor(.red)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            // Highlight if this member is selected for replacement
+            memberToReplace?.id == member.user.id
+                ? Color.blue.opacity(0.1)
+                : Color.clear
+        )
+    }
+
+    // MARK: - Empty Slot Row
+
+    @ViewBuilder
+    private func emptySlotRow(position: Int) -> some View {
+        HStack(spacing: 12) {
+            // Empty circle placeholder
+            ZStack {
+                Circle()
+                    .strokeBorder(
+                        style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])
+                    )
+                    .foregroundColor(.secondary.opacity(0.3))
+                    .frame(width: 44, height: 44)
+
+                Image(systemName: "plus")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.secondary.opacity(0.4))
+            }
+
+            Text("add member to phlock")
+                .font(.lora(size: 15))
+                .foregroundColor(.secondary)
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    // MARK: - Available Friend Row
+
+    @ViewBuilder
+    private func availableFriendRow(user: User) -> some View {
+        Button {
+            if let replacingUser = memberToReplace {
+                // Swap mode: replace the selected member
+                onMemberSwapped(replacingUser, user)
+                memberToReplace = nil
+            } else if !isPhlockFull {
+                // Add mode: add to next available slot
+                onMemberAdded(user)
+            }
+        } label: {
+            HStack(spacing: 12) {
+                // Profile photo with streak
+                ProfilePhotoWithStreak(
+                    photoUrl: user.profilePhotoUrl,
+                    displayName: user.displayName,
+                    streak: user.dailySongStreak,
+                    size: 44,
+                    badgeSize: .small
+                )
+                .frame(width: 44, height: 54) // Extra height for streak badge
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(user.displayName)
+                        .font(.lora(size: 16, weight: .medium))
+                        .foregroundColor(.primary)
+                    if let username = user.username {
+                        Text("@\(username)")
+                            .font(.lora(size: 13))
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                // Show swap icon if in replace mode, plus icon otherwise
+                if memberToReplace != nil {
+                    Image(systemName: "arrow.triangle.swap")
+                        .font(.system(size: 18))
+                        .foregroundColor(.blue)
+                } else if !isPhlockFull {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.green)
+                } else {
+                    // Phlock is full and not in replace mode
+                    Text("full")
+                        .font(.lora(size: 12))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+        .buttonStyle(.plain)
+        .disabled(isPhlockFull && memberToReplace == nil)
+        .opacity(isPhlockFull && memberToReplace == nil ? 0.5 : 1.0)
+    }
+
+    private func loadFollowing() async {
+        do {
+            followingList = try await FollowService.shared.getFollowing(for: currentUserId)
+        } catch {
+            print("❌ Failed to load following list: \(error)")
+        }
+        isLoading = false
     }
 }

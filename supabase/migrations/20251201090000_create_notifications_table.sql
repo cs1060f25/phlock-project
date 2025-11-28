@@ -17,23 +17,36 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_created_at
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
 -- Users can read their own notifications
-CREATE POLICY "Users can view their notifications"
-  ON public.notifications
-  FOR SELECT
-  USING (user_id = auth.uid());
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT FROM pg_policies WHERE tablename = 'notifications' AND policyname = 'Users can view their notifications'
+    ) THEN
+        CREATE POLICY "Users can view their notifications"
+          ON public.notifications
+          FOR SELECT
+          USING (user_id = auth.uid());
+    END IF;
 
--- Users can create notifications they initiate or receive
-CREATE POLICY "Users can insert notifications they trigger or receive"
-  ON public.notifications
-  FOR INSERT
-  WITH CHECK (
-    actor_user_id = auth.uid()
-    OR user_id = auth.uid()
-  );
+    IF NOT EXISTS (
+        SELECT FROM pg_policies WHERE tablename = 'notifications' AND policyname = 'Users can insert notifications they trigger or receive'
+    ) THEN
+        CREATE POLICY "Users can insert notifications they trigger or receive"
+          ON public.notifications
+          FOR INSERT
+          WITH CHECK (
+            actor_user_id = auth.uid()
+            OR user_id = auth.uid()
+          );
+    END IF;
 
--- Users can mark their own notifications as read
-CREATE POLICY "Users can update their notifications"
-  ON public.notifications
-  FOR UPDATE
-  USING (user_id = auth.uid())
-  WITH CHECK (user_id = auth.uid());
+    IF NOT EXISTS (
+        SELECT FROM pg_policies WHERE tablename = 'notifications' AND policyname = 'Users can update their notifications'
+    ) THEN
+        CREATE POLICY "Users can update their notifications"
+          ON public.notifications
+          FOR UPDATE
+          USING (user_id = auth.uid())
+          WITH CHECK (user_id = auth.uid());
+    END IF;
+END $$;

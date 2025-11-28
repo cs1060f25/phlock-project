@@ -29,7 +29,7 @@ struct FriendsView: View {
         NavigationStack(path: $navigationPath) {
             ZStack(alignment: .top) {
                 // Background
-                (colorScheme == .dark ? Color.black : Color(uiColor: .systemGroupedBackground))
+                Color.background(for: colorScheme)
                     .ignoresSafeArea()
 
                 ScrollViewReader { proxy in
@@ -101,10 +101,11 @@ struct FriendsView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
                 
-                TextField("Search friends...", text: $searchText)
+                TextField("Search by name or @username", text: $searchText)
                     .font(.lora(size: 16))
                     .textFieldStyle(.plain)
                     .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
                 
                 if !searchText.isEmpty {
                     Button {
@@ -257,7 +258,7 @@ struct FriendsView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 8)
                 .background(
-                    (colorScheme == .dark ? Color.black : Color(uiColor: .systemGroupedBackground))
+                    Color.background(for: colorScheme)
                         .opacity(0.95)
                 )
             }
@@ -418,18 +419,27 @@ struct FriendRequestCard: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            if let photoUrl = friendshipWithUser.user.profilePhotoUrl, let url = URL(string: photoUrl) {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    ProfilePhotoPlaceholder(displayName: friendshipWithUser.user.displayName)
-                }
-                .frame(width: 60, height: 60)
-                .clipShape(Circle())
-                .shadow(radius: 2)
-            } else {
-                ProfilePhotoPlaceholder(displayName: friendshipWithUser.user.displayName)
+            // Profile photo with streak badge
+            VStack(spacing: 0) {
+                if let photoUrl = friendshipWithUser.user.profilePhotoUrl, let url = URL(string: photoUrl) {
+                    AsyncImage(url: url) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        ProfilePhotoPlaceholder(displayName: friendshipWithUser.user.displayName)
+                    }
                     .frame(width: 60, height: 60)
+                    .clipShape(Circle())
+                    .shadow(radius: 2)
+                } else {
+                    ProfilePhotoPlaceholder(displayName: friendshipWithUser.user.displayName)
+                        .frame(width: 60, height: 60)
+                }
+
+                // Streak badge
+                if friendshipWithUser.user.dailySongStreak > 0 {
+                    StreakBadge(streak: friendshipWithUser.user.dailySongStreak, size: .small)
+                        .offset(y: -8)
+                }
             }
 
             VStack(spacing: 2) {
@@ -513,17 +523,26 @@ struct UserRow: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            if let photoUrl = user.profilePhotoUrl, let url = URL(string: photoUrl) {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    ProfilePhotoPlaceholder(displayName: user.displayName)
-                }
-                .frame(width: 48, height: 48)
-                .clipShape(Circle())
-            } else {
-                ProfilePhotoPlaceholder(displayName: user.displayName)
+            // Profile photo with streak badge
+            VStack(spacing: 0) {
+                if let photoUrl = user.profilePhotoUrl, let url = URL(string: photoUrl) {
+                    AsyncImage(url: url) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        ProfilePhotoPlaceholder(displayName: user.displayName)
+                    }
                     .frame(width: 48, height: 48)
+                    .clipShape(Circle())
+                } else {
+                    ProfilePhotoPlaceholder(displayName: user.displayName)
+                        .frame(width: 48, height: 48)
+                }
+
+                // Streak badge
+                if user.dailySongStreak > 0 {
+                    StreakBadge(streak: user.dailySongStreak, size: .small)
+                        .offset(y: -8)
+                }
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -535,11 +554,11 @@ struct UserRow: View {
                     Text("@\(username)")
                         .font(.lora(size: 14))
                         .foregroundColor(.secondary)
-                } else {
+                } else if let platform = user.resolvedPlatformType {
                     HStack(spacing: 4) {
-                        Image(systemName: user.platformType == .spotify ? "music.note" : "applelogo")
+                        Image(systemName: platform == .spotify ? "music.note" : "applelogo")
                             .font(.system(size: 10))
-                        Text(user.platformType == .spotify ? "Spotify" : "Apple Music")
+                        Text(platform == .spotify ? "Spotify" : "Apple Music")
                             .font(.lora(size: 14))
                     }
                     .foregroundColor(.secondary)

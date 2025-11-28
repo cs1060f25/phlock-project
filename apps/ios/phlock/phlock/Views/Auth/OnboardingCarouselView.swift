@@ -42,28 +42,8 @@ struct OnboardingCarouselView: View {
             }
             .padding(.bottom, 24)
             
-            // Action Button
-            NavigationLink(destination: PlatformSelectionView()) {
-                Text(currentPage == slides.count - 1 ? "get started" : "next")
-                    .font(.lora(size: 17, weight: .semiBold))
-                    .foregroundColor(colorScheme == .dark ? .black : .white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .background(colorScheme == .dark ? Color.white : Color.black)
-                    .cornerRadius(16)
-            }
-            .simultaneousGesture(TapGesture().onEnded {
-                if currentPage < slides.count - 1 {
-                    withAnimation {
-                        currentPage += 1
-                    }
-                }
-            })
-            // Only navigate if on the last page
-            .disabled(currentPage < slides.count - 1 && false) // Actually we want the button to just scroll if not last page, but NavigationLink triggers nav. 
-            // Better approach: Use a Button that changes page, and only show NavLink on last page or use a ZStack.
-            .hidden() // Hiding this one to replace with logic below
-            .overlay {
+            // Action Button - clean implementation without hidden views
+            Group {
                 if currentPage < slides.count - 1 {
                     Button {
                         withAnimation {
@@ -72,20 +52,20 @@ struct OnboardingCarouselView: View {
                     } label: {
                         Text("next")
                             .font(.lora(size: 17, weight: .semiBold))
-                            .foregroundColor(colorScheme == .dark ? .black : .white)
+                            .foregroundColor(Color.background(for: colorScheme))
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
-                            .background(colorScheme == .dark ? Color.white : Color.black)
+                            .background(Color.primaryColor(for: colorScheme))
                             .cornerRadius(16)
                     }
                 } else {
-                    NavigationLink(destination: PlatformSelectionView()) {
+                    NavigationLink(destination: SignInView()) {
                         Text("get started")
                             .font(.lora(size: 17, weight: .semiBold))
-                            .foregroundColor(colorScheme == .dark ? .black : .white)
+                            .foregroundColor(Color.background(for: colorScheme))
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
-                            .background(colorScheme == .dark ? Color.white : Color.black)
+                            .background(Color.primaryColor(for: colorScheme))
                             .cornerRadius(16)
                     }
                 }

@@ -13,7 +13,7 @@ struct LoadingView: View {
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(UIColor.systemBackground))
+        .background(Color.appBackground)
     }
 }
 

@@ -32,7 +32,7 @@ struct PhlockStatsView: View {
             }
             .padding()
         }
-        .background(Color(UIColor.systemGroupedBackground))
+        .background(Color.appBackground)
     }
 
     // MARK: - Track Info Section
@@ -150,7 +150,7 @@ struct PhlockStatsView: View {
                 .frame(height: 8)
             }
             .padding()
-            .background(colorScheme == .dark ? Color(white: 0.15) : .white)
+            .background(Color.card(for: colorScheme))
             .cornerRadius(16)
         }
     }
@@ -203,7 +203,7 @@ struct PhlockStatsView: View {
                 )
             }
             .padding()
-            .background(colorScheme == .dark ? Color(white: 0.15) : .white)
+            .background(Color.card(for: colorScheme))
             .cornerRadius(16)
         }
     }
@@ -227,7 +227,7 @@ struct PhlockStatsView: View {
                 }
             }
             .padding()
-            .background(colorScheme == .dark ? Color(white: 0.15) : .white)
+            .background(Color.card(for: colorScheme))
             .cornerRadius(16)
         }
     }
@@ -272,7 +272,7 @@ struct PhlockStatsView: View {
                 }
             }
             .padding()
-            .background(colorScheme == .dark ? Color(white: 0.15) : .white)
+            .background(Color.card(for: colorScheme))
             .cornerRadius(16)
         }
     }
@@ -312,7 +312,7 @@ struct PhlockStatsView: View {
                 )
             }
             .padding()
-            .background(colorScheme == .dark ? Color(white: 0.15) : .white)
+            .background(Color.card(for: colorScheme))
             .cornerRadius(16)
         }
     }
@@ -374,7 +374,7 @@ struct StatCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(colorScheme == .dark ? Color(white: 0.15) : .white)
+        .background(Color.card(for: colorScheme))
         .cornerRadius(16)
     }
 }

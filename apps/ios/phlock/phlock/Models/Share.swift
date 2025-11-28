@@ -77,12 +77,16 @@ struct Share: Codable, Identifiable {
         previewUrl = try container.decodeIfPresent(String.self, forKey: .previewUrl)
 
         // Custom date decoding to handle various formats
+        // Note: For date-only strings (yyyy-MM-dd), we use local timezone to ensure
+        // the date displays correctly regardless of user's location
         let dateStrategies: [(String) -> Date?] = [
             { ISO8601DateFormatter().date(from: $0) },
             {
+                // Date-only format - use LOCAL timezone so "2025-11-27" means
+                // "November 27 in the user's timezone", not "November 27 UTC"
                 let formatter = DateFormatter()
                 formatter.dateFormat = "yyyy-MM-dd"
-                formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                formatter.timeZone = TimeZone.current // Local timezone
                 return formatter.date(from: $0)
             },
             {

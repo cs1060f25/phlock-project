@@ -19,19 +19,26 @@ struct ContentView: View {
         ZStack {
             // Main content
             if authState.isAuthenticated {
-                if authState.isOnboardingComplete {
-                    MainView()
-                } else {
+                if authState.needsUsernameSetup {
+                    // Step 1: Username selection
                     NavigationStack {
-                        PhlockCreationView()
+                        UsernameSelectionView()
                     }
+                } else if authState.needsMusicPlatform {
+                    // Step 2: Music platform connection
+                    NavigationStack {
+                        MusicPlatformConnectionView()
+                    }
+                } else {
+                    // Fully onboarded - show main app
+                    MainView()
                 }
             } else if !showSplashScreen {
                 // Not authenticated and splash is done - show welcome screen
                 WelcomeView()
             } else {
                 // While splash is showing, render background
-                Color(UIColor.systemBackground)
+                Color.appBackground
                     .ignoresSafeArea()
             }
 

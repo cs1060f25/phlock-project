@@ -44,7 +44,8 @@ class SpotifyService: NSObject {
                 callbackURLScheme: "phlock-spotify"
             ) { callbackURL, error in
                 if let error = error {
-                    continuation.resume(throwing: SpotifyError.authCancelled(error))
+                    print("❌ Spotify auth cancelled: \(error.localizedDescription)")
+                    continuation.resume(throwing: SpotifyError.authCancelled)
                     return
                 }
 
@@ -187,39 +188,10 @@ class SpotifyService: NSObject {
 
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 15 // 15 second timeout
 
         let (data, _) = try await URLSession.shared.data(for: request)
-
-        // Debug: Print raw JSON for first track
-        if let jsonString = String(data: data, encoding: .utf8),
-           let jsonData = jsonString.data(using: .utf8),
-           let jsonObject = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-           let items = jsonObject["items"] as? [[String: Any]],
-           let firstTrack = items.first {
-            print("📄 First track from Spotify API:")
-            if let trackData = try? JSONSerialization.data(withJSONObject: firstTrack, options: .prettyPrinted),
-               let prettyJSON = String(data: trackData, encoding: .utf8) {
-                print(prettyJSON)
-            }
-        }
-
-        let response = try JSONDecoder().decode(SpotifyTopTracksResponse.self, from: data)
-
-        // Debug: Check if tracks have preview URLs and ISRCs
-        print("🎵 Fetched \(response.items.count) top tracks from Spotify")
-        let tracksWithPreviews = response.items.filter { $0.previewUrl != nil }.count
-        let tracksWithISRC = response.items.filter { $0.externalIds?.isrc != nil }.count
-        print("   \(tracksWithPreviews) tracks have preview URLs")
-        print("   \(tracksWithISRC) tracks have ISRC codes")
-
-        // Debug: Print first track details
-        if let firstTrack = response.items.first {
-            print("   First track: \(firstTrack.name)")
-            print("   Preview URL: \(firstTrack.previewUrl ?? "nil")")
-            print("   ISRC: \(firstTrack.externalIds?.isrc ?? "nil")")
-        }
-
-        return response
+        return try JSONDecoder().decode(SpotifyTopTracksResponse.self, from: data)
     }
 
     /// Fetch user's top artists
@@ -232,6 +204,7 @@ class SpotifyService: NSObject {
 
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 15 // 15 second timeout
 
         let (data, _) = try await URLSession.shared.data(for: request)
         return try JSONDecoder().decode(SpotifyTopArtistsResponse.self, from: data)
@@ -241,6 +214,7 @@ class SpotifyService: NSObject {
     func getUserPlaylists(accessToken: String) async throws -> SpotifyPlaylistsResponse {
         var request = URLRequest(url: URL(string: "https://api.spotify.com/v1/me/playlists")!)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 15 // 15 second timeout
 
         let (data, _) = try await URLSession.shared.data(for: request)
         return try JSONDecoder().decode(SpotifyPlaylistsResponse.self, from: data)
@@ -255,6 +229,7 @@ class SpotifyService: NSObject {
 
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 15 // 15 second timeout
 
         // Add cache-busting headers to ensure fresh data
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
@@ -263,31 +238,20 @@ class SpotifyService: NSObject {
 
         let (data, httpResponse) = try await URLSession.shared.data(for: request)
 
-        // Debug: Log response status and raw data
-        if let httpResponse = httpResponse as? HTTPURLResponse {
-            print("📡 Spotify recently-played API status: \(httpResponse.statusCode)")
+        guard let response = httpResponse as? HTTPURLResponse else {
+            throw SpotifyError.networkError
         }
 
-        // Try to decode the response
-        do {
-            let response = try JSONDecoder().decode(SpotifyRecentlyPlayedResponse.self, from: data)
-
-            // Debug: Check if tracks have preview URLs and ISRCs
-            print("🎵 Fetched \(response.items.count) recently played tracks from Spotify")
-            let tracksWithPreviews = response.items.filter { $0.track.previewUrl != nil }.count
-            let tracksWithISRC = response.items.filter { $0.track.externalIds?.isrc != nil }.count
-            print("   \(tracksWithPreviews) tracks have preview URLs")
-            print("   \(tracksWithISRC) tracks have ISRC codes")
-
-            return response
-        } catch {
-            // Log the actual response for debugging
-            if let jsonString = String(data: data, encoding: .utf8) {
-                print("❌ Failed to decode Spotify recently-played response")
-                print("📄 Raw response (first 500 chars): \(String(jsonString.prefix(500)))")
-            }
-            throw error
+        // Handle authentication errors
+        if response.statusCode == 401 {
+            throw SpotifyError.tokenExpired
         }
+
+        if response.statusCode != 200 {
+            throw SpotifyError.apiStatusError(response.statusCode)
+        }
+
+        return try JSONDecoder().decode(SpotifyRecentlyPlayedResponse.self, from: data)
     }
 
     /// Search for an artist by name and return their Spotify ID
@@ -658,25 +622,34 @@ struct SpotifyRecentlyPlayedResponse: Codable {
 
 // MARK: - Errors
 
-enum SpotifyError: LocalizedError {
+enum SpotifyError: LocalizedError, Equatable {
     case invalidURL
-    case authCancelled(Error)
+    case authCancelled
     case noAuthCode
     case tokenExchangeFailed
     case apiError(String)
+    case apiStatusError(Int)
+    case tokenExpired
+    case networkError
 
     var errorDescription: String? {
         switch self {
         case .invalidURL:
             return "Invalid Spotify URL"
-        case .authCancelled(let error):
-            return "Authentication cancelled: \(error.localizedDescription)"
+        case .authCancelled:
+            return "Authentication cancelled"
         case .noAuthCode:
             return "No authorization code received"
         case .tokenExchangeFailed:
             return "Failed to exchange authorization code for token"
         case .apiError(let message):
             return "Spotify API error: \(message)"
+        case .apiStatusError(let code):
+            return "Spotify API error (status \(code))"
+        case .tokenExpired:
+            return "Spotify access token expired. Please reconnect Spotify."
+        case .networkError:
+            return "Network error connecting to Spotify"
         }
     }
 }

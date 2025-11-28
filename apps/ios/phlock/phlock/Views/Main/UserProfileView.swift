@@ -2,183 +2,196 @@ import SwiftUI
 
 struct UserProfileView: View {
     @EnvironmentObject var authState: AuthenticationState
+    @EnvironmentObject var playbackService: PlaybackService
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.dismiss) private var dismiss
     let user: User
 
-    @State private var friendshipStatus: FriendshipStatus?
-    @State private var friendship: Friendship?
+    @State private var relationshipStatus: RelationshipStatus?
     @State private var isLoading = true
     @State private var isSendingRequest = false
     @State private var showError = false
     @State private var errorMessage = ""
+
+    // Follow counts
+    @State private var followerCount = 0
+    @State private var followingCount = 0
+    @State private var showFollowersList = false
+    @State private var followListInitialTab: FollowListType = .followers
+
+    // Daily Curation State
+    @State private var todaysPick: Share?
+    @State private var pastPicks: [Share] = []
+    @StateObject private var insightsViewModel = ProfileInsightsViewModel()
+
+    // Nudge state
+    @State private var hasNudged = false
+    @State private var isNudging = false
+
+    // Computed property to check if we can see the profile content
+    private var canViewProfile: Bool {
+        // Can always view if not private
+        guard user.isPrivate else { return true }
+        // Can view if we follow them (they accepted us)
+        return relationshipStatus?.isFollowing == true
+    }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
                 // Profile Header
                 VStack(spacing: 16) {
-                    // Profile Photo
-                    if let photoUrl = user.profilePhotoUrl, let url = URL(string: photoUrl) {
-                        AsyncImage(url: url) { image in
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        } placeholder: {
-                            ProfilePhotoPlaceholder(displayName: user.displayName)
-                        }
-                        .frame(width: 100, height: 100)
-                        .clipShape(Circle())
-                    } else {
-                        ProfilePhotoPlaceholder(displayName: user.displayName)
+                    // Profile Photo with Streak Badge
+                    VStack(spacing: 0) {
+                        if let photoUrl = user.profilePhotoUrl, let url = URL(string: photoUrl) {
+                            AsyncImage(url: url) { image in
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            } placeholder: {
+                                ProfilePhotoPlaceholder(displayName: user.displayName)
+                            }
                             .frame(width: 100, height: 100)
+                            .clipShape(Circle())
+                        } else {
+                            ProfilePhotoPlaceholder(displayName: user.displayName)
+                                .frame(width: 100, height: 100)
+                        }
+
+                        // Streak badge overlapping the photo bottom
+                        if user.dailySongStreak > 0 {
+                            StreakBadge(streak: user.dailySongStreak, size: .medium)
+                                .offset(y: -12)
+                        }
                     }
 
-                    // Display Name
-                    Text(user.displayName)
-                        .font(.lora(size: 20, weight: .bold))
+                    // Display Name with Platform Logo
+                    HStack(spacing: 8) {
+                        Text(user.displayName)
+                            .font(.lora(size: 28, weight: .bold))
+
+                        if let platform = user.resolvedPlatformType {
+                            Image(platform == .spotify ? "SpotifyLogo" : "AppleMusicLogo")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20)
+                        }
+                    }
 
                     // Bio
                     if let bio = user.bio {
                         Text(bio)
-                            .font(.lora(size: 10))
+                            .font(.lora(size: 15))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
                     }
 
-                    // Platform Badge
-                    HStack(spacing: 6) {
-                        Image(systemName: user.platformType == .spotify ? "music.note" : "applelogo")
-                            .font(.lora(size: 10))
-                        Text(user.platformType == .spotify ? "spotify" : "apple music")
-                            .font(.lora(size: 10))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(user.platformType == .spotify ? Color(red: 0.11, green: 0.73, blue: 0.33) : Color(red: 0.98, green: 0.26, blue: 0.42))
-                    .cornerRadius(16)
-
-                    // Friend Action Button
-                    Group {
-                        if isLoading {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                        } else if let status = friendshipStatus {
-                            switch status {
-                            case .accepted:
-                                HStack(spacing: 8) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.green)
-                                    Text("friends")
-                                        .font(.lora(size: 10))
-                                }
-                                .foregroundColor(.primary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
-                                .cornerRadius(12)
-
-                            case .pending:
-                                if let friendship = friendship, friendship.userId1 == authState.currentUser?.id {
-                                    // Current user sent the request
-                                    Text("request sent")
-                                        .font(.lora(size: 10))
-                                        .foregroundColor(.secondary)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 12)
-                                        .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
-                                        .cornerRadius(12)
-                                } else {
-                                    // Other user sent the request - show accept/reject
-                                    HStack(spacing: 12) {
-                                        Button {
-                                            Task { await rejectFriendRequest() }
-                                        } label: {
-                                            Text("reject")
-                                                .font(.lora(size: 10))
-                                                .foregroundColor(.primary)
-                                                .frame(maxWidth: .infinity)
-                                                .padding(.vertical, 12)
-                                                .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
-                                                .cornerRadius(12)
-                                        }
-
-                                        Button {
-                                            Task { await acceptFriendRequest() }
-                                        } label: {
-                                            Text("accept")
-                                                .font(.lora(size: 10))
-                                                .foregroundColor(.white)
-                                                .frame(maxWidth: .infinity)
-                                                .padding(.vertical, 12)
-                                                .background(Color.black)
-                                                .cornerRadius(12)
-                                        }
-                                    }
-                                }
-
-                            case .blocked:
-                                EmptyView()
+                    // Followers/Following Stats Row
+                    HStack(spacing: 32) {
+                        Button {
+                            followListInitialTab = .followers
+                            showFollowersList = true
+                        } label: {
+                            VStack(spacing: 2) {
+                                Text("\(followerCount)")
+                                    .font(.lora(size: 18, weight: .bold))
+                                    .foregroundColor(.primary)
+                                Text("followers")
+                                    .font(.lora(size: 13))
+                                    .foregroundColor(.secondary)
                             }
-                        } else {
-                            // No friendship - show add friend button
-                            Button {
-                                Task { await sendFriendRequest() }
-                            } label: {
-                                if isSendingRequest {
-                                    ProgressView()
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 12)
-                                } else {
-                                    Text("add friend")
-                                        .font(.lora(size: 10))
-                                        .foregroundColor(.white)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 12)
-                                        .background(Color.black)
-                                        .cornerRadius(12)
-                                }
-                            }
-                            .disabled(isSendingRequest)
                         }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            followListInitialTab = .following
+                            showFollowersList = true
+                        } label: {
+                            VStack(spacing: 2) {
+                                Text("\(followingCount)")
+                                    .font(.lora(size: 18, weight: .bold))
+                                    .foregroundColor(.primary)
+                                Text("following")
+                                    .font(.lora(size: 13))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.top, 8)
+
+                    // Follow Action Button
+                    followActionButton
+                        .padding(.horizontal, 24)
                 }
                 .padding(.top, 24)
 
-                // Music Stats
-                if let platformData = user.platformData {
-                    VStack(spacing: 16) {
-                        Text("music taste")
-                            .font(.lora(size: 20, weight: .semiBold))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 24)
-
-                        // Top Tracks
-                        if let topTracks = platformData.topTracks, !topTracks.isEmpty,
-                           let platformType = getPlatformType(from: user) {
-                            MusicStatsCard(
-                                title: "what i'm listening to",
-                                items: topTracks,
-                                platformType: platformType,
-                                itemType: .track
-                            )
+                // Content (only if can view profile)
+                if canViewProfile {
+                    // Today's Pick
+                    TodaysPickCard(
+                        share: todaysPick,
+                        isCurrentUser: false,
+                        onPickSong: { },
+                        userId: user.id,
+                        onNudge: hasNudged ? nil : {
+                            Task { await sendNudge() }
                         }
+                    )
 
-                        // Top Artists
-                        if let topArtists = platformData.topArtists, !topArtists.isEmpty,
-                           let platformType = getPlatformType(from: user) {
-                            MusicStatsCard(
-                                title: "who i'm listening to",
-                                items: topArtists,
-                                platformType: platformType,
-                                itemType: .artist
-                            )
+                    // Profile Insights
+                    ProfileInsightsSection(
+                        user: user,
+                        viewModel: insightsViewModel
+                    )
+
+                    // Past Picks
+                    PastPicksView(shares: pastPicks)
+
+                    // Music Stats from Platform
+                    if let platformData = user.platformData {
+                        VStack(spacing: 16) {
+                            // Top Tracks
+                            if let topTracks = platformData.topTracks, !topTracks.isEmpty,
+                               let platformType = getPlatformType(from: user) {
+                                MusicStatsCard(
+                                    title: "what i'm listening to",
+                                    items: topTracks,
+                                    platformType: platformType,
+                                    itemType: .track
+                                )
+                                .environmentObject(playbackService)
+                                .environmentObject(authState)
+                            }
+
+                            // Top Artists
+                            if let topArtists = platformData.topArtists, !topArtists.isEmpty,
+                               let platformType = getPlatformType(from: user) {
+                                MusicStatsCard(
+                                    title: "who i'm listening to",
+                                    items: topArtists,
+                                    platformType: platformType,
+                                    itemType: .artist
+                                )
+                            }
                         }
+                        .padding(.top, 16)
                     }
-                    .padding(.top, 16)
+                } else {
+                    // Private profile message
+                    VStack(spacing: 12) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 32))
+                            .foregroundColor(.secondary)
+                        Text("This account is private")
+                            .font(.lora(size: 16, weight: .medium))
+                        Text("Follow this account to see their songs and music taste.")
+                            .font(.lora(size: 14))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.vertical, 40)
+                    .padding(.horizontal, 24)
                 }
 
                 Spacer(minLength: 40)
@@ -195,7 +208,7 @@ struct UserProfileView: View {
                         .foregroundColor(.primary)
                 }
             }
-            
+
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Button(role: .destructive) {
@@ -203,7 +216,7 @@ struct UserProfileView: View {
                     } label: {
                         Label("Block User", systemImage: "hand.raised.fill")
                     }
-                    
+
                     Button(role: .destructive) {
                         Task { await reportUser() }
                     } label: {
@@ -223,38 +236,169 @@ struct UserProfileView: View {
         } message: {
             Text(errorMessage)
         }
+        .sheet(isPresented: $showFollowersList) {
+            NavigationStack {
+                FollowersListView(
+                    userId: user.id,
+                    initialTab: followListInitialTab,
+                    followerCount: followerCount,
+                    followingCount: followingCount
+                )
+                .environmentObject(authState)
+            }
+            .presentationDragIndicator(.visible)
+        }
         .task {
-            await loadFriendshipStatus()
+            await loadRelationshipStatus()
+            await loadProfileData()
         }
     }
 
-    private func loadFriendshipStatus() async {
+    // MARK: - Load Profile Data
+
+    private func loadProfileData() async {
+        // Load insights
+        await insightsViewModel.load(for: user)
+
+        // Load follow counts and daily curation data
+        do {
+            async let followersTask = FollowService.shared.getFollowers(for: user.id)
+            async let followingTask = FollowService.shared.getFollowing(for: user.id)
+            async let todaysPickTask = ShareService.shared.getTodaysDailySong(for: user.id)
+            async let pastPicksTask = ShareService.shared.getDailySongHistory(for: user.id)
+
+            let (followers, following, today, past) = try await (
+                followersTask,
+                followingTask,
+                todaysPickTask,
+                pastPicksTask
+            )
+
+            await MainActor.run {
+                self.followerCount = followers.count
+                self.followingCount = following.count
+                self.todaysPick = today
+                self.pastPicks = past
+            }
+        } catch {
+            print("❌ Failed to load profile data: \(error)")
+        }
+    }
+
+    // MARK: - Follow Action Button
+
+    @ViewBuilder
+    private var followActionButton: some View {
+        if isLoading {
+            ProgressView()
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+        } else if let status = relationshipStatus {
+            if status.isFollowing {
+                // Already following - show "Following" button
+                Button {
+                    Task { await unfollowUser() }
+                } label: {
+                    Text("following")
+                        .font(.lora(size: 17))
+                        .foregroundColor(.primary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
+                    .cornerRadius(12)
+                }
+            } else if status.hasPendingRequest {
+                // Pending request - show "Requested" button
+                Button {
+                    // Could add cancel functionality here
+                } label: {
+                    Text("requested")
+                        .font(.lora(size: 17))
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
+                        .cornerRadius(12)
+                }
+            } else {
+                // Not following - show "Follow" button
+                Button {
+                    Task { await followUser() }
+                } label: {
+                    if isSendingRequest {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                    } else {
+                        Text(user.isPrivate ? "request to follow" : "follow")
+                            .font(.lora(size: 17))
+                            .foregroundColor(Color.background(for: colorScheme))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.primaryColor(for: colorScheme))
+                            .cornerRadius(12)
+                    }
+                }
+                .disabled(isSendingRequest)
+            }
+        } else {
+            // No status loaded - show follow button
+            Button {
+                Task { await followUser() }
+            } label: {
+                if isSendingRequest {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                } else {
+                    Text(user.isPrivate ? "request to follow" : "follow")
+                        .font(.lora(size: 17))
+                        .foregroundColor(Color.background(for: colorScheme))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.primaryColor(for: colorScheme))
+                        .cornerRadius(12)
+                }
+            }
+            .disabled(isSendingRequest)
+        }
+    }
+
+    // MARK: - Actions
+
+    private func loadRelationshipStatus() async {
         guard let currentUserId = authState.currentUser?.id else { return }
 
         isLoading = true
 
         do {
-            friendship = try await UserService.shared.getFriendship(currentUserId: currentUserId, otherUserId: user.id)
-            friendshipStatus = friendship?.status
+            relationshipStatus = try await FollowService.shared.getRelationshipStatus(
+                currentUserId: currentUserId,
+                otherUserId: user.id
+            )
         } catch {
-            print("Error loading friendship status: \(error)")
+            print("Error loading relationship status: \(error)")
         }
 
         isLoading = false
     }
 
-    private func sendFriendRequest() async {
+    private func followUser() async {
         guard let currentUserId = authState.currentUser?.id else { return }
 
         isSendingRequest = true
 
         do {
-            try await UserService.shared.sendFriendRequest(to: user.id, from: currentUserId)
+            try await FollowService.shared.followOrRequest(
+                userId: user.id,
+                currentUserId: currentUserId,
+                targetUser: user
+            )
 
-            // Clear cache to ensure fresh data in friends list
-            UserService.shared.clearCache(for: currentUserId)
+            // Clear cache to ensure fresh data
+            FollowService.shared.clearCache(for: currentUserId)
 
-            await loadFriendshipStatus()
+            await loadRelationshipStatus()
         } catch {
             errorMessage = error.localizedDescription
             showError = true
@@ -263,37 +407,16 @@ struct UserProfileView: View {
         isSendingRequest = false
     }
 
-    private func acceptFriendRequest() async {
-        guard let friendship = friendship,
-              let currentUserId = authState.currentUser?.id else { return }
+    private func unfollowUser() async {
+        guard let currentUserId = authState.currentUser?.id else { return }
 
         do {
-            try await UserService.shared.acceptFriendRequest(
-                friendshipId: friendship.id,
-                currentUserId: currentUserId
-            )
+            try await FollowService.shared.unfollow(userId: user.id, currentUserId: currentUserId)
 
-            // Clear cache to ensure fresh data in friends list
-            UserService.shared.clearCache(for: currentUserId)
+            // Clear cache to ensure fresh data
+            FollowService.shared.clearCache(for: currentUserId)
 
-            await loadFriendshipStatus()
-        } catch {
-            errorMessage = error.localizedDescription
-            showError = true
-        }
-    }
-
-    private func rejectFriendRequest() async {
-        guard let friendship = friendship,
-              let currentUserId = authState.currentUser?.id else { return }
-
-        do {
-            try await UserService.shared.rejectFriendRequest(friendshipId: friendship.id)
-
-            // Clear cache to ensure fresh data in friends list
-            UserService.shared.clearCache(for: currentUserId)
-
-            await loadFriendshipStatus()
+            await loadRelationshipStatus()
         } catch {
             errorMessage = error.localizedDescription
             showError = true
@@ -302,7 +425,7 @@ struct UserProfileView: View {
 
     private func blockUser() async {
         guard let currentUserId = authState.currentUser?.id else { return }
-        
+
         do {
             try await UserService.shared.blockUser(userId: user.id, currentUserId: currentUserId)
             dismiss()
@@ -311,10 +434,10 @@ struct UserProfileView: View {
             showError = true
         }
     }
-    
+
     private func reportUser() async {
         guard let currentUserId = authState.currentUser?.id else { return }
-        
+
         // In a real app, we'd show a sheet to collect the reason
         // For now, we'll report as "Inappropriate Content" by default
         do {
@@ -338,6 +461,27 @@ struct UserProfileView: View {
         }
         return nil
     }
+
+    private func sendNudge() async {
+        guard let currentUserId = authState.currentUser?.id else { return }
+        guard !hasNudged && !isNudging else { return }
+
+        isNudging = true
+
+        do {
+            try await NotificationService.shared.sendDailyNudge(to: user.id, from: currentUserId)
+            await MainActor.run {
+                hasNudged = true
+            }
+            print("✅ Nudge sent successfully to \(user.displayName)")
+        } catch {
+            print("❌ Failed to send nudge: \(error)")
+            errorMessage = "Failed to send nudge"
+            showError = true
+        }
+
+        isNudging = false
+    }
 }
 
 #Preview {
@@ -357,8 +501,9 @@ struct UserProfileView: View {
 
     let sampleUser = try! JSONDecoder().decode(User.self, from: sampleUserData)
 
-    return NavigationStack {
+    NavigationStack {
         UserProfileView(user: sampleUser)
             .environmentObject(AuthenticationState())
+            .environmentObject(PlaybackService.shared)
     }
 }

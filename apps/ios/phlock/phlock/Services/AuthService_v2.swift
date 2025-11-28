@@ -5,7 +5,7 @@ import OSLog
 
 /// Production-grade authentication service using Supabase Auth with OAuth
 /// This replaces the manual user creation approach with proper auth.uid() integration
-enum AuthError: Error {
+enum AuthErrorV2: Error {
     case userCreationFailed
     case userUpdateFailed
     case unknown
@@ -571,12 +571,14 @@ class AuthServiceV2 {
 
         // Create new top artists list
         let newTopArtists = topArtists.items.prefix(10).map { artist in
-            MusicItem(
+            let imageUrl = artist.images?.first?.url
+            print("🎤 Artist: \(artist.name) - imageUrl: \(imageUrl ?? "nil") - images count: \(artist.images?.count ?? 0)")
+            return MusicItem(
                 id: artist.id,
                 name: artist.name,
                 artistName: nil,
                 previewUrl: nil,
-                albumArtUrl: artist.images?.first?.url,
+                albumArtUrl: imageUrl,
                 isrc: nil,
                 playedAt: nil,
                 spotifyId: artist.id,
@@ -620,6 +622,114 @@ class AuthServiceV2 {
             .execute()
 
         print("✅ Updated Spotify music data for user: \(userId)")
+    }
+
+    private func updateAppleMusicData(userId: UUID) async throws {
+        print("🎵 Fetching fresh Apple Music data for user: \(userId)")
+
+        // Fetch top songs and artists from Apple Music
+        let topSongs = try await AppleMusicService.shared.getTopSongs()
+        let topArtists = try await AppleMusicService.shared.getTopArtists()
+
+        print("📊 Fetched \(topSongs.count) top songs")
+        print("🎤 Fetched \(topArtists.count) top artists")
+
+        // Fetch existing platform_data
+        let users: [User] = try await supabase
+            .from("users")
+            .select("*")
+            .eq("id", value: userId.uuidString)
+            .execute()
+            .value
+
+        guard let user = users.first, let platformData = user.platformData else {
+            print("⚠️ User not found or no platform data")
+            return
+        }
+
+        // Fetch artwork for top artists (in parallel for better performance)
+        let topArtistsWithArtwork = await withTaskGroup(of: (String, String, String?).self) { group in
+            for artist in topArtists {
+                group.addTask {
+                    let artwork = try? await AppleMusicService.shared.fetchArtistArtwork(artistName: artist.name)
+                    return (artist.id, artist.name, artwork)
+                }
+            }
+
+            var results: [(String, String, String?)] = []
+            for await result in group {
+                results.append(result)
+            }
+            return results
+        }
+
+        print("🎨 Fetched artwork for \(topArtistsWithArtwork.filter { $0.2 != nil }.count) artists")
+
+        // Create new top tracks list
+        let newTopTracks = topSongs.prefix(20).map {
+            MusicItem(
+                id: $0.id,
+                name: $0.title,
+                artistName: $0.artistName,
+                previewUrl: $0.previewURL,
+                albumArtUrl: $0.artworkURL,
+                isrc: nil,
+                playedAt: nil
+            )
+        }
+
+        // Create new top artists list with artwork
+        let newTopArtists = topArtistsWithArtwork.map { (id, name, artwork) in
+            print("🎤 Apple Music Artist: \(name) - artwork: \(artwork ?? "nil")")
+            return MusicItem(
+                id: id,
+                name: name,
+                artistName: nil,
+                previewUrl: nil,
+                albumArtUrl: artwork,
+                isrc: nil,
+                playedAt: nil,
+                spotifyId: nil,
+                appleMusicId: id,
+                popularity: nil,
+                followerCount: nil,
+                genres: []
+            )
+        }
+
+        print("🔄 Updating platform_data with \(newTopTracks.count) tracks and \(newTopArtists.count) artists")
+
+        let updatedData = PlatformUserData(
+            spotifyEmail: platformData.spotifyEmail,
+            spotifyDisplayName: platformData.spotifyDisplayName,
+            spotifyImageUrl: platformData.spotifyImageUrl,
+            spotifyCountry: platformData.spotifyCountry,
+            spotifyProduct: platformData.spotifyProduct,
+            appleMusicUserId: platformData.appleMusicUserId,
+            appleMusicStorefront: platformData.appleMusicStorefront,
+            topArtists: Array(newTopArtists),
+            topTracks: Array(newTopTracks),
+            recentlyPlayed: Array(newTopTracks),
+            playlists: platformData.playlists
+        )
+
+        let updatedDataJSON = String(data: try JSONEncoder().encode(updatedData), encoding: .utf8) ?? "{}"
+
+        struct UpdatePayload: Encodable {
+            let platform_data: String
+            let updated_at: String
+        }
+
+        try await supabase
+            .from("users")
+            .update(UpdatePayload(
+                platform_data: updatedDataJSON,
+                updated_at: ISO8601DateFormatter().string(from: Date())
+            ))
+            .eq("id", value: userId.uuidString)
+            .execute()
+
+        print("✅ Updated Apple Music data for user: \(userId)")
     }
 
     // MARK: - Platform Token Storage
@@ -718,13 +828,13 @@ class AuthServiceV2 {
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw AuthError.userCreationFailed
+            throw AuthErrorV2.userCreationFailed
         }
 
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
             print("❌ Edge Function error: \(errorMessage)")
-            throw AuthError.userCreationFailed
+            throw AuthErrorV2.userCreationFailed
         }
 
         let result = try JSONDecoder().decode(ExchangeResponse.self, from: data)
@@ -800,10 +910,14 @@ class AuthServiceV2 {
 
     /// Refresh music data for current user
     func refreshMusicData() async throws -> User? {
+        print("🔄 AuthServiceV2.refreshMusicData() starting...")
+
         guard let user = try await currentUser else {
             print("❌ No current user to refresh")
             return nil
         }
+
+        print("🔄 Refreshing music data for user: \(user.id)")
 
         // Get platform tokens to refresh music data
         let tokens: [PlatformToken] = try await supabase
@@ -813,18 +927,28 @@ class AuthServiceV2 {
             .execute()
             .value
 
+        print("🔄 Found \(tokens.count) platform tokens")
+
         guard let token = tokens.first else {
             print("⚠️ No platform token found")
             return user
         }
 
+        print("🔄 Platform type: \(token.platformType)")
+
         // Refresh based on platform
         if token.platformType == .spotify {
+            print("🔄 Refreshing Spotify data...")
             try await updateSpotifyMusicData(userId: user.id, accessToken: token.accessToken)
+        } else if token.platformType == .appleMusic {
+            print("🔄 Refreshing Apple Music data...")
+            try await updateAppleMusicData(userId: user.id)
+        } else {
+            print("⚠️ Unknown platform type: \(token.platformType)")
         }
-        // Could add Apple Music refresh here in the future
 
         // Return updated user
+        print("🔄 Fetching updated user data...")
         return try await getUserById(user.id)
     }
 

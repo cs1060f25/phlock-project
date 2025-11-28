@@ -15,6 +15,7 @@ CREATE POLICY "Users can view their notifications"
   USING (user_id = get_current_user_id());
 
 -- Phlock members need to see existing daily nudges they sent so we can aggregate actor_ids
+DROP POLICY IF EXISTS "Phlock members can view nudges they sent" ON public.notifications;
 CREATE POLICY "Phlock members can view nudges they sent"
   ON public.notifications
   FOR SELECT
@@ -23,12 +24,11 @@ CREATE POLICY "Phlock members can view nudges they sent"
     type = 'daily_nudge'
     AND EXISTS (
       SELECT 1
-      FROM friendships f
-      WHERE f.status = 'accepted'
-        AND f.is_phlock_member = true
+      FROM follows f
+      WHERE f.is_in_phlock = true
         AND (
-          (f.user_id_1 = user_id AND f.user_id_2 = get_current_user_id())
-          OR (f.user_id_2 = user_id AND f.user_id_1 = get_current_user_id())
+          f.follower_id = get_current_user_id()
+          AND f.following_id = user_id
         )
     )
   );
@@ -52,6 +52,7 @@ CREATE POLICY "Users can update their notifications"
   WITH CHECK (user_id = get_current_user_id());
 
 -- Phlock members can update daily nudges (to merge actor_ids for the same day)
+DROP POLICY IF EXISTS "Phlock members can update daily nudges" ON public.notifications;
 CREATE POLICY "Phlock members can update daily nudges"
   ON public.notifications
   FOR UPDATE
@@ -60,12 +61,11 @@ CREATE POLICY "Phlock members can update daily nudges"
     type = 'daily_nudge'
     AND EXISTS (
       SELECT 1
-      FROM friendships f
-      WHERE f.status = 'accepted'
-        AND f.is_phlock_member = true
+      FROM follows f
+      WHERE f.is_in_phlock = true
         AND (
-          (f.user_id_1 = user_id AND f.user_id_2 = get_current_user_id())
-          OR (f.user_id_2 = user_id AND f.user_id_1 = get_current_user_id())
+          f.follower_id = get_current_user_id()
+          AND f.following_id = user_id
         )
     )
   )
@@ -73,12 +73,11 @@ CREATE POLICY "Phlock members can update daily nudges"
     type = 'daily_nudge'
     AND EXISTS (
       SELECT 1
-      FROM friendships f
-      WHERE f.status = 'accepted'
-        AND f.is_phlock_member = true
+      FROM follows f
+      WHERE f.is_in_phlock = true
         AND (
-          (f.user_id_1 = user_id AND f.user_id_2 = get_current_user_id())
-          OR (f.user_id_2 = user_id AND f.user_id_1 = get_current_user_id())
+          f.follower_id = get_current_user_id()
+          AND f.following_id = user_id
         )
     )
   );

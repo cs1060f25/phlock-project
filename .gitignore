@@ -50,6 +50,11 @@ Thumbs.db
 ios/Pods/
 ios/.xcode.env.local
 
+# iOS xcconfig secrets (keep .template, ignore actual configs)
+**/Configuration/Debug.xcconfig
+**/Configuration/Release.xcconfig
+!**/Configuration/Secrets.xcconfig.template
+
 # Android
 *.apk
 *.aab

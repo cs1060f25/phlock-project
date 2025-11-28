@@ -6,7 +6,7 @@ struct PhlockButton: View {
     var variant: ButtonVariant = .primary
     var isLoading: Bool = false
     var fullWidth: Bool = false
-    var fontSize: CGFloat = 10
+    var fontSize: CGFloat = 17
     @Environment(\.colorScheme) var colorScheme
 
     enum ButtonVariant {
@@ -17,7 +17,7 @@ struct PhlockButton: View {
 
         func backgroundColor(for colorScheme: ColorScheme) -> Color {
             switch self {
-            case .primary: return colorScheme == .dark ? .white : .black
+            case .primary: return Color.primaryColor(for: colorScheme)
             case .secondary: return Color.gray.opacity(colorScheme == .dark ? 0.3 : 0.2)
             case .spotify: return Color(red: 0.11, green: 0.73, blue: 0.33) // Spotify green
             case .appleMusic: return Color(red: 0.98, green: 0.26, blue: 0.42) // Apple Music red
@@ -26,7 +26,7 @@ struct PhlockButton: View {
 
         func foregroundColor(for colorScheme: ColorScheme) -> Color {
             switch self {
-            case .primary: return colorScheme == .dark ? .black : .white
+            case .primary: return Color.background(for: colorScheme)
             case .secondary: return .primary
             case .spotify, .appleMusic: return .white
             }

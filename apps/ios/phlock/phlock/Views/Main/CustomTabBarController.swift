@@ -244,7 +244,7 @@ struct CustomTabBar: View {
             )
         }
         .frame(height: 49)
-        .background(colorScheme == .dark ? Color.black : Color.white)
+        .background(Color.bar(for: colorScheme))
     }
 }
 

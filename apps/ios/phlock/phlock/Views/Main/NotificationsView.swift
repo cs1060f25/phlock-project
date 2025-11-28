@@ -143,10 +143,10 @@ struct NotificationsView: View {
                     proxy.scrollTo("notificationsTop", anchor: .top)
                 }
             }
-            .refreshable {
-                isRefreshing = true
+            .instagramRefreshable {
+                await MainActor.run { isRefreshing = true }
                 await loadNotifications()
-                isRefreshing = false
+                await MainActor.run { isRefreshing = false }
             }
         }
     }
@@ -269,66 +269,8 @@ private struct NotificationRowView: View {
     // Helper to bold the actor names in the text
     private var attributedTitle: AttributedString {
         var text = AttributedString("")
-        
+
         switch notification.type {
-        case .friendRequestAccepted:
-            if let actor = primaryActor {
-                var name = AttributedString(actor.displayName)
-                name.font = .lora(size: 16)
-                text.append(name)
-                text.append(AttributedString(" accepted your friend request"))
-            } else {
-                text.append(AttributedString(notification.message ?? "Friend request accepted"))
-            }
-
-        case .friendRequestReceived:
-            if let actor = primaryActor {
-                var name = AttributedString(actor.displayName)
-                name.font = .lora(size: 16)
-                text.append(name)
-                text.append(AttributedString(" sent you a friend request"))
-            } else {
-                text.append(AttributedString(notification.message ?? "New friend request"))
-            }
-
-        case .friendJoined:
-            if let actor = primaryActor {
-                var name = AttributedString(actor.displayName)
-                name.font = .lora(size: 16)
-                text.append(name)
-                text.append(AttributedString(" is on Phlock as "))
-                if let username = actor.username {
-                    text.append(AttributedString("@\(username)"))
-                } else {
-                    text.append(AttributedString("a new user"))
-                }
-            } else {
-                text.append(AttributedString(notification.message ?? "A contact joined Phlock"))
-            }
-
-        case .friendPickedSong:
-            if let actor = primaryActor {
-                var name = AttributedString(actor.displayName)
-                name.font = .lora(size: 16)
-                text.append(name)
-                text.append(AttributedString(" picked a song for today"))
-            } else {
-                text.append(AttributedString(notification.message ?? "Friend picked a song"))
-            }
-
-        case .reactionReceived:
-            if let actor = primaryActor {
-                var name = AttributedString(actor.displayName)
-                name.font = .lora(size: 16)
-                text.append(name)
-                text.append(AttributedString(" reacted to your song pick"))
-            } else {
-                text.append(AttributedString(notification.message ?? "New reaction"))
-            }
-
-        case .streakMilestone:
-            text.append(AttributedString(notification.message ?? "You reached a new streak milestone!"))
-            
         case .dailyNudge:
             let names = actors.map { $0.displayName }
             if names.isEmpty {
@@ -354,50 +296,160 @@ private struct NotificationRowView: View {
                     text.append(AttributedString(", and \(names.count - 2) others nudged you"))
                 }
             }
+
+        case .newFollower:
+            if let actor = primaryActor {
+                var name = AttributedString(actor.displayName)
+                name.font = .lora(size: 16)
+                text.append(name)
+                text.append(AttributedString(" started following you"))
+            } else {
+                text.append(AttributedString("Someone started following you"))
+            }
+
+        case .followRequestReceived:
+            if let actor = primaryActor {
+                var name = AttributedString(actor.displayName)
+                name.font = .lora(size: 16)
+                text.append(name)
+                text.append(AttributedString(" wants to follow you"))
+            } else {
+                text.append(AttributedString("New follow request"))
+            }
+
+        case .followRequestAccepted:
+            if let actor = primaryActor {
+                var name = AttributedString(actor.displayName)
+                name.font = .lora(size: 16)
+                text.append(name)
+                text.append(AttributedString(" accepted your follow request"))
+            } else {
+                text.append(AttributedString("Your follow request was accepted"))
+            }
+
+        case .friendJoined:
+            if let actor = primaryActor {
+                var name = AttributedString(actor.displayName)
+                name.font = .lora(size: 16)
+                text.append(name)
+                text.append(AttributedString(" joined Phlock"))
+                if let username = actor.username {
+                    text.append(AttributedString(" as @\(username)"))
+                }
+            } else {
+                text.append(AttributedString("A contact joined Phlock"))
+            }
+
+        case .phlockSongReady:
+            if let actor = primaryActor {
+                var name = AttributedString(actor.displayName)
+                name.font = .lora(size: 16)
+                text.append(name)
+                if let trackName = notification.trackName {
+                    text.append(AttributedString(" picked \"\(trackName)\""))
+                } else {
+                    text.append(AttributedString(" picked a song for today"))
+                }
+            } else {
+                text.append(AttributedString("New song in your phlock"))
+            }
+
+        case .songPlayed:
+            let count = notification.count ?? 1
+            if count == 1 {
+                text.append(AttributedString("Someone played your song"))
+            } else {
+                text.append(AttributedString("\(count) people played your song today"))
+            }
+
+        case .songSaved:
+            let count = notification.count ?? 1
+            if count == 1 {
+                text.append(AttributedString("Someone saved your song"))
+            } else {
+                text.append(AttributedString("\(count) people saved your song today"))
+            }
+
+        case .streakMilestone:
+            if let days = notification.streakDays {
+                text.append(AttributedString("🔥 You're on a \(days)-day streak!"))
+            } else {
+                text.append(AttributedString(notification.message ?? "New streak milestone!"))
+            }
         }
-        
+
         return text
+    }
+
+    @ViewBuilder
+    private var notificationIcon: some View {
+        switch notification.type {
+        case .dailyNudge, .newFollower, .followRequestReceived, .followRequestAccepted, .friendJoined, .phlockSongReady:
+            // Show actor's profile photo
+            if let actor = primaryActor {
+                if let urlString = actor.profilePhotoUrl, let url = URL(string: urlString) {
+                    AsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } placeholder: {
+                        ProfilePhotoPlaceholder(displayName: actor.displayName)
+                    }
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
+                } else {
+                    ProfilePhotoPlaceholder(displayName: actor.displayName)
+                        .frame(width: 44, height: 44)
+                }
+            } else {
+                fallbackIcon
+            }
+
+        case .songPlayed:
+            Circle()
+                .fill(Color.green.opacity(0.1))
+                .frame(width: 44, height: 44)
+                .overlay(
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.green)
+                )
+
+        case .songSaved:
+            Circle()
+                .fill(Color.pink.opacity(0.1))
+                .frame(width: 44, height: 44)
+                .overlay(
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.pink)
+                )
+
+        case .streakMilestone:
+            Circle()
+                .fill(Color.orange.opacity(0.1))
+                .frame(width: 44, height: 44)
+                .overlay(
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.orange)
+                )
+        }
+    }
+
+    private var fallbackIcon: some View {
+        Circle()
+            .fill(Color.secondary.opacity(0.1))
+            .frame(width: 44, height: 44)
+            .overlay(
+                Image(systemName: "bell.fill")
+                    .foregroundColor(.secondary)
+            )
     }
 
     private var actionButton: some View {
         Group {
             switch notification.type {
-            case .friendRequestAccepted, .friendRequestReceived, .reactionReceived, .streakMilestone:
-                Button(action: onProfileTap) {
-                    Text("View")
-                        .font(.lora(size: 14))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.secondary.opacity(0.1))
-                        .foregroundColor(.primary)
-                        .cornerRadius(16)
-                }
-                .buttonStyle(.plain)
-
-            case .friendJoined:
-                Button(action: onProfileTap) {
-                    Text("Add")
-                        .font(.lora(size: 14))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(16)
-                }
-                .buttonStyle(.plain)
-
-            case .friendPickedSong:
-                Button(action: onDailyAction) {
-                    Text("Listen")
-                        .font(.lora(size: 14))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.secondary.opacity(0.1))
-                        .foregroundColor(.primary)
-                        .cornerRadius(16)
-                }
-                .buttonStyle(.plain)
-
             case .dailyNudge:
                 Button(action: onDailyAction) {
                     Text("Pick Song")
@@ -409,6 +461,63 @@ private struct NotificationRowView: View {
                         .cornerRadius(16)
                 }
                 .buttonStyle(.plain)
+
+            case .newFollower, .followRequestAccepted:
+                Button(action: onProfileTap) {
+                    Text("View")
+                        .font(.lora(size: 14))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.secondary.opacity(0.1))
+                        .foregroundColor(.primary)
+                        .cornerRadius(16)
+                }
+                .buttonStyle(.plain)
+
+            case .followRequestReceived:
+                // TODO: Add Accept/Decline buttons
+                Button(action: onProfileTap) {
+                    Text("View")
+                        .font(.lora(size: 14))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(16)
+                }
+                .buttonStyle(.plain)
+
+            case .friendJoined:
+                Button(action: onProfileTap) {
+                    Text("Follow")
+                        .font(.lora(size: 14))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(16)
+                }
+                .buttonStyle(.plain)
+
+            case .phlockSongReady:
+                Button(action: onDailyAction) {
+                    Text("Listen")
+                        .font(.lora(size: 14))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.secondary.opacity(0.1))
+                        .foregroundColor(.primary)
+                        .cornerRadius(16)
+                }
+                .buttonStyle(.plain)
+
+            case .songPlayed, .songSaved:
+                // Informational only - no action button needed
+                EmptyView()
+
+            case .streakMilestone:
+                // TODO: Could add "Share" button in future
+                EmptyView()
             }
         }
     }
@@ -428,41 +537,8 @@ private struct NotificationRowView: View {
 
                 // Main Content (Avatar + Text)
                 HStack(alignment: .top, spacing: 12) {
-                    // Avatar
-                    if let actor = primaryActor {
-                        if let urlString = actor.profilePhotoUrl, let url = URL(string: urlString) {
-                            AsyncImage(url: url) { image in
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                            } placeholder: {
-                                ProfilePhotoPlaceholder(displayName: actor.displayName)
-                            }
-                            .frame(width: 44, height: 44)
-                            .clipShape(Circle())
-                        } else {
-                            ProfilePhotoPlaceholder(displayName: actor.displayName)
-                                .frame(width: 44, height: 44)
-                        }
-                    } else if notification.type == .streakMilestone {
-                        // Special icon for streak
-                        Circle()
-                            .fill(Color.orange.opacity(0.1))
-                            .frame(width: 44, height: 44)
-                            .overlay(
-                                Image(systemName: "flame.fill")
-                                    .foregroundColor(.orange)
-                            )
-                    } else {
-                        // Fallback icon if no actor
-                        Circle()
-                            .fill(Color.secondary.opacity(0.1))
-                            .frame(width: 44, height: 44)
-                            .overlay(
-                                Image(systemName: "bell.fill")
-                                    .foregroundColor(.secondary)
-                            )
-                    }
+                    // Avatar or Icon
+                    notificationIcon
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(attributedTitle)

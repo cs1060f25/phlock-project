@@ -444,8 +444,8 @@ struct FullScreenPlayerView: View {
 
         // Skip and animate back in
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            // Change the track in playback service
-            playbackService.skipBackward()
+            // Change the track in playback service (always go to previous, not restart)
+            playbackService.skipToPreviousTrack()
 
             // Reposition off-screen to the left (entry position) WITHOUT animation
             horizontalDragOffset = -UIScreen.main.bounds.width
@@ -487,8 +487,8 @@ struct FullScreenPlayerView: View {
     // MARK: - Track Info Section
 
     private var trackInfoSection: some View {
-        HStack(alignment: .center, spacing: 16) {
-            // Track info (left side)
+        HStack(alignment: .center, spacing: 0) {
+            // Track info (left side) with gradient fade on right edge
             VStack(alignment: .leading, spacing: 6) {
                 if let track = playbackService.currentTrack {
                     // Track name (Marquee)
@@ -515,6 +515,17 @@ struct FullScreenPlayerView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .mask(
+                HStack(spacing: 0) {
+                    Rectangle()
+                    LinearGradient(
+                        colors: [.white, .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: 24)
+                }
+            )
 
             // Add to library button (right side)
             if playbackService.currentTrack != nil {
@@ -533,6 +544,7 @@ struct FullScreenPlayerView: View {
                         .font(.system(size: 28))
                         .foregroundColor(isTrackSaved ? .green : .white.opacity(0.7))
                 }
+                .padding(.leading, 12)
             }
         }
     }
@@ -833,7 +845,7 @@ struct FullScreenPlayerView: View {
 
     private func checkIfTrackSaved(track: MusicItem) async {
         // First check if the track is in the saved set from the playback context
-        // This handles demo songs and tracks that PhlockView already knows are saved
+        // This handles tracks that PhlockView already knows are saved
         if playbackService.savedTrackIds.contains(track.id) {
             await MainActor.run {
                 isTrackSaved = true

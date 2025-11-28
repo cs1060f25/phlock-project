@@ -46,6 +46,16 @@ class PhlockSupabaseClient {
     func signOut() async throws {
         try await client.auth.signOut()
     }
+
+    /// Force clear all auth data from keychain (for debugging/testing)
+    func clearKeychainSession() {
+        do {
+            try keychain.removeAll()
+            print("🗑️ Keychain session cleared")
+        } catch {
+            print("❌ Failed to clear keychain: \(error)")
+        }
+    }
 }
 
 // MARK: - Keychain Storage for Auth Tokens

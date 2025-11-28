@@ -19,17 +19,32 @@ CREATE INDEX IF NOT EXISTS idx_scheduled_swaps_scheduled_for ON scheduled_swaps(
 -- RLS Policies
 ALTER TABLE scheduled_swaps ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view their own scheduled swaps"
-  ON scheduled_swaps FOR SELECT
-  USING (auth.uid() = user_id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT FROM pg_policies WHERE tablename = 'scheduled_swaps' AND policyname = 'Users can view their own scheduled swaps'
+    ) THEN
+        CREATE POLICY "Users can view their own scheduled swaps"
+          ON scheduled_swaps FOR SELECT
+          USING (auth.uid() = user_id);
+    END IF;
 
-CREATE POLICY "Users can create their own scheduled swaps"
-  ON scheduled_swaps FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+    IF NOT EXISTS (
+        SELECT FROM pg_policies WHERE tablename = 'scheduled_swaps' AND policyname = 'Users can create their own scheduled swaps'
+    ) THEN
+        CREATE POLICY "Users can create their own scheduled swaps"
+          ON scheduled_swaps FOR INSERT
+          WITH CHECK (auth.uid() = user_id);
+    END IF;
 
-CREATE POLICY "Users can update their own scheduled swaps"
-  ON scheduled_swaps FOR UPDATE
-  USING (auth.uid() = user_id);
+    IF NOT EXISTS (
+        SELECT FROM pg_policies WHERE tablename = 'scheduled_swaps' AND policyname = 'Users can update their own scheduled swaps'
+    ) THEN
+        CREATE POLICY "Users can update their own scheduled swaps"
+          ON scheduled_swaps FOR UPDATE
+          USING (auth.uid() = user_id);
+    END IF;
+END $$;
 
 -- Function to process scheduled swaps
 -- This will be called by a cron job (or edge function)

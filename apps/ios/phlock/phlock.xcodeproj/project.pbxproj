@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D083D8502ED8C992002B9315 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = D083D8512ED8C992002B9315 /* GoogleSignIn */; };
+		D083D8522ED8C992002B9316 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = D083D8532ED8C992002B9316 /* GoogleSignInSwift */; };
 		D0B627022EAC08E500E6C099 /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = D0B627012EAC08E500E6C099 /* Auth */; };
 		D0B627042EAC08E500E6C099 /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = D0B627032EAC08E500E6C099 /* PostgREST */; };
 		D0B627062EAC08E500E6C099 /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = D0B627052EAC08E500E6C099 /* Realtime */; };
@@ -37,6 +39,8 @@
 		D0B626D42EAC034B00E6C099 /* phlock.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = phlock.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D0B626E12EAC034C00E6C099 /* phlockTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = phlockTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D0B626EB2EAC034C00E6C099 /* phlockUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = phlockUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D0B627702EE7000000000001 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		D0B627702EE7000000000002 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -153,6 +157,8 @@
 				D0B627062EAC08E500E6C099 /* Realtime in Frameworks */,
 				D0B627042EAC08E500E6C099 /* PostgREST in Frameworks */,
 				D0B627022EAC08E500E6C099 /* Auth in Frameworks */,
+				D083D8502ED8C992002B9315 /* GoogleSignIn in Frameworks */,
+				D083D8522ED8C992002B9316 /* GoogleSignInSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -176,6 +182,7 @@
 		D0B626CB2EAC034B00E6C099 = {
 			isa = PBXGroup;
 			children = (
+				D0B627702EE7000000000003 /* phlock/Configuration */,
 				D0B626D62EAC034B00E6C099 /* phlock */,
 				D0B626E42EAC034C00E6C099 /* phlockTests */,
 				D0B626EE2EAC034C00E6C099 /* phlockUITests */,
@@ -191,6 +198,15 @@
 				D0B626EB2EAC034C00E6C099 /* phlockUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		D0B627702EE7000000000003 /* phlock/Configuration */ = {
+			isa = PBXGroup;
+			children = (
+				D0B627702EE7000000000001 /* Debug.xcconfig */,
+				D0B627702EE7000000000002 /* Release.xcconfig */,
+			);
+			path = phlock/Configuration;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -220,6 +236,8 @@
 				D0B627092EAC08E500E6C099 /* Supabase */,
 				D0B6270C2EAC091500E6C099 /* KeychainAccess */,
 				D0B627612EAC83AF00E6C099 /* Lottie */,
+				D083D8512ED8C992002B9315 /* GoogleSignIn */,
+				D083D8532ED8C992002B9316 /* GoogleSignInSwift */,
 			);
 			productName = phlock;
 			productReference = D0B626D42EAC034B00E6C099 /* phlock.app */;
@@ -307,6 +325,7 @@
 				D0B627002EAC08E500E6C099 /* XCRemoteSwiftPackageReference "supabase-swift" */,
 				D0B6270B2EAC091500E6C099 /* XCRemoteSwiftPackageReference "KeychainAccess" */,
 				D0B6275E2EAC820B00E6C099 /* XCRemoteSwiftPackageReference "lottie-spm" */,
+				D083D84F2ED8C992002B9314 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D0B626D52EAC034B00E6C099 /* Products */;
@@ -384,6 +403,7 @@
 /* Begin XCBuildConfiguration section */
 		D0B626F32EAC034C00E6C099 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = D0B627702EE7000000000001 /* Debug.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -448,6 +468,7 @@
 		};
 		D0B626F42EAC034C00E6C099 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = D0B627702EE7000000000002 /* Release.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -515,7 +536,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = phlock/Info.plist;
-				INFOPLIST_KEY_NSAppleMusicUsageDescription = "Phlock uses Apple Music to play music previews and share songs with friends";
+				INFOPLIST_KEY_NSAppleMusicUsageDescription = "Phlock uses Apple Music to let you search, play, and share songs with your friends.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "Phlock matches your contacts locally to help you find friends already on Phlock.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Phlock uses the microphone so you can identify music and send it to friends.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -551,7 +574,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = phlock/Info.plist;
-				INFOPLIST_KEY_NSAppleMusicUsageDescription = "Phlock uses Apple Music to play music previews and share songs with friends";
+				INFOPLIST_KEY_NSAppleMusicUsageDescription = "Phlock uses Apple Music to let you search, play, and share songs with your friends.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "Phlock matches your contacts locally to help you find friends already on Phlock.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Phlock uses the microphone so you can identify music and send it to friends.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -701,6 +726,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		D083D84F2ED8C992002B9314 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.0.0;
+			};
+		};
 		D0B627002EAC08E500E6C099 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/supabase/supabase-swift";
@@ -728,6 +761,16 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		D083D8512ED8C992002B9315 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D083D84F2ED8C992002B9314 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		D083D8532ED8C992002B9316 /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D083D84F2ED8C992002B9314 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
 		D0B627012EAC08E500E6C099 /* Auth */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = D0B627002EAC08E500E6C099 /* XCRemoteSwiftPackageReference "supabase-swift" */;

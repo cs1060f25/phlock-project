@@ -184,9 +184,23 @@ struct PhlockView: View {
                     } else if dailySongs.isEmpty && phlockMembers.isEmpty {
                         EmptyDailyPlaylistView(
                             phlockMembers: phlockMembers,
+                            myDailySong: myDailySong,
+                            isPlaying: playbackService.currentTrack?.id == myDailySong?.trackId && playbackService.isPlaying,
                             onAddMemberTapped: { position in
                                 selectedPositionToAdd = position
                                 showAddSheet = true
+                            },
+                            onSelectDailySong: {
+                                showDailySongSheet = true
+                            },
+                            onPlayMyPick: {
+                                if let mySong = myDailySong {
+                                    if playbackService.currentTrack?.id == mySong.trackId && playbackService.isPlaying {
+                                        playbackService.pause()
+                                    } else {
+                                        playTrack(song: mySong)
+                                    }
+                                }
                             }
                         )
                     } else {
@@ -481,16 +495,14 @@ struct PhlockView: View {
             .listStyle(.plain)
             .environment(\.defaultMinListRowHeight, 0)
             .scrollDismissesKeyboard(.interactively)
-            .refreshable {
-                isRefreshing = true
+            .instagramRefreshable {
+                await MainActor.run { isRefreshing = true }
                 // Reload both in parallel
                 async let playlistTask: () = loadDailyPlaylist()
                 async let mySongTask: () = loadMyDailySong()
                 await playlistTask
                 await mySongTask
-                await MainActor.run {
-                    isRefreshing = false
-                }
+                await MainActor.run { isRefreshing = false }
             }
             .onChange(of: scrollToTopTrigger) { _ in
                 withAnimation {
@@ -526,13 +538,11 @@ struct PhlockView: View {
             nudgedUserIds = nudgedUserIds.intersection(Set(phlockMembers.map { $0.user.id }))
             
             if phlockMembers.isEmpty {
-                if !hasLoadedPhlockOnce && dailySongs.isEmpty {
-                    await useDemoPhlockState(existingMembers: phlockMembers, userId: userId)
-                    return
-                } else {
-                    isLoading = false
-                    return
-                }
+                // No phlock members - show empty state (no demo data)
+                dailySongs = []
+                isLoading = false
+                hasLoadedPhlockOnce = true
+                return
             }
 
             // Get their daily songs
@@ -546,12 +556,9 @@ struct PhlockView: View {
                 share.savedAt != nil ? share.trackId : nil
             })
 
-            // Use demo songs if no one has picked yet (demo mode for TestFlight)
+            // If no songs today, just show waiting state (no demo data)
             if dailySongs.isEmpty {
-                dailySongs = await DemoPhlockContent.demoSongs(for: phlockMembers, recipientId: userId)
-                // Check actual Spotify library status for demo songs
-                await checkSpotifyLibraryStatus(for: dailySongs)
-                print("ℹ️ No daily songs found, using demo songs for \(phlockMembers.count) members")
+                print("ℹ️ No daily songs found for \(phlockMembers.count) phlock members")
             }
 
             hasLoadedPhlockOnce = true
@@ -560,39 +567,12 @@ struct PhlockView: View {
             print("ℹ️ Daily playlist load cancelled")
         } catch {
             print("❌ Error loading daily playlist: \(error)")
-            if !hasLoadedPhlockOnce && phlockMembers.isEmpty && dailySongs.isEmpty {
-                await useDemoPhlockState(existingMembers: phlockMembers, userId: userId)
-            } else {
-                errorMessage = error.localizedDescription
-                isLoading = false
-            }
-            return
-        }
-
-        isLoading = false
-    }
-
-    private func useDemoPhlockState(existingMembers: [FriendWithPosition], userId: UUID) async {
-        guard existingMembers.isEmpty else {
-            // If there are existing members, just mark loading as done
+            errorMessage = error.localizedDescription
             isLoading = false
-            hasLoadedPhlockOnce = true
             return
         }
 
-        let mergedMembers = DemoPhlockContent.placeholderMembers
-        let demoSongs = await DemoPhlockContent.demoSongs(for: mergedMembers, recipientId: userId)
-
-        phlockMembers = mergedMembers
-        dailySongs = demoSongs
-        // Check actual Spotify library status for demo songs
-        await checkSpotifyLibraryStatus(for: demoSongs)
-        nudgedUserIds.removeAll()
-        errorMessage = nil
         isLoading = false
-        hasLoadedPhlockOnce = true
-
-        print("ℹ️ Showing demo phlock (3 of 5 members have songs)")
     }
 
     private func loadMyDailySong() async {
@@ -787,7 +767,7 @@ struct PhlockView: View {
     private func checkSpotifyLibraryStatus(for songs: [Share]) async {
         guard let currentUser = authState.currentUser,
               currentUser.resolvedPlatformType == .spotify else {
-            // For non-Spotify users or no user, just use demo savedAt
+            // For non-Spotify users or no user, use savedAt from database
             savedTrackIds = Set(songs.compactMap { $0.savedAt != nil ? $0.trackId : nil })
             return
         }
@@ -808,7 +788,7 @@ struct PhlockView: View {
             savedTrackIds = newSavedIds
         } catch {
             print("⚠️ Failed to check Spotify library status: \(error)")
-            // Fall back to demo savedAt
+            // Fall back to savedAt from database
             savedTrackIds = Set(songs.compactMap { $0.savedAt != nil ? $0.trackId : nil })
         }
     }
@@ -1441,9 +1421,10 @@ struct EmptySlotRow: View {
 
             // Text content
             VStack(alignment: .leading, spacing: 4) {
-                Text("Add a friend to your phlock")
+                Text("Add a friend")
                     .font(.lora(size: 16, weight: .medium))
                     .foregroundColor(.primary)
+                    .lineLimit(1)
             }
 
             Spacer()
@@ -1472,26 +1453,111 @@ struct EmptySlotRow: View {
 
 struct EmptyDailyPlaylistView: View {
     let phlockMembers: [FriendWithPosition]
+    let myDailySong: Share?
+    let isPlaying: Bool
     let onAddMemberTapped: (Int) -> Void
+    let onSelectDailySong: () -> Void
+    let onPlayMyPick: () -> Void
+    @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Position 1
-            emptySlotRow(for: 1)
+        ScrollView {
+            VStack(spacing: 0) {
+                // Position 1
+                emptySlotRow(for: 1)
 
-            // Position 2
-            emptySlotRow(for: 2)
+                // Position 2
+                emptySlotRow(for: 2)
 
-            // Position 3
-            emptySlotRow(for: 3)
+                // Position 3
+                emptySlotRow(for: 3)
 
-            // Position 4
-            emptySlotRow(for: 4)
+                // Position 4
+                emptySlotRow(for: 4)
 
-            // Position 5
-            emptySlotRow(for: 5)
+                // Position 5
+                emptySlotRow(for: 5)
+
+                // Your pick section
+                yourPickSection
+                    .padding(.top, 16)
+            }
         }
         .background(Color(UIColor.systemBackground))
+    }
+
+    @ViewBuilder
+    private var yourPickSection: some View {
+        if let mySong = myDailySong {
+            MyDailySongRow(
+                song: mySong,
+                isPlaying: isPlaying
+            ) {
+                onPlayMyPick()
+            }
+            .padding(.horizontal, 16)
+        } else {
+            Button {
+                onSelectDailySong()
+            } label: {
+                HStack(spacing: 14) {
+                    // Placeholder art block to mirror a selected song row
+                    ZStack {
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.15))
+                            .frame(width: 64, height: 64)
+                            .cornerRadius(12)
+                        Image(systemName: "sparkles")
+                            .font(.lora(size: 22, weight: .medium))
+                            .foregroundColor(.white)
+                            .shadow(color: Color.black.opacity(0.25), radius: 4, x: 0, y: 2)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("select your song of the day")
+                            .font(.lora(size: 17, weight: .medium))
+                            .foregroundColor(.primary)
+                        Text("share what you're feeling with your phlock")
+                            .font(.lora(size: 13))
+                            .foregroundColor(.secondary)
+
+                        HStack(spacing: 6) {
+                            Image(systemName: "hand.tap")
+                                .font(.lora(size: 12))
+                                .foregroundColor(.primary)
+                            Text("tap to pick")
+                                .font(.lora(size: 12, weight: .medium))
+                                .foregroundColor(.primary)
+                                .textCase(.uppercase)
+                        }
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.lora(size: 16))
+                        .foregroundColor(.primary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            Color.accentColor.opacity(colorScheme == .dark ? 0.32 : 0.18),
+                            Color.accentColor.opacity(colorScheme == .dark ? 0.20 : 0.10)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .cornerRadius(18)
+                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.12), radius: 8, x: 0, y: 4)
+            }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .padding(.horizontal, 16)
+        }
     }
 
     @ViewBuilder
@@ -1547,9 +1613,10 @@ struct EmptyDailyPlaylistView: View {
                                         .font(.lora(size: 20, weight: .semiBold))
                                 )
 
-                            Text("Add a member to your phlock")
+                            Text("Add a friend")
                                 .font(.lora(size: 16, weight: .medium))
                                 .foregroundColor(.secondary)
+                                .lineLimit(1)
 
                             Spacer()
 
@@ -1813,205 +1880,6 @@ struct SwapMemberView: View {
         }
 
         isLoading = false
-    }
-}
-
-// MARK: - Demo Content
-
-private enum DemoPhlockContent {
-    struct TrackTemplate {
-        let id: String
-        let title: String
-        let artist: String
-        let fallbackArt: String
-        let fallbackPreview: String
-        let preferFallback: Bool
-        let message: String?
-    }
-
-    static let placeholderMembers: [FriendWithPosition] = [
-        FriendWithPosition(
-            user: User(
-                displayName: "Ava Stone",
-                profilePhotoUrl: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=200&q=80",
-                username: "ava",
-                dailySongStreak: 4,
-                lastDailySongDate: Calendar.current.startOfDay(for: Date())
-            ),
-            position: 1
-        ),
-        FriendWithPosition(
-            user: User(
-                displayName: "Leo Park",
-                profilePhotoUrl: "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=200&q=80",
-                username: "leo",
-                dailySongStreak: 2,
-                lastDailySongDate: Calendar.current.startOfDay(for: Date())
-            ),
-            position: 2
-        ),
-        FriendWithPosition(
-            user: User(
-                displayName: "Mia Chen",
-                profilePhotoUrl: "https://images.unsplash.com/photo-1524502397800-2eeaad3be9e4?auto=format&fit=crop&w=200&q=80",
-                username: "mia",
-                dailySongStreak: 6,
-                lastDailySongDate: Calendar.current.startOfDay(for: Date())
-            ),
-            position: 3
-        ),
-        FriendWithPosition(
-            user: User(
-                displayName: "Noah Patel",
-                profilePhotoUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80",
-                username: "noah",
-                dailySongStreak: 1,
-                lastDailySongDate: Calendar.current.startOfDay(for: Date())
-            ),
-            position: 4
-        ),
-        FriendWithPosition(
-            user: User(
-                displayName: "Zoe Brooks",
-                profilePhotoUrl: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?auto=format&fit=crop&w=200&q=80",
-                username: "zoe",
-                dailySongStreak: 3,
-                lastDailySongDate: Calendar.current.startOfDay(for: Date())
-            ),
-            position: 5
-        )
-    ]
-
-    static func mergedMembers(with existing: [FriendWithPosition]) -> [FriendWithPosition] {
-        var byPosition: [Int: FriendWithPosition] = [:]
-
-        for member in existing where (1...5).contains(member.position) {
-            byPosition[member.position] = member
-        }
-
-        for placeholder in placeholderMembers {
-            if byPosition.count >= 5 { break }
-            if byPosition[placeholder.position] == nil {
-                byPosition[placeholder.position] = placeholder
-            }
-        }
-
-        let ordered = byPosition.values.sorted { $0.position < $1.position }
-        return Array(ordered.prefix(5))
-    }
-
-    static let templates: [TrackTemplate] = [
-        TrackTemplate(
-            id: "1Q7EgiMOuwDcB0PJC6AzON",
-            title: "Best Part",
-            artist: "Daniel Caesar",
-            fallbackArt: "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/b6/cd/1a/b6cd1a5b-83af-a1e2-0ad7-ea530fcf2522/859722261219.jpg/400x400bb.jpg",
-            fallbackPreview: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/cc/95/ed/cc95edc8-4f9b-0c56-bc74-31ba76a057f9/mzaf_11346187551197903108.plus.aac.p.m4a",
-            preferFallback: true, // lock to official Freudian artwork/preview to avoid mismatched versions
-            message: "This song has been on repeat all morning! The vibes are immaculate ✨"
-        ),
-        TrackTemplate(
-            id: "7wRQIKvVqLWiTfMFwfUYlK",
-            title: "I Refuse",
-            artist: "Aaliyah",
-            fallbackArt: "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/9d/f3/55/9df35530-e066-5df9-2212-fe5ed7cf9b14/5034644712819.jpg/400x400bb.jpg",
-            fallbackPreview: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/9d/3f/3e/9d3f3e43-0960-12f9-e2fb-8c975fb9bb4d/mzaf_269865300524312841.plus.aac.p.m4a",
-            preferFallback: false,
-            message: "Perfect driving music - the beat drop at 1:30 is everything 🔥"
-        ),
-        TrackTemplate(
-            id: "2arETTjDUyUqXR0x5g6E8U",
-            title: "I Do",
-            artist: "Justin Bieber",
-            fallbackArt: "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/e0/cb/3e/e0cb3e1c-0dde-156d-d500-7943bc4ddebd/25UM1IM36272.rgb.jpg/400x400bb.jpg",
-            fallbackPreview: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/98/8a/94/988a946b-1c49-67ed-a2d9-6bbce5c30162/mzaf_4634555832945306175.plus.aac.p.m4a",
-            preferFallback: false,
-            message: "Found this gem while producing last night. Had to share with the phlock!"
-        )
-    ]
-
-    static func demoSongs(for members: [FriendWithPosition], recipientId: UUID) async -> [Share] {
-
-        let now = Date()
-        let today = Calendar.current.startOfDay(for: now)
-        var songs: [Share] = []
-
-        let placeholderIds = Set(placeholderMembers.map { $0.user.id })
-        let prioritizedMembers = members.sorted { lhs, rhs in
-            let lhsIsPlaceholder = placeholderIds.contains(lhs.user.id)
-            let rhsIsPlaceholder = placeholderIds.contains(rhs.user.id)
-
-            if lhsIsPlaceholder == rhsIsPlaceholder {
-                return lhs.position < rhs.position
-            }
-
-            // Prefer real members before placeholders
-            return !lhsIsPlaceholder && rhsIsPlaceholder
-        }
-
-        for (index, member) in prioritizedMembers.prefix(templates.count).enumerated() {
-            let template = templates[index]
-            let art: String
-            let preview: String
-
-            if template.preferFallback {
-                // For tracks where we must lock to an exact release (e.g., Freudian for Best Part)
-                art = template.fallbackArt
-                preview = template.fallbackPreview
-            } else {
-                let metadata = await fetchAppleMusicMetadata(for: template)
-
-                // Only trust Apple metadata when both artwork and preview are present to avoid mismatched pairs
-                if let appleArt = metadata.artwork, !appleArt.isEmpty,
-                   let applePreview = metadata.preview, !applePreview.isEmpty {
-                    art = appleArt
-                    preview = applePreview
-                } else {
-                    art = template.fallbackArt
-                    preview = template.fallbackPreview
-                }
-            }
-            let timestamp = now.addingTimeInterval(TimeInterval(-index * 900))
-            let savedAt = index == 0 ? timestamp : nil
-
-            songs.append(
-                Share(
-                    senderId: member.user.id,
-                    recipientId: recipientId,
-                    trackId: template.id,
-                    trackName: template.title,
-                    artistName: template.artist,
-                    albumArtUrl: art,
-                    message: template.message,
-                    status: .sent,
-                    createdAt: timestamp,
-                    updatedAt: timestamp,
-                    playedAt: nil,
-                    savedAt: savedAt,
-                    isDailySong: true,
-                    selectedDate: today,
-                    previewUrl: preview
-                )
-            )
-        }
-
-        return songs
-    }
-
-    private static func fetchAppleMusicMetadata(for template: TrackTemplate) async -> (artwork: String?, preview: String?) {
-        do {
-            if let track = try await AppleMusicService.shared.searchTrack(
-                name: template.title,
-                artist: template.artist,
-                isrc: nil
-            ) {
-                return (track.artworkURL, track.previewURL)
-            }
-        } catch {
-            print("⚠️ Demo Apple Music lookup failed for \(template.title): \(error)")
-        }
-
-        return (nil, nil)
     }
 }
 

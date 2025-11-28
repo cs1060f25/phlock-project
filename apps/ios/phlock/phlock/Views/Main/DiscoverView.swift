@@ -56,6 +56,7 @@ struct DiscoverView: View {
     // Pending daily song state
     @State private var pendingDailySong: MusicItem?
     @State private var dailySongNote = ""
+    @State private var isSubmittingDailySong = false // Prevent double-tap
     @FocusState private var isNoteFieldFocused: Bool
 
     var body: some View {
@@ -195,6 +196,10 @@ struct DiscoverView: View {
                 loadRecentlyPlayedTracks()
                 loadTodaysDailySong()
             }
+            .onChange(of: authState.currentUser?.musicPlatform) { _ in
+                // Reload when user's music platform changes (e.g., after connecting)
+                loadRecentlyPlayedTracks()
+            }
             .onChange(of: refreshTrigger) { newValue in
                 Task {
                     // Scroll to top and reload data
@@ -233,11 +238,7 @@ struct DiscoverView: View {
     }
 
     private func performSearch() {
-        guard !searchText.isEmpty else {
-            return
-        }
-
-        print("🔍 Performing search for: '\(searchText)'")
+        guard !searchText.isEmpty else { return }
 
         Task {
             isSearching = true
@@ -258,24 +259,19 @@ struct DiscoverView: View {
                     )
 
                     let (tracks, artists) = try await (tracksResult, artistsResult)
-                    print("✅ Search results: \(tracks.tracks.count) tracks, \(artists.artists.count) artists")
-                    
                     searchResults = SearchResult(
                         tracks: tracks.tracks,
                         artists: artists.artists
                     )
                 } else {
-                    let results = try await SearchService.shared.search(
+                    searchResults = try await SearchService.shared.search(
                         query: searchText,
                         type: selectedFilter.searchType,
                         platformType: authState.currentUser?.resolvedPlatformType ?? .spotify
                     )
-                    print("✅ Search results: \(results.tracks.count + results.artists.count) items")
-                    searchResults = results
                 }
             } catch {
                 errorMessage = "Search failed: \(error.localizedDescription)"
-                print("❌ Search error: \(error)")
             }
 
             isSearching = false
@@ -283,10 +279,8 @@ struct DiscoverView: View {
     }
 
     private func loadRecentlyPlayedTracks() {
-        guard let user = authState.currentUser,
-              let platformType = user.resolvedPlatformType else {
-            return
-        }
+        guard let user = authState.currentUser else { return }
+        guard let platformType = user.resolvedPlatformType else { return }
 
         Task {
             isLoadingRecentTracks = true
@@ -297,10 +291,8 @@ struct DiscoverView: View {
                     userId: user.id,
                     platformType: platformType
                 )
-                print("✅ Loaded \(recentlyPlayedTracks.count) recently played tracks")
             } catch {
                 recentTracksError = "Failed to load recently played tracks"
-                print("❌ Error loading recently played: \(error)")
             }
 
             isLoadingRecentTracks = false
@@ -373,10 +365,8 @@ struct DiscoverView: View {
             do {
                 todaysDailySong = try await ShareService.shared.getTodaysDailySong(for: userId)
                 selectedDailyTrackId = todaysDailySong?.trackId
-                print("✅ Loaded today's daily song: \(todaysDailySong?.trackName ?? "none")")
             } catch {
                 dailySongError = "Failed to load daily song"
-                print("❌ Error loading daily song: \(error)")
             }
 
             isLoadingDailySong = false
@@ -404,7 +394,21 @@ struct DiscoverView: View {
     func submitDailySong(track: MusicItem, note: String) {
         guard let userId = authState.currentUser?.id else { return }
 
+        // Prevent double-submission
+        guard !isSubmittingDailySong else {
+            print("⚠️ Already submitting daily song, ignoring duplicate tap")
+            return
+        }
+
+        isSubmittingDailySong = true
+
         Task {
+            defer {
+                Task { @MainActor in
+                    isSubmittingDailySong = false
+                }
+            }
+
             do {
                 let share = try await ShareService.shared.selectDailySong(track: track, note: note.isEmpty ? nil : note, userId: userId)
                 todaysDailySong = share
@@ -417,7 +421,6 @@ struct DiscoverView: View {
 
                 dailySongToastMessage = "🔥 \(track.name) is your song today!"
                 showDailySongToast = true
-                print("✅ Selected daily song: \(track.name)")
 
                 await MainActor.run {
                     selectedDailyTrackId = share.trackId
@@ -428,7 +431,6 @@ struct DiscoverView: View {
             } catch {
                 dailySongToastMessage = "❌ \(error.localizedDescription)"
                 showDailySongToast = true
-                print("❌ Error selecting daily song: \(error)")
             }
         }
     }
