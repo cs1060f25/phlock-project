@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UniformTypeIdentifiers
 
 struct EditProfileView: View {
     @EnvironmentObject var authState: AuthenticationState
@@ -7,6 +8,7 @@ struct EditProfileView: View {
     @FocusState private var focusedField: Field?
 
     @State private var displayName = ""
+    @State private var username = ""
     @State private var bio = ""
     @State private var profileImage: Image?
     @State private var profileImageData: Data?
@@ -17,6 +19,7 @@ struct EditProfileView: View {
 
     enum Field: Hashable {
         case displayName
+        case username
         case bio
     }
 
@@ -94,6 +97,15 @@ struct EditProfileView: View {
                         .focused($focusedField, equals: .displayName)
 
                         PhlockTextField(
+                            label: "Username",
+                            placeholder: "username",
+                            text: $username
+                        )
+                        .focused($focusedField, equals: .username)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                        PhlockTextField(
                             label: "Bio",
                             placeholder: "Tell friends about your music taste...",
                             text: $bio,
@@ -151,6 +163,7 @@ struct EditProfileView: View {
             .onAppear {
                 if let user = authState.currentUser {
                     displayName = user.displayName
+                    username = user.username ?? ""
                     bio = user.bio ?? ""
                 }
             }
@@ -188,6 +201,7 @@ struct EditProfileView: View {
         print("💾 Updating profile with photo URL: \(finalPhotoUrl ?? "nil")")
         await authState.updateProfile(
             displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines),
+            username: username.isEmpty ? nil : username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
             bio: bio.isEmpty ? nil : bio.trimmingCharacters(in: .whitespacesAndNewlines),
             profilePhotoUrl: finalPhotoUrl
         )
@@ -217,6 +231,7 @@ struct ImagePicker: UIViewControllerRepresentable {
         let picker = UIImagePickerController()
         picker.delegate = context.coordinator
         picker.sourceType = .photoLibrary
+        picker.mediaTypes = [UTType.image.identifier]  // Only show photos, no videos
         picker.allowsEditing = false  // We'll do custom circular crop
         return picker
     }
@@ -255,11 +270,13 @@ struct ImagePicker: UIViewControllerRepresentable {
                     } else {
                         print("❌ Failed to create JPEG data")
                     }
+                    // Only dismiss picker after successful crop
+                    picker.dismiss(animated: false) {
+                        self.parent.dismiss()
+                    }
                 } else {
-                    print("⚠️ User cancelled crop")
-                }
-                picker.dismiss(animated: false) {
-                    self.parent.dismiss()
+                    // User cancelled crop - just dismiss the crop VC, stay on photo picker
+                    print("⚠️ User cancelled crop - returning to photo picker")
                 }
             }
             picker.present(cropVC, animated: true)
@@ -280,6 +297,8 @@ class CircularCropViewController: UIViewController {
     private var imageView: UIImageView!
     private var overlayView: CircularCropOverlay!
     private var scrollView: UIScrollView!
+    private var hasSetupInitialZoom = false
+    private var cropSize: CGFloat = 0
 
     init(image: UIImage, completion: @escaping (UIImage?) -> Void) {
         self.originalImage = image
@@ -288,8 +307,6 @@ class CircularCropViewController: UIViewController {
     }
 
     required init?(coder: NSCoder) {
-        // This initializer is required by UIViewController but not used in SwiftUI
-        // Return nil instead of crashing
         return nil
     }
 
@@ -305,26 +322,67 @@ class CircularCropViewController: UIViewController {
     private func setupScrollView() {
         scrollView = UIScrollView(frame: view.bounds)
         scrollView.delegate = self
-        scrollView.minimumZoomScale = 1.0
-        scrollView.maximumZoomScale = 4.0
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.showsVerticalScrollIndicator = false
         scrollView.contentInsetAdjustmentBehavior = .never
+        scrollView.alwaysBounceVertical = true
+        scrollView.alwaysBounceHorizontal = true
+        scrollView.decelerationRate = .fast
         view.addSubview(scrollView)
 
         imageView = UIImageView(image: originalImage)
-        imageView.contentMode = .scaleAspectFit
+        imageView.contentMode = .scaleAspectFill
         scrollView.addSubview(imageView)
+    }
 
-        // Set image view frame
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+
+        scrollView.frame = view.bounds
+        overlayView?.frame = view.bounds
+        overlayView?.setNeedsDisplay()
+
+        // Only do initial setup once
+        guard !hasSetupInitialZoom else { return }
+        hasSetupInitialZoom = true
+
+        // Calculate crop circle size (same as overlay)
+        cropSize = min(view.bounds.width, view.bounds.height) - 80
+        let cropRect = CGRect(
+            x: (view.bounds.width - cropSize) / 2,
+            y: (view.bounds.height - cropSize) / 2,
+            width: cropSize,
+            height: cropSize
+        )
+
         let imageSize = originalImage.size
-        let screenWidth = view.bounds.width
-        let scale = screenWidth / imageSize.width
-        let scaledHeight = imageSize.height * scale
 
-        imageView.frame = CGRect(x: 0, y: (view.bounds.height - scaledHeight) / 2,
-                                width: screenWidth, height: scaledHeight)
-        scrollView.contentSize = imageView.frame.size
+        // Calculate zoom so image fills the crop circle
+        let widthScale = cropSize / imageSize.width
+        let heightScale = cropSize / imageSize.height
+        let minScale = max(widthScale, heightScale)
+
+        // Set imageView frame at 1x scale initially
+        imageView.frame = CGRect(origin: .zero, size: imageSize)
+        scrollView.contentSize = imageSize
+
+        scrollView.minimumZoomScale = minScale
+        scrollView.maximumZoomScale = max(minScale * 5, 5.0)
+        scrollView.zoomScale = minScale
+
+        // Set insets so the image can be positioned anywhere within the crop circle
+        let insetTop = cropRect.minY
+        let insetLeft = cropRect.minX
+        let insetBottom = view.bounds.height - cropRect.maxY
+        let insetRight = view.bounds.width - cropRect.maxX
+
+        scrollView.contentInset = UIEdgeInsets(top: insetTop, left: insetLeft, bottom: insetBottom, right: insetRight)
+
+        // Center the image in the crop area (accounting for content insets)
+        let scaledImageSize = CGSize(width: imageSize.width * minScale, height: imageSize.height * minScale)
+        let offsetX = (scaledImageSize.width - cropSize) / 2 - scrollView.contentInset.left
+        let offsetY = (scaledImageSize.height - cropSize) / 2 - scrollView.contentInset.top
+        scrollView.contentOffset = CGPoint(x: offsetX, y: offsetY)
     }
 
     private func setupOverlay() {
@@ -358,91 +416,92 @@ class CircularCropViewController: UIViewController {
     }
 
     @objc private func cancelTapped() {
-        completion(nil)
+        dismiss(animated: true) {
+            self.completion(nil)
+        }
     }
 
     @objc private func chooseTapped() {
-        print("🎯 Choose tapped - starting crop")
         let croppedImage = cropToCircle()
-        if let croppedImage = croppedImage {
-            print("✅ Crop successful - image size: \(croppedImage.size)")
-        } else {
-            print("❌ Crop failed - no image returned")
-        }
         completion(croppedImage)
     }
 
     private func cropToCircle() -> UIImage? {
-        let cropSize: CGFloat = min(view.bounds.width, view.bounds.height) - 80
-        let circleRect = CGRect(
+        // Use screenshot approach - most reliable way to get exactly what's visible
+        let cropRect = CGRect(
             x: (view.bounds.width - cropSize) / 2,
             y: (view.bounds.height - cropSize) / 2,
             width: cropSize,
             height: cropSize
         )
 
-        print("📏 Rendering crop - circle rect in view: \(circleRect)")
-        print("📏 ScrollView zoom: \(scrollView.zoomScale)")
-        print("📏 ScrollView bounds: \(scrollView.bounds)")
-        print("📏 ImageView frame: \(imageView.frame)")
+        // Hide overlay and take screenshot of just the scrollView
+        overlayView.isHidden = true
 
-        // Find where the circle rect intersects with scrollView in the view's coordinate space
-        let scrollViewFrameInView = scrollView.frame
-        print("📏 ScrollView frame in view: \(scrollViewFrameInView)")
-
-        // Calculate the intersection between circle and scrollView
-        let circleInViewCoords = circleRect
-        let scrollViewInViewCoords = scrollViewFrameInView
-
-        // The circle rect relative to the scrollView's origin
-        let circleRelativeToScrollView = CGRect(
-            x: circleInViewCoords.origin.x - scrollViewInViewCoords.origin.x,
-            y: circleInViewCoords.origin.y - scrollViewInViewCoords.origin.y,
-            width: circleInViewCoords.width,
-            height: circleInViewCoords.height
-        )
-
-        print("📏 Circle relative to scrollView bounds: \(circleRelativeToScrollView)")
-
-        // Take a snapshot of ONLY the scrollView (not the overlay)
+        // Render the scrollView to an image
         let renderer = UIGraphicsImageRenderer(bounds: scrollView.bounds)
-        let scrollViewSnapshot = renderer.image { context in
-            scrollView.drawHierarchy(in: scrollView.bounds, afterScreenUpdates: false)
+        let scrollViewImage = renderer.image { context in
+            scrollView.drawHierarchy(in: scrollView.bounds, afterScreenUpdates: true)
         }
 
-        print("📏 ScrollView snapshot size: \(scrollViewSnapshot.size)")
+        overlayView.isHidden = false
 
-        // Crop to the circle area (accounting for scale)
-        let scale = scrollViewSnapshot.scale
-        let cropRectInPixels = CGRect(
-            x: circleRelativeToScrollView.origin.x * scale,
-            y: circleRelativeToScrollView.origin.y * scale,
-            width: circleRelativeToScrollView.width * scale,
-            height: circleRelativeToScrollView.height * scale
+        // The crop rect in scrollView coordinates is the same as view coordinates
+        // since scrollView fills the entire view
+        let scale = scrollViewImage.scale
+        let pixelCropRect = CGRect(
+            x: cropRect.origin.x * scale,
+            y: cropRect.origin.y * scale,
+            width: cropRect.width * scale,
+            height: cropRect.height * scale
         )
 
-        print("📏 Crop rect in pixels: \(cropRectInPixels)")
-        print("📏 Snapshot pixel size: \(scrollViewSnapshot.size.width * scale) x \(scrollViewSnapshot.size.height * scale)")
-
-        guard let cgImage = scrollViewSnapshot.cgImage?.cropping(to: cropRectInPixels) else {
-            print("❌ Failed to crop snapshot")
+        guard let cgImage = scrollViewImage.cgImage?.cropping(to: pixelCropRect) else {
             return nil
         }
 
         let croppedImage = UIImage(cgImage: cgImage, scale: scale, orientation: .up)
-        print("✂️ Cropped image size: \(croppedImage.size)")
 
         // Apply circular mask
-        let circularImage = croppedImage.circularMask()
-        print("⭕ Final circular image: \(circularImage.size)")
-
-        return circularImage
+        let finalSize = CGSize(width: cropSize, height: cropSize)
+        let circleRenderer = UIGraphicsImageRenderer(size: finalSize)
+        return circleRenderer.image { context in
+            let circlePath = UIBezierPath(ovalIn: CGRect(origin: .zero, size: finalSize))
+            circlePath.addClip()
+            croppedImage.draw(in: CGRect(origin: .zero, size: finalSize))
+        }
     }
 }
 
 extension CircularCropViewController: UIScrollViewDelegate {
     func viewForZooming(in scrollView: UIScrollView) -> UIView? {
         return imageView
+    }
+
+    func scrollViewDidZoom(_ scrollView: UIScrollView) {
+        // Center the image if it's smaller than the visible area
+        let imageViewSize = imageView.frame.size
+        let scrollViewSize = scrollView.bounds.size
+
+        let verticalPadding = imageViewSize.height < scrollViewSize.height ?
+            (scrollViewSize.height - imageViewSize.height) / 2 : 0
+        let horizontalPadding = imageViewSize.width < scrollViewSize.width ?
+            (scrollViewSize.width - imageViewSize.width) / 2 : 0
+
+        // Adjust insets to keep crop circle centered
+        let cropRect = CGRect(
+            x: (view.bounds.width - cropSize) / 2,
+            y: (view.bounds.height - cropSize) / 2,
+            width: cropSize,
+            height: cropSize
+        )
+
+        scrollView.contentInset = UIEdgeInsets(
+            top: max(cropRect.minY, verticalPadding),
+            left: max(cropRect.minX, horizontalPadding),
+            bottom: max(view.bounds.height - cropRect.maxY, verticalPadding),
+            right: max(view.bounds.width - cropRect.maxX, horizontalPadding)
+        )
     }
 }
 
@@ -484,61 +543,6 @@ class CircularCropOverlay: UIView {
         context.setStrokeColor(UIColor.white.cgColor)
         context.setLineWidth(2)
         context.strokeEllipse(in: circleRect)
-    }
-}
-
-// MARK: - UIImage Extension for Circular Crop
-
-extension UIImage {
-    func circularMask() -> UIImage {
-        print("🔵 Applying circular mask to image: \(size), scale: \(scale)")
-
-        let minDimension = min(size.width, size.height)
-        let squareSize = CGSize(width: minDimension, height: minDimension)
-
-        // Calculate crop rect to make it square centered (in points)
-        let cropRectInPoints = CGRect(
-            x: (size.width - minDimension) / 2,
-            y: (size.height - minDimension) / 2,
-            width: minDimension,
-            height: minDimension
-        )
-
-        // Convert to pixels for cgImage cropping
-        let cropRectInPixels = CGRect(
-            x: cropRectInPoints.origin.x * scale,
-            y: cropRectInPoints.origin.y * scale,
-            width: cropRectInPoints.width * scale,
-            height: cropRectInPoints.height * scale
-        )
-
-        print("🔵 Square crop rect (points): \(cropRectInPoints)")
-        print("🔵 Square crop rect (pixels): \(cropRectInPixels)")
-
-        // Crop to square first
-        guard let cgImage = self.cgImage?.cropping(to: cropRectInPixels) else {
-            print("❌ Failed to crop to square in circularMask")
-            return self
-        }
-        let squareImage = UIImage(cgImage: cgImage, scale: scale, orientation: imageOrientation)
-
-        print("🔵 Square image size: \(squareImage.size)")
-
-        // Create circular mask
-        let renderer = UIGraphicsImageRenderer(size: squareSize)
-        let circularImage = renderer.image { context in
-            // Create circular clipping path
-            let circlePath = UIBezierPath(
-                ovalIn: CGRect(origin: .zero, size: squareSize)
-            )
-            circlePath.addClip()
-
-            // Draw the square image within the circular clip
-            squareImage.draw(in: CGRect(origin: .zero, size: squareSize))
-        }
-
-        print("🔵 Final circular image size: \(circularImage.size)")
-        return circularImage
     }
 }
 

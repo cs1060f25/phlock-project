@@ -144,7 +144,7 @@ struct PhlockStatsView: View {
                                 startPoint: .leading,
                                 endPoint: .trailing
                             ))
-                            .frame(width: geometry.size.width * CGFloat(metrics.viralityScore / 10), height: 8)
+                            .frame(width: max(0, geometry.size.width * CGFloat(min(max(metrics.viralityScore, 0), 10) / 10)), height: 8)
                     }
                 }
                 .frame(height: 8)
@@ -442,7 +442,7 @@ struct GenerationRow: View {
                                 startPoint: .leading,
                                 endPoint: .trailing
                             ))
-                            .frame(width: geometry.size.width * CGFloat(count) / CGFloat(maxCount), height: 24)
+                            .frame(width: maxCount > 0 ? max(0, geometry.size.width * CGFloat(count) / CGFloat(maxCount)) : 0, height: 24)
 
                         Text("\(count)")
                             .font(.lora(size: 10))

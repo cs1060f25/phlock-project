@@ -45,6 +45,8 @@ struct RemoteImage: View {
             if let urlString = retryUrl ?? url,
                !urlString.isEmpty,
                let imageUrl = URL(string: urlString) {
+                // Use spotifyId or trackName as identity to force SwiftUI to recreate
+                // AsyncImage when track changes, preventing stale cached artwork display
                 AsyncImage(url: imageUrl) { phase in
                     switch phase {
                     case .empty:
@@ -82,6 +84,7 @@ struct RemoteImage: View {
                         Color.gray.opacity(0.2)
                     }
                 }
+                .id(spotifyId ?? trackName) // Force recreation when track changes
             } else {
                 // No URL at all - show fallback
                 ZStack {

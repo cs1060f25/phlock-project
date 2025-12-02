@@ -24,6 +24,10 @@ struct UserProfileView: View {
     @State private var pastPicks: [Share] = []
     @StateObject private var insightsViewModel = ProfileInsightsViewModel()
 
+    // Phlock stats
+    @State private var actualPhlockCount: Int = 0
+    @State private var historicalReachCount: Int = 0
+
     // Nudge state
     @State private var hasNudged = false
     @State private var isNudging = false
@@ -136,42 +140,43 @@ struct UserProfileView: View {
                         userId: user.id,
                         onNudge: hasNudged ? nil : {
                             Task { await sendNudge() }
-                        }
+                        },
+                        streak: user.dailySongStreak
                     )
 
                     // Profile Insights
                     ProfileInsightsSection(
                         user: user,
-                        viewModel: insightsViewModel
+                        viewModel: insightsViewModel,
+                        actualPhlockCount: actualPhlockCount,
+                        historicalReachCount: historicalReachCount,
+                        isCurrentUser: false
                     )
 
                     // Past Picks
-                    PastPicksView(shares: pastPicks)
+                    PastPicksView(shares: pastPicks, isCurrentUser: false)
 
                     // Music Stats from Platform
                     if let platformData = user.platformData {
-                        VStack(spacing: 16) {
-                            // Top Tracks
+                        VStack(spacing: 24) {
+                            // Top Tracks (Grid Layout)
                             if let topTracks = platformData.topTracks, !topTracks.isEmpty,
                                let platformType = getPlatformType(from: user) {
-                                MusicStatsCard(
+                                TracksGridView(
                                     title: "what i'm listening to",
                                     items: topTracks,
-                                    platformType: platformType,
-                                    itemType: .track
+                                    platformType: platformType
                                 )
                                 .environmentObject(playbackService)
-                                .environmentObject(authState)
                             }
 
-                            // Top Artists
+                            // Top Artists (Grid Layout)
                             if let topArtists = platformData.topArtists, !topArtists.isEmpty,
                                let platformType = getPlatformType(from: user) {
-                                MusicStatsCard(
+                                ArtistsGridView(
                                     title: "who i'm listening to",
                                     items: topArtists,
-                                    platformType: platformType,
-                                    itemType: .artist
+                                    platformType: platformType
                                 )
                             }
                         }
@@ -183,9 +188,9 @@ struct UserProfileView: View {
                         Image(systemName: "lock.fill")
                             .font(.system(size: 32))
                             .foregroundColor(.secondary)
-                        Text("This account is private")
+                        Text("this account is private")
                             .font(.lora(size: 16, weight: .medium))
-                        Text("Follow this account to see their songs and music taste.")
+                        Text("follow this account to see their songs and music taste.")
                             .font(.lora(size: 14))
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
@@ -249,27 +254,37 @@ struct UserProfileView: View {
             .presentationDragIndicator(.visible)
         }
         .task {
-            await loadRelationshipStatus()
-            await loadProfileData()
+            // Load relationship status and profile data in parallel for faster loading
+            // .task already handles initial load - no separate onAppear needed
+            async let relationshipTask: () = loadRelationshipStatus()
+            async let profileTask: () = loadProfileData()
+            _ = await (relationshipTask, profileTask)
         }
     }
 
     // MARK: - Load Profile Data
 
     private func loadProfileData() async {
+        // Clear cache to ensure fresh data
+        FollowService.shared.clearCache(for: user.id)
+
         // Load insights
         await insightsViewModel.load(for: user)
 
-        // Load follow counts and daily curation data
+        // Load follow counts, phlock stats, and daily curation data
         do {
             async let followersTask = FollowService.shared.getFollowers(for: user.id)
             async let followingTask = FollowService.shared.getFollowing(for: user.id)
+            async let whoHasMeTask = FollowService.shared.getWhoHasMeInPhlock(userId: user.id)
+            async let historicalReachTask = FollowService.shared.getHistoricalReach(userId: user.id)
             async let todaysPickTask = ShareService.shared.getTodaysDailySong(for: user.id)
             async let pastPicksTask = ShareService.shared.getDailySongHistory(for: user.id)
 
-            let (followers, following, today, past) = try await (
+            let (followers, following, whoHasMe, reach, today, past) = try await (
                 followersTask,
                 followingTask,
+                whoHasMeTask,
+                historicalReachTask,
                 todaysPickTask,
                 pastPicksTask
             )
@@ -277,9 +292,12 @@ struct UserProfileView: View {
             await MainActor.run {
                 self.followerCount = followers.count
                 self.followingCount = following.count
+                self.actualPhlockCount = whoHasMe.count
+                self.historicalReachCount = reach
                 self.todaysPick = today
                 self.pastPicks = past
             }
+            print("✅ Loaded user profile data: followers=\(followers.count), following=\(following.count), phlockCount=\(whoHasMe.count), reach=\(reach)")
         } catch {
             print("❌ Failed to load profile data: \(error)")
         }

@@ -58,5 +58,11 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>NSContactsUsageDescription</key>
+	<string>Phlock uses your contacts to help you find friends who are already using the app.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Phlock needs access to Apple Music to search for songs and create your daily picks.</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>Phlock sends notifications when friends pick their daily songs and when someone adds you to their phlock.</string>
 </dict>
 </plist>

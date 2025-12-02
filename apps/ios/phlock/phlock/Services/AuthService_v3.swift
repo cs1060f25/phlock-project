@@ -265,6 +265,36 @@ class AuthServiceV3 {
         print("✅ Username set to: @\(normalizedUsername)")
     }
 
+    /// Set display name for current user
+    func setDisplayName(_ displayName: String) async throws {
+        guard let user = try await currentUser else {
+            throw AuthError.noUser
+        }
+
+        let trimmedDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Validate display name
+        guard !trimmedDisplayName.isEmpty && trimmedDisplayName.count <= 50 else {
+            throw AuthError.invalidCredential
+        }
+
+        struct UpdatePayload: Encodable {
+            let display_name: String
+            let updated_at: String
+        }
+
+        try await supabase
+            .from("users")
+            .update(UpdatePayload(
+                display_name: trimmedDisplayName,
+                updated_at: ISO8601DateFormatter().string(from: Date())
+            ))
+            .eq("id", value: user.id.uuidString)
+            .execute()
+
+        print("✅ Display name set to: \(trimmedDisplayName)")
+    }
+
     /// Set username and display name for current user
     func setUsernameAndDisplayName(username: String, displayName: String) async throws {
         guard let user = try await currentUser else {
@@ -574,11 +604,13 @@ class AuthServiceV3 {
     func updateUserProfile(
         userId: UUID,
         displayName: String,
+        username: String? = nil,
         bio: String?,
         profilePhotoUrl: String?
     ) async throws {
         struct UpdatePayload: Encodable {
             let display_name: String
+            let username: String?
             let bio: String?
             let profile_photo_url: String?
             let updated_at: String
@@ -588,6 +620,7 @@ class AuthServiceV3 {
             .from("users")
             .update(UpdatePayload(
                 display_name: displayName,
+                username: username,
                 bio: bio,
                 profile_photo_url: profilePhotoUrl,
                 updated_at: ISO8601DateFormatter().string(from: Date())

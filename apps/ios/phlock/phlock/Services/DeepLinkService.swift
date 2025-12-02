@@ -28,61 +28,81 @@ class DeepLinkService {
     }
     
     // MARK: - Spotify
-    
+
     private func openInSpotify(track: MusicItem) async throws {
         print("🎵 Opening track in Spotify: '\(track.name)' by \(track.artistName ?? "Unknown")")
         print("   Track ID: \(track.id)")
         print("   Spotify ID: \(track.spotifyId ?? "nil")")
-        
-        // ALWAYS validate track ID to ensure we open the correct track
-        let spotifyId: String
-        
-        // Validate the track ID using the validate-track edge function
-        print("   🔍 Validating track ID with Spotify API...")
+
+        // Use spotifyId if available, otherwise fall back to track.id
+        let candidateId = track.spotifyId ?? track.id
+
+        // If we have a valid Spotify ID, use it directly without API calls
+        if isValidSpotifyId(candidateId) {
+            print("   ✅ Using existing Spotify ID directly: \(candidateId)")
+            await openSpotifyURL(trackId: candidateId)
+            return
+        }
+
+        // Only validate/search if we don't have a valid Spotify ID
+        print("   🔍 No valid Spotify ID, validating with API...")
         print("   ISRC: \(track.isrc ?? "none")")
+
         let validatedTrack = try await validateTrack(
             name: track.name,
             artist: track.artistName ?? "Unknown",
-            existingId: track.spotifyId,
+            existingId: nil,  // Don't pass invalid ID
             isrc: track.isrc
         )
-        
+
         if let validated = validatedTrack {
-            spotifyId = validated
-            print("   ✅ Using validated Spotify ID: \(spotifyId)")
-        } else {
-            // Fallback: Search for the track
-            print("   🔍 Validation failed, searching: \(track.name) - \(track.artistName ?? "")")
-            
-            let results = try await SearchService.shared.search(
-                query: "\(track.name) \(track.artistName ?? "")",
-                type: .tracks,
-                platformType: .spotify
-            )
-            
-            guard !results.tracks.isEmpty else {
-                print("   ❌ No results found on Spotify")
-                return
-            }
-            
-            // Smart matching: find best match by comparing track name and artist
-            guard let foundTrack = findBestMatch(
-                searchResults: results.tracks,
-                targetTrackName: track.name,
-                targetArtistName: track.artistName
-            ) else {
-                print("   ❌ Could not find matching track on Spotify")
-                print("   📊 Search returned \(results.tracks.count) results but none matched")
-                return
-            }
-            
-            spotifyId = foundTrack.spotifyId ?? foundTrack.id
-            print("   ✅ Found match: \(foundTrack.name) (ID: \(spotifyId))")
+            print("   ✅ Using validated Spotify ID: \(validated)")
+            await openSpotifyURL(trackId: validated)
+            return
         }
-        
-        let spotifyURL = URL(string: "spotify:track:\(spotifyId)")
-        let webURL = URL(string: "https://open.spotify.com/track/\(spotifyId)")
-        
+
+        // Fallback: Search for the track
+        print("   🔍 Validation failed, searching: \(track.name) - \(track.artistName ?? "")")
+
+        let results = try await SearchService.shared.search(
+            query: "\(track.name) \(track.artistName ?? "")",
+            type: .tracks,
+            platformType: .spotify
+        )
+
+        guard !results.tracks.isEmpty else {
+            print("   ❌ No results found on Spotify")
+            return
+        }
+
+        // Smart matching: find best match by comparing track name and artist
+        guard let foundTrack = findBestMatch(
+            searchResults: results.tracks,
+            targetTrackName: track.name,
+            targetArtistName: track.artistName
+        ) else {
+            print("   ❌ Could not find matching track on Spotify")
+            print("   📊 Search returned \(results.tracks.count) results but none matched")
+            return
+        }
+
+        let spotifyId = foundTrack.spotifyId ?? foundTrack.id
+        print("   ✅ Found match: \(foundTrack.name) (ID: \(spotifyId))")
+        await openSpotifyURL(trackId: spotifyId)
+    }
+
+    /// Check if a string is a valid Spotify track ID (22 alphanumeric characters)
+    private func isValidSpotifyId(_ id: String) -> Bool {
+        // Spotify IDs are 22 characters, base62 encoded (alphanumeric)
+        let pattern = "^[0-9A-Za-z]{22}$"
+        return id.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    /// Open Spotify with the given track ID
+    private func openSpotifyURL(trackId: String) async {
+        let spotifyURL = URL(string: "spotify:track:\(trackId)")
+        let webURL = URL(string: "https://open.spotify.com/track/\(trackId)")
+
         await MainActor.run {
             if let spotifyURL = spotifyURL, UIApplication.shared.canOpenURL(spotifyURL) {
                 print("   ✅ Opening in Spotify app")

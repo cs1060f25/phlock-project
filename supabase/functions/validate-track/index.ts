@@ -105,6 +105,117 @@ async function searchByISRC(isrc: string, accessToken: string): Promise<SpotifyT
 }
 
 /**
+ * Search Apple Music Catalog API by ISRC for exact track matching
+ * Uses Developer Token for server-side authentication (no user permission needed)
+ * Falls back to iTunes Search API if developer token is not available
+ */
+async function getAppleMusicPreview(isrc: string, trackName: string, artistName: string): Promise<string | null> {
+  // First try Apple Music Catalog API with ISRC (most accurate)
+  if (isrc) {
+    const catalogPreview = await getAppleMusicPreviewByISRC(isrc);
+    if (catalogPreview) {
+      return catalogPreview;
+    }
+  }
+
+  // Fall back to iTunes Search API (text-based, less accurate)
+  return getAppleMusicPreviewBySearch(trackName, artistName);
+}
+
+/**
+ * Search Apple Music Catalog API by ISRC for 100% accurate matching
+ * Requires APPLE_MUSIC_DEVELOPER_TOKEN in environment
+ */
+async function getAppleMusicPreviewByISRC(isrc: string, storefront: string = 'us'): Promise<string | null> {
+  const developerToken = Deno.env.get('APPLE_MUSIC_DEVELOPER_TOKEN');
+  if (!developerToken) {
+    console.log('No Apple Music developer token configured, falling back to iTunes Search');
+    return null;
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.music.apple.com/v1/catalog/${storefront}/songs?filter[isrc]=${isrc}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${developerToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (!response.ok) {
+      console.log(`Apple Music Catalog API error: ${response.status}`);
+      // If 401/403, token may be expired
+      if (response.status === 401 || response.status === 403) {
+        console.log('Apple Music developer token may be expired');
+      }
+      return null;
+    }
+
+    const data = await response.json();
+    const song = data.data?.[0];
+
+    if (song?.attributes?.previews?.[0]?.url) {
+      console.log(`✅ Found Apple Music preview via ISRC ${isrc}: ${song.attributes.name}`);
+      return song.attributes.previews[0].url;
+    }
+
+    console.log(`No preview found for ISRC ${isrc} on Apple Music`);
+    return null;
+  } catch (error) {
+    console.error('Apple Music Catalog API error:', error);
+    return null;
+  }
+}
+
+/**
+ * Fallback: Search iTunes API by track name and artist (less accurate)
+ */
+async function getAppleMusicPreviewBySearch(trackName: string, artistName: string): Promise<string | null> {
+  try {
+    const searchTerm = encodeURIComponent(`${trackName} ${artistName}`);
+    const response = await fetch(
+      `https://itunes.apple.com/search?term=${searchTerm}&media=music&entity=song&limit=10`,
+      { headers: { 'Accept': 'application/json' } }
+    );
+
+    if (!response.ok) {
+      console.log('iTunes Search API failed:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+
+    if (data.results && data.results.length > 0) {
+      // Try to find exact match by name and artist
+      const exactMatch = data.results.find((result: any) => {
+        const nameMatch = result.trackName?.toLowerCase() === trackName.toLowerCase();
+        const artistMatch = result.artistName?.toLowerCase().includes(artistName.toLowerCase().split(' ')[0]);
+        return nameMatch && artistMatch && result.previewUrl;
+      });
+
+      if (exactMatch?.previewUrl) {
+        console.log(`Found iTunes preview for "${trackName}": ${exactMatch.previewUrl}`);
+        return exactMatch.previewUrl;
+      }
+
+      // Fall back to first result with preview
+      const withPreview = data.results.find((r: any) => r.previewUrl);
+      if (withPreview?.previewUrl) {
+        console.log(`Using iTunes fallback preview: ${withPreview.previewUrl}`);
+        return withPreview.previewUrl;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error('iTunes Search API error:', error);
+    return null;
+  }
+}
+
+/**
  * Parse artist name to extract all artists (handles "ft.", "feat.", "&", etc.)
  */
 function parseArtists(artistName: string): string[] {
@@ -210,15 +321,14 @@ async function searchTrack(trackName: string, artistName: string, accessToken: s
       const sorted = nameMatches.sort((a: SpotifyTrack, b: SpotifyTrack) =>
         b.popularity - a.popularity
       );
-      console.log(`No exact match, using most popular: ${sorted[0].name} by ${sorted[0].artists.map(a => a.name).join(', ')}`);
+      console.log(`No exact match, using most popular with matching name: ${sorted[0].name} by ${sorted[0].artists.map(a => a.name).join(', ')}`);
       return sorted[0];
     }
 
-    // Last resort: Return most popular overall
-    const sorted = data.tracks.items.sort((a: SpotifyTrack, b: SpotifyTrack) =>
-      b.popularity - a.popularity
-    );
-    return sorted[0];
+    // Do NOT return random popular tracks - this causes wrong songs to be linked
+    // If we can't find a good match, return null and let the client handle it
+    console.log(`No matching track found for "${trackName}" by "${artistName}"`);
+    return null;
   }
 
   return null;
@@ -315,10 +425,19 @@ serve(async (req) => {
 
     // Return the result
     if (validatedTrack) {
-      // Get the best quality album art (usually middle size)
-      const albumArt = validatedTrack.album.images.length > 1
-        ? validatedTrack.album.images[1].url
-        : validatedTrack.album.images[0]?.url;
+      // Get the highest quality album art (first image is largest, sorted by size desc)
+      const albumArt = validatedTrack.album.images[0]?.url;
+
+      // Use Spotify preview URL, or fall back to Apple Music if null
+      let previewUrl = validatedTrack.preview_url;
+      if (!previewUrl) {
+        console.log(`Spotify preview_url is null for "${validatedTrack.name}", trying Apple Music...`);
+        previewUrl = await getAppleMusicPreview(
+          validatedTrack.external_ids?.isrc ?? '',
+          validatedTrack.name,
+          validatedTrack.artists[0].name
+        );
+      }
 
       return new Response(
         JSON.stringify({
@@ -330,7 +449,7 @@ serve(async (req) => {
             artistName: validatedTrack.artists[0].name,
             artists: validatedTrack.artists.map(a => a.name),
             albumArtUrl: albumArt,
-            previewUrl: validatedTrack.preview_url,
+            previewUrl: previewUrl,
             isrc: validatedTrack.external_ids?.isrc,
             popularity: validatedTrack.popularity,
             spotifyUrl: `https://open.spotify.com/track/${validatedTrack.id}`

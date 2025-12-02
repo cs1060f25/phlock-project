@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 enum NotificationsDestination: Hashable {
     case userProfile(User)
@@ -11,10 +12,22 @@ struct NotificationsView: View {
     @Binding var refreshTrigger: Int
     @Binding var scrollToTopTrigger: Int
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.scenePhase) var scenePhase
 
     @State private var notifications: [NotificationItem] = []
     @State private var isLoading = true
     @State private var isRefreshing = false
+
+    // Push notification permission state
+    @State private var pushPermissionStatus: UNAuthorizationStatus = .notDetermined
+    @State private var showSettingsAlert = false
+
+    // Sheet state for daily song picker
+    @State private var showDailySongSheet = false
+    @State private var dailySongNavPath = NavigationPath()
+    @State private var dailySongClearTrigger = 0
+    @State private var dailySongRefreshTrigger = 0
+    @State private var dailySongScrollToTopTrigger = 0
 
     private let referenceDate = Date()
 
@@ -36,7 +49,7 @@ struct NotificationsView: View {
                     notificationList
                 }
             }
-            .navigationTitle("notifications")
+            .navigationTitle("what's new")
             .navigationBarTitleDisplayMode(.large)
             .navigationDestination(for: NotificationsDestination.self) { destination in
                 switch destination {
@@ -45,8 +58,19 @@ struct NotificationsView: View {
                 }
             }
         }
+        .sheet(isPresented: $showDailySongSheet) {
+            DiscoverView(
+                navigationPath: $dailySongNavPath,
+                clearSearchTrigger: $dailySongClearTrigger,
+                refreshTrigger: $dailySongRefreshTrigger,
+                scrollToTopTrigger: $dailySongScrollToTopTrigger
+            )
+            .environmentObject(authState)
+            .environmentObject(navigationState)
+        }
         .task {
             await loadNotifications()
+            await checkPushNotificationStatus()
         }
         .onChange(of: refreshTrigger) { _ in
             Task {
@@ -55,35 +79,61 @@ struct NotificationsView: View {
                 isRefreshing = false
             }
         }
+        .onChange(of: scenePhase) { newPhase in
+            if newPhase == .active {
+                // Re-check permission status when app becomes active (user may have changed in Settings)
+                Task {
+                    await checkPushNotificationStatus()
+                }
+            }
+        }
+        .alert("Enable Notifications", isPresented: $showSettingsAlert) {
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("Not Now", role: .cancel) { }
+        } message: {
+            Text("To get notified when friends share their daily picks, go to Settings > phlock > Notifications and turn on Allow Notifications.")
+        }
     }
 
     // MARK: - Views
 
     private var emptyState: some View {
         VStack(spacing: 24) {
+            // Push notification permission prompt at top - shown if not authorized
+            if pushPermissionStatus != .authorized {
+                pushNotificationPrompt
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+            }
+
             Spacer()
-            
+
             ZStack {
                 Circle()
                     .fill(Color.secondary.opacity(0.1))
                     .frame(width: 80, height: 80)
-                
-                Image(systemName: "bell.slash")
-                    .font(.lora(size: 32, weight: .bold))
+
+                Image(systemName: "music.note.list")
+                    .font(.system(size: 32, weight: .bold))
                     .foregroundColor(.secondary)
             }
 
             VStack(spacing: 8) {
-                Text("All caught up")
+                Text("stay tuned")
                     .font(.lora(size: 20, weight: .semiBold))
 
-                Text("When friends add you or nudge you for a song,\nyou'll see it here.")
+                Text("new followers, daily picks, and people\nlistening to your songs will appear here.\ncheck back soon!")
                     .font(.lora(size: 14))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
             }
-            
+
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -91,74 +141,124 @@ struct NotificationsView: View {
 
     private var notificationList: some View {
         ScrollViewReader { proxy in
-            List {
-                Color.clear
-                    .frame(height: 1)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets())
-                    .id("notificationsTop")
-
-                ForEach(Array(sortedSections.enumerated()), id: \.element) { index, section in
-                    Section(header: sectionHeader(section, isFirst: index == 0)) {
-                        ForEach(sortedNotifications(for: section), id: \.id) { notification in
-                            NotificationRowView(
-                                notification: notification,
-                                onProfileTap: {
-                                    markAsRead(notification)
-                                    if let actor = notification.actors.first {
-                                        navigationPath.append(NotificationsDestination.userProfile(actor))
-                                    }
-                                },
-                                onDailyAction: {
-                                    markAsRead(notification)
-                                    navigationState.selectedTab = 0 // jump to phlock tab to pick daily song
-                                },
-                                onGenericTap: {
-                                    markAsRead(notification)
-                                    // Default action based on type
-                                    if notification.type == .dailyNudge {
-                                        navigationState.selectedTab = 0
-                                    } else if let actor = notification.actors.first {
-                                        navigationPath.append(NotificationsDestination.userProfile(actor))
-                                    }
-                                }
-                            )
-                            .listRowInsets(EdgeInsets())
-                            .listRowSeparator(.hidden)
-                            .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) {
-                                    // TODO: Implement delete
-                                    // Task { await deleteNotification(notification) }
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
-                        }
+            listContent
+                .listStyle(.plain)
+                .modifier(ListSectionSpacingModifier())
+                .environment(\.defaultMinListHeaderHeight, 0)
+                .onChange(of: scrollToTopTrigger) { _ in
+                    withAnimation {
+                        proxy.scrollTo("notificationsTop", anchor: .top)
                     }
                 }
-            }
-            .listStyle(.plain)
-            .onChange(of: scrollToTopTrigger) { _ in
-                withAnimation {
-                    proxy.scrollTo("notificationsTop", anchor: .top)
+                .instagramRefreshable {
+                    await MainActor.run { isRefreshing = true }
+                    await loadNotifications()
+                    await MainActor.run { isRefreshing = false }
                 }
+        }
+    }
+
+    private var listContent: some View {
+        List {
+            Color.clear
+                .frame(height: 0)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets())
+                .id("notificationsTop")
+
+            // Push notification permission prompt - shown if not authorized
+            if pushPermissionStatus != .authorized {
+                pushNotificationPrompt
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 8, trailing: 12))
             }
-            .instagramRefreshable {
-                await MainActor.run { isRefreshing = true }
-                await loadNotifications()
-                await MainActor.run { isRefreshing = false }
+
+            ForEach(Array(sortedSections.enumerated()), id: \.element) { index, section in
+                Section(header: sectionHeader(section, isFirst: index == 0)) {
+                    ForEach(sortedNotifications(for: section), id: \.id) { notification in
+                        notificationRow(for: notification)
+                    }
+                }
             }
         }
     }
 
+    private var pushNotificationPrompt: some View {
+        Button {
+            Task {
+                await requestPushNotifications()
+            }
+        } label: {
+            HStack(spacing: 12) {
+                // Icon
+                ZStack {
+                    Circle()
+                        .fill(Color.blue.opacity(0.15))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "bell.badge.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.blue)
+                }
+
+                // Text content - left aligned
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("stay in the loop")
+                        .font(.lora(size: 16, weight: .semiBold))
+                        .foregroundColor(.primary)
+                    Text("never miss a friend's pick")
+                        .font(.lora(size: 13))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                // CTA button on right
+                Text("enable")
+                    .font(.lora(size: 14, weight: .semiBold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.blue)
+                    .cornerRadius(8)
+            }
+            .padding(16)
+            .background(Color(uiColor: .systemBackground))
+            .cornerRadius(16)
+            .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func notificationRow(for notification: NotificationItem) -> some View {
+        NotificationRowView(
+            notification: notification,
+            onProfileTap: { user in
+                markAsRead(notification)
+                navigationPath.append(NotificationsDestination.userProfile(user))
+            },
+            onPickSong: {
+                markAsRead(notification)
+                showDailySongSheet = true
+            },
+            onListenTap: {
+                markAsRead(notification)
+                navigationState.selectedTab = 0
+            }
+        )
+        .environmentObject(authState)
+        .listRowInsets(EdgeInsets())
+        .listRowSeparator(.hidden)
+    }
+
     private func sectionHeader(_ title: String, isFirst: Bool) -> some View {
-        Text(title)
-            .font(.lora(size: 12))
-            .foregroundColor(.secondary)
-            .textCase(.uppercase)
-            .padding(.top, isFirst ? 0 : 16)
-            .padding(.bottom, 8)
-            .padding(.horizontal, 20)
+        Text(title.lowercased())
+            .font(.lora(size: 14, weight: .semiBold))
+            .foregroundColor(.primary)
+            .textCase(nil)
+            .padding(.top, isFirst ? 0 : 8)
+            .padding(.bottom, 4)
+            .padding(.horizontal, 16)
             .listRowInsets(EdgeInsets())
             .background(Color(uiColor: .systemBackground))
     }
@@ -170,8 +270,29 @@ struct NotificationsView: View {
             withAnimation {
                 notifications[index].isRead = true
             }
-            // TODO: Call backend to mark read
+            Task {
+                try? await NotificationService.shared.markAsRead(notificationId: item.id)
+            }
         }
+    }
+
+    private func markAllAsRead() async {
+        let unreadIds = notifications.enumerated()
+            .filter { !$0.element.isRead }
+            .map { (index: $0.offset, id: $0.element.id) }
+
+        guard !unreadIds.isEmpty else { return }
+
+        // Update local state immediately for responsive UI
+        await MainActor.run {
+            for (index, _) in unreadIds {
+                notifications[index].isRead = true
+            }
+        }
+
+        // Batch update to backend
+        let ids = unreadIds.map { $0.id }
+        try? await NotificationService.shared.markAllAsRead(notificationIds: ids)
     }
 
     private var groupedNotifications: [String: [NotificationItem]] {
@@ -212,22 +333,30 @@ struct NotificationsView: View {
         case "today": return 0
         case "yesterday": return 1
         case "this week": return 2
+        case "last week": return 3
+        case "this month": return 4
+        case "last 30 days": return 5
+        case "earlier": return 6
         default: return 999
         }
     }
 
     private func formatDateSection(_ date: Date) -> String {
         let calendar = Calendar.current
-        if calendar.isDate(date, equalTo: referenceDate, toGranularity: .day) {
+        let daysDiff = calendar.dateComponents([.day], from: date, to: referenceDate).day ?? 0
+
+        if daysDiff == 0 {
             return "today"
-        } else if calendar.isDate(date, equalTo: calendar.date(byAdding: .day, value: -1, to: referenceDate)!, toGranularity: .day) {
+        } else if daysDiff == 1 {
             return "yesterday"
-        } else if calendar.isDate(date, equalTo: referenceDate, toGranularity: .weekOfYear) {
+        } else if daysDiff <= 6 {
             return "this week"
+        } else if daysDiff <= 13 {
+            return "last week"
+        } else if daysDiff <= 30 {
+            return "this month"
         } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "MMMM d, yyyy"
-            return formatter.string(from: date)
+            return "earlier"
         }
     }
 
@@ -243,6 +372,9 @@ struct NotificationsView: View {
                 notifications = items
                 isLoading = false
             }
+
+            // Mark all notifications as read after loading (like Instagram)
+            await markAllAsRead()
         } catch {
             print("❌ Failed to load notifications: \(error)")
             await MainActor.run {
@@ -251,155 +383,275 @@ struct NotificationsView: View {
             }
         }
     }
+
+    // MARK: - Push Notification Helpers
+
+    private func checkPushNotificationStatus() async {
+        let status = await PushNotificationService.shared.checkAuthorizationStatus()
+        await MainActor.run {
+            pushPermissionStatus = status
+        }
+    }
+
+    private func requestPushNotifications() async {
+        if pushPermissionStatus == .notDetermined {
+            // Request permission directly
+            _ = await PushNotificationService.shared.requestAuthorization()
+            // Refresh status to update UI
+            await checkPushNotificationStatus()
+        } else if pushPermissionStatus == .denied {
+            // User denied before - show helpful dialog with directions
+            await MainActor.run {
+                showSettingsAlert = true
+            }
+        }
+    }
 }
 
 // MARK: - Row
 
 private struct NotificationRowView: View {
-    let notification: NotificationItem
-    let onProfileTap: () -> Void
-    let onDailyAction: () -> Void
-    let onGenericTap: () -> Void
+    @EnvironmentObject var authState: AuthenticationState
     @Environment(\.colorScheme) var colorScheme
 
+    let notification: NotificationItem
+    let onProfileTap: (User) -> Void
+    let onPickSong: () -> Void
+    let onListenTap: () -> Void
+
+    @State private var relationshipStatus: RelationshipStatus?
+    @State private var isLoadingRelationship = true
+    @State private var isProcessingFollow = false
+
     private var actors: [User] { notification.actors }
-    
     private var primaryActor: User? { actors.first }
 
-    // Helper to bold the actor names in the text
-    private var attributedTitle: AttributedString {
-        var text = AttributedString("")
+    var body: some View {
+        HStack(spacing: 12) {
+            // Profile photo (tappable)
+            Button {
+                if let actor = primaryActor {
+                    onProfileTap(actor)
+                }
+            } label: {
+                notificationIcon
+            }
+            .buttonStyle(.plain)
 
-        switch notification.type {
-        case .dailyNudge:
-            let names = actors.map { $0.displayName }
-            if names.isEmpty {
-                text.append(AttributedString(notification.message ?? "You were nudged"))
-            } else {
-                var namePart = AttributedString(names[0])
-                namePart.font = .lora(size: 16)
-                text.append(namePart)
-
-                if names.count == 1 {
-                    text.append(AttributedString(" nudged you to pick today's song"))
-                } else if names.count == 2 {
-                    text.append(AttributedString(" and "))
-                    var name2 = AttributedString(names[1])
-                    name2.font = .lora(size: 16)
-                    text.append(name2)
-                    text.append(AttributedString(" nudged you to pick today's song"))
-                } else {
-                    text.append(AttributedString(", "))
-                    var name2 = AttributedString(names[1])
-                    name2.font = .lora(size: 16)
-                    text.append(name2)
-                    text.append(AttributedString(", and \(names.count - 2) others nudged you"))
+            // Text content (tappable to profile)
+            Button {
+                if let actor = primaryActor {
+                    onProfileTap(actor)
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 0) {
+                    notificationText
                 }
             }
+            .buttonStyle(.plain)
 
-        case .newFollower:
-            if let actor = primaryActor {
-                var name = AttributedString(actor.displayName)
-                name.font = .lora(size: 16)
-                text.append(name)
-                text.append(AttributedString(" started following you"))
-            } else {
-                text.append(AttributedString("Someone started following you"))
-            }
+            Spacer()
 
-        case .followRequestReceived:
-            if let actor = primaryActor {
-                var name = AttributedString(actor.displayName)
-                name.font = .lora(size: 16)
-                text.append(name)
-                text.append(AttributedString(" wants to follow you"))
-            } else {
-                text.append(AttributedString("New follow request"))
-            }
+            // Action button on right
+            actionButton
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(notification.isRead ? Color(uiColor: .systemBackground) : Color.blue.opacity(0.05))
+        .task {
+            await loadRelationshipIfNeeded()
+        }
+    }
 
-        case .followRequestAccepted:
-            if let actor = primaryActor {
-                var name = AttributedString(actor.displayName)
-                name.font = .lora(size: 16)
-                text.append(name)
-                text.append(AttributedString(" accepted your follow request"))
-            } else {
-                text.append(AttributedString("Your follow request was accepted"))
-            }
+    // MARK: - Notification Text (Instagram style)
 
-        case .friendJoined:
-            if let actor = primaryActor {
-                var name = AttributedString(actor.displayName)
-                name.font = .lora(size: 16)
-                text.append(name)
-                text.append(AttributedString(" joined Phlock"))
-                if let username = actor.username {
-                    text.append(AttributedString(" as @\(username)"))
-                }
-            } else {
-                text.append(AttributedString("A contact joined Phlock"))
-            }
-
-        case .phlockSongReady:
-            if let actor = primaryActor {
-                var name = AttributedString(actor.displayName)
-                name.font = .lora(size: 16)
-                text.append(name)
-                if let trackName = notification.trackName {
-                    text.append(AttributedString(" picked \"\(trackName)\""))
-                } else {
-                    text.append(AttributedString(" picked a song for today"))
-                }
-            } else {
-                text.append(AttributedString("New song in your phlock"))
-            }
-
-        case .songPlayed:
-            let count = notification.count ?? 1
-            if count == 1 {
-                text.append(AttributedString("Someone played your song"))
-            } else {
-                text.append(AttributedString("\(count) people played your song today"))
-            }
-
-        case .songSaved:
-            let count = notification.count ?? 1
-            if count == 1 {
-                text.append(AttributedString("Someone saved your song"))
-            } else {
-                text.append(AttributedString("\(count) people saved your song today"))
-            }
-
-        case .streakMilestone:
-            if let days = notification.streakDays {
-                text.append(AttributedString("🔥 You're on a \(days)-day streak!"))
-            } else {
-                text.append(AttributedString(notification.message ?? "New streak milestone!"))
+    private var notificationText: some View {
+        Group {
+            switch notification.type {
+            case .dailyNudge:
+                nudgeText
+            case .newFollower:
+                followerText
+            case .followRequestReceived:
+                followRequestText
+            case .followRequestAccepted:
+                followAcceptedText
+            case .friendJoined:
+                friendJoinedText
+            case .phlockSongReady:
+                songReadyText
+            case .songPlayed:
+                songPlayedText
+            case .songSaved:
+                songSavedText
+            case .streakMilestone:
+                streakText
             }
         }
-
-        return text
     }
+
+    private var nudgeText: some View {
+        HStack(spacing: 0) {
+            (boldText(actorNames) + regularText(" nudged you to pick today's song. ") + timestampText)
+                .lineLimit(2)
+        }
+    }
+
+    private var followerText: some View {
+        HStack(spacing: 0) {
+            (boldText(actorNames) + regularText(" started following you. ") + timestampText)
+                .lineLimit(2)
+        }
+    }
+
+    private var followRequestText: some View {
+        HStack(spacing: 0) {
+            // Show different text based on whether request was accepted
+            if let status = relationshipStatus, status.isFollowedBy {
+                (boldText(actorNames) + regularText(" started following you. ") + timestampText)
+                    .lineLimit(2)
+            } else {
+                (boldText(actorNames) + regularText(" requested to follow you. ") + timestampText)
+                    .lineLimit(2)
+            }
+        }
+    }
+
+    private var followAcceptedText: some View {
+        HStack(spacing: 0) {
+            (boldText(actorNames) + regularText(" accepted your follow request. ") + timestampText)
+                .lineLimit(2)
+        }
+    }
+
+    private var friendJoinedText: some View {
+        HStack(spacing: 0) {
+            (boldText(actorNames) + regularText(" joined phlock. ") + timestampText)
+                .lineLimit(2)
+        }
+    }
+
+    private var songReadyText: some View {
+        HStack(spacing: 0) {
+            (boldText(actorNames) + regularText(" picked today's song. ") + timestampText)
+                .lineLimit(2)
+        }
+    }
+
+    private var songPlayedText: some View {
+        let count = notification.count ?? 1
+        let text = count == 1 ? "someone played your song. " : "\(count) people played your song. "
+        return HStack(spacing: 0) {
+            (regularText(text) + timestampText)
+                .lineLimit(2)
+        }
+    }
+
+    private var songSavedText: some View {
+        let count = notification.count ?? 1
+        let text = count == 1 ? "someone saved your song. " : "\(count) people saved your song. "
+        return HStack(spacing: 0) {
+            (regularText(text) + timestampText)
+                .lineLimit(2)
+        }
+    }
+
+    private var streakText: some View {
+        let days = notification.streakDays ?? 0
+        return HStack(spacing: 0) {
+            (regularText("you're on a ") + boldText("\(days)-day streak") + regularText("! ") + timestampText)
+                .lineLimit(2)
+        }
+    }
+
+    // MARK: - Text Helpers
+
+    private var actorNames: String {
+        let names = actors.compactMap { $0.username ?? $0.displayName }
+        if names.isEmpty {
+            return "someone"
+        } else if names.count == 1 {
+            return names[0]
+        } else if names.count == 2 {
+            return "\(names[0]) and \(names[1])"
+        } else {
+            return "\(names[0]) and \(names.count - 1) others"
+        }
+    }
+
+    private func boldText(_ string: String) -> Text {
+        Text(string)
+            .font(.lora(size: 13, weight: .semiBold))
+            .foregroundColor(.primary)
+    }
+
+    private func regularText(_ string: String) -> Text {
+        Text(string)
+            .font(.lora(size: 13))
+            .foregroundColor(.primary)
+    }
+
+    private var timestampText: Text {
+        Text(instagramTimestamp(from: notification.createdAt))
+            .font(.lora(size: 13))
+            .foregroundColor(.secondary)
+    }
+
+    private func instagramTimestamp(from date: Date) -> String {
+        let now = Date()
+        let interval = now.timeIntervalSince(date)
+
+        let seconds = Int(interval)
+        let minutes = seconds / 60
+        let hours = minutes / 60
+        let days = hours / 24
+        let weeks = days / 7
+
+        if seconds < 60 {
+            return "now"
+        } else if minutes < 60 {
+            return "\(minutes)m"
+        } else if hours < 24 {
+            return "\(hours)h"
+        } else if days < 7 {
+            return "\(days)d"
+        } else if weeks < 4 {
+            return "\(weeks)w"
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d"
+            return formatter.string(from: date)
+        }
+    }
+
+    // MARK: - Icon
 
     @ViewBuilder
     private var notificationIcon: some View {
         switch notification.type {
         case .dailyNudge, .newFollower, .followRequestReceived, .followRequestAccepted, .friendJoined, .phlockSongReady:
-            // Show actor's profile photo
             if let actor = primaryActor {
-                if let urlString = actor.profilePhotoUrl, let url = URL(string: urlString) {
-                    AsyncImage(url: url) { image in
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } placeholder: {
-                        ProfilePhotoPlaceholder(displayName: actor.displayName)
-                    }
-                    .frame(width: 44, height: 44)
-                    .clipShape(Circle())
-                } else {
-                    ProfilePhotoPlaceholder(displayName: actor.displayName)
+                VStack(spacing: 0) {
+                    if let urlString = actor.profilePhotoUrl, let url = URL(string: urlString) {
+                        AsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        } placeholder: {
+                            ProfilePhotoPlaceholder(displayName: actor.displayName)
+                        }
                         .frame(width: 44, height: 44)
+                        .clipShape(Circle())
+                    } else {
+                        ProfilePhotoPlaceholder(displayName: actor.displayName)
+                            .frame(width: 44, height: 44)
+                    }
+
+                    // Streak badge
+                    if actor.dailySongStreak > 0 {
+                        StreakBadge(streak: actor.dailySongStreak, size: .small)
+                            .offset(y: -8)
+                    }
                 }
             } else {
                 fallbackIcon
@@ -407,7 +659,7 @@ private struct NotificationRowView: View {
 
         case .songPlayed:
             Circle()
-                .fill(Color.green.opacity(0.1))
+                .fill(Color.green.opacity(0.15))
                 .frame(width: 44, height: 44)
                 .overlay(
                     Image(systemName: "play.circle.fill")
@@ -417,7 +669,7 @@ private struct NotificationRowView: View {
 
         case .songSaved:
             Circle()
-                .fill(Color.pink.opacity(0.1))
+                .fill(Color.pink.opacity(0.15))
                 .frame(width: 44, height: 44)
                 .overlay(
                     Image(systemName: "heart.fill")
@@ -427,7 +679,7 @@ private struct NotificationRowView: View {
 
         case .streakMilestone:
             Circle()
-                .fill(Color.orange.opacity(0.1))
+                .fill(Color.orange.opacity(0.15))
                 .frame(width: 44, height: 44)
                 .overlay(
                     Image(systemName: "flame.fill")
@@ -447,127 +699,302 @@ private struct NotificationRowView: View {
             )
     }
 
+    // MARK: - Action Button
+
+    @ViewBuilder
     private var actionButton: some View {
-        Group {
-            switch notification.type {
-            case .dailyNudge:
-                Button(action: onDailyAction) {
-                    Text("Pick Song")
-                        .font(.lora(size: 14))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(16)
-                }
-                .buttonStyle(.plain)
+        switch notification.type {
+        case .newFollower, .followRequestAccepted, .friendJoined:
+            followButton
 
-            case .newFollower, .followRequestAccepted:
-                Button(action: onProfileTap) {
-                    Text("View")
-                        .font(.lora(size: 14))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.secondary.opacity(0.1))
-                        .foregroundColor(.primary)
-                        .cornerRadius(16)
-                }
-                .buttonStyle(.plain)
+        case .followRequestReceived:
+            followRequestButtons
 
-            case .followRequestReceived:
-                // TODO: Add Accept/Decline buttons
-                Button(action: onProfileTap) {
-                    Text("View")
-                        .font(.lora(size: 14))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(16)
-                }
-                .buttonStyle(.plain)
-
-            case .friendJoined:
-                Button(action: onProfileTap) {
-                    Text("Follow")
-                        .font(.lora(size: 14))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(16)
-                }
-                .buttonStyle(.plain)
-
-            case .phlockSongReady:
-                Button(action: onDailyAction) {
-                    Text("Listen")
-                        .font(.lora(size: 14))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.secondary.opacity(0.1))
-                        .foregroundColor(.primary)
-                        .cornerRadius(16)
-                }
-                .buttonStyle(.plain)
-
-            case .songPlayed, .songSaved:
-                // Informational only - no action button needed
-                EmptyView()
-
-            case .streakMilestone:
-                // TODO: Could add "Share" button in future
-                EmptyView()
+        case .dailyNudge:
+            Button(action: onPickSong) {
+                Text("pick")
+                    .font(.lora(size: 13, weight: .semiBold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 7)
+                    .background(Color.blue)
+                    .cornerRadius(8)
             }
+            .buttonStyle(.plain)
+
+        case .phlockSongReady:
+            Button(action: onListenTap) {
+                Text("listen")
+                    .font(.lora(size: 13, weight: .semiBold))
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 7)
+                    .background(Color.gray.opacity(colorScheme == .dark ? 0.3 : 0.15))
+                    .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
+
+        case .songPlayed, .songSaved, .streakMilestone:
+            EmptyView()
         }
     }
 
-    var body: some View {
-        Button(action: onGenericTap) {
-            HStack(spacing: 12) {
-                // Unread Indicator (Left side)
-                if !notification.isRead {
-                    Circle()
-                        .fill(Color.blue)
-                        .frame(width: 8, height: 8)
-                } else {
-                    // Invisible spacer to keep alignment if desired, or just omit
-                    Color.clear.frame(width: 8, height: 8)
+    @ViewBuilder
+    private var followButton: some View {
+        if isLoadingRelationship {
+            ProgressView()
+                .scaleEffect(0.8)
+                .frame(width: 90, height: 32)
+        } else if let status = relationshipStatus {
+            if status.isFollowing {
+                // Already following - show "following" button
+                Button {
+                    Task { await unfollowUser() }
+                } label: {
+                    Text("following")
+                        .font(.lora(size: 13, weight: .semiBold))
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(Color.gray.opacity(colorScheme == .dark ? 0.3 : 0.15))
+                        .cornerRadius(8)
+                        .fixedSize()
                 }
-
-                // Main Content (Avatar + Text)
-                HStack(alignment: .top, spacing: 12) {
-                    // Avatar or Icon
-                    notificationIcon
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(attributedTitle)
-                            .font(.lora(size: 16))
-                            .foregroundColor(.primary)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-
-                        Text(relativeTime(from: notification.createdAt))
-                            .font(.lora(size: 14))
-                            .foregroundColor(.secondary)
+                .buttonStyle(.plain)
+                .disabled(isProcessingFollow)
+            } else if status.hasPendingRequest {
+                // Request pending
+                Text("requested")
+                    .font(.lora(size: 13, weight: .semiBold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 7)
+                    .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
+                    .cornerRadius(8)
+                    .fixedSize()
+            } else {
+                // Not following - show "follow" or "follow back"
+                Button {
+                    Task { await followUser() }
+                } label: {
+                    if isProcessingFollow {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                            .frame(width: 90, height: 32)
+                    } else {
+                        Text(status.isFollowedBy ? "follow back" : "follow")
+                            .font(.lora(size: 13, weight: .semiBold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 7)
+                            .background(Color.blue)
+                            .cornerRadius(8)
+                            .fixedSize()
                     }
                 }
-                
-                Spacer()
-
-                // Action Button (Right side, centered)
-                actionButton
+                .buttonStyle(.plain)
+                .disabled(isProcessingFollow)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color(uiColor: .systemBackground))
+        } else {
+            // Fallback if can't load relationship
+            Button {
+                if let actor = primaryActor {
+                    onProfileTap(actor)
+                }
+            } label: {
+                Text("view")
+                    .font(.lora(size: 13, weight: .semiBold))
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 7)
+                    .background(Color.gray.opacity(colorScheme == .dark ? 0.3 : 0.15))
+                    .cornerRadius(8)
+                    .fixedSize()
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
     }
 
-    private func relativeTime(from date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: Date())
+    @ViewBuilder
+    private var followRequestButtons: some View {
+        if isProcessingFollow {
+            ProgressView()
+                .scaleEffect(0.8)
+                .frame(width: 90, height: 32)
+        } else if let status = relationshipStatus, status.isFollowedBy {
+            // Request was accepted - now show follow button (same as other notifications)
+            if status.isFollowing {
+                // Already following them back
+                Button {
+                    Task { await unfollowUser() }
+                } label: {
+                    Text("following")
+                        .font(.lora(size: 13, weight: .semiBold))
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(Color.gray.opacity(colorScheme == .dark ? 0.3 : 0.15))
+                        .cornerRadius(8)
+                        .fixedSize()
+                }
+                .buttonStyle(.plain)
+            } else {
+                // Not following them yet - show "follow back"
+                Button {
+                    Task { await followUser() }
+                } label: {
+                    Text("follow back")
+                        .font(.lora(size: 13, weight: .semiBold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(Color.blue)
+                        .cornerRadius(8)
+                        .fixedSize()
+                }
+                .buttonStyle(.plain)
+            }
+        } else {
+            HStack(spacing: 8) {
+                Button {
+                    Task { await acceptFollowRequest() }
+                } label: {
+                    Text("confirm")
+                        .font(.lora(size: 13, weight: .semiBold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(Color.blue)
+                        .cornerRadius(8)
+                        .fixedSize()
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    Task { await declineFollowRequest() }
+                } label: {
+                    Text("delete")
+                        .font(.lora(size: 13, weight: .semiBold))
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(Color.gray.opacity(colorScheme == .dark ? 0.3 : 0.15))
+                        .cornerRadius(8)
+                        .fixedSize()
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - Actions
+
+    private func loadRelationshipIfNeeded() async {
+        // Only load for notification types that show follow buttons
+        guard [.newFollower, .followRequestReceived, .followRequestAccepted, .friendJoined].contains(notification.type),
+              let currentUserId = authState.currentUser?.id,
+              let actor = primaryActor else {
+            isLoadingRelationship = false
+            return
+        }
+
+        do {
+            relationshipStatus = try await FollowService.shared.getRelationshipStatus(
+                currentUserId: currentUserId,
+                otherUserId: actor.id
+            )
+        } catch {
+            print("Error loading relationship: \(error)")
+        }
+        isLoadingRelationship = false
+    }
+
+    private func followUser() async {
+        guard let currentUserId = authState.currentUser?.id,
+              let actor = primaryActor else { return }
+
+        isProcessingFollow = true
+        do {
+            // Fetch fresh user data to get current isPrivate status
+            // The actor from notification might have stale data
+            let freshUser = try await UserService.shared.getUser(userId: actor.id)
+            try await FollowService.shared.followOrRequest(
+                userId: actor.id,
+                currentUserId: currentUserId,
+                targetUser: freshUser ?? actor
+            )
+            FollowService.shared.clearCache(for: currentUserId)
+            await loadRelationshipIfNeeded()
+        } catch {
+            print("Error following user: \(error)")
+        }
+        isProcessingFollow = false
+    }
+
+    private func unfollowUser() async {
+        guard let currentUserId = authState.currentUser?.id,
+              let actor = primaryActor else { return }
+
+        isProcessingFollow = true
+        do {
+            try await FollowService.shared.unfollow(userId: actor.id, currentUserId: currentUserId)
+            FollowService.shared.clearCache(for: currentUserId)
+            await loadRelationshipIfNeeded()
+        } catch {
+            print("Error unfollowing user: \(error)")
+        }
+        isProcessingFollow = false
+    }
+
+    private func acceptFollowRequest() async {
+        guard let currentUserId = authState.currentUser?.id,
+              let actor = primaryActor else { return }
+
+        isProcessingFollow = true
+        do {
+            // Look up the follow request by requester and target
+            if let request = try await FollowService.shared.getFollowRequest(requesterId: actor.id, targetId: currentUserId) {
+                try await FollowService.shared.acceptFollowRequest(requestId: request.id)
+                FollowService.shared.clearCache(for: currentUserId)
+                await loadRelationshipIfNeeded()
+            } else {
+                print("Follow request not found")
+            }
+        } catch {
+            print("Error accepting follow request: \(error)")
+        }
+        isProcessingFollow = false
+    }
+
+    private func declineFollowRequest() async {
+        guard let currentUserId = authState.currentUser?.id,
+              let actor = primaryActor else { return }
+
+        isProcessingFollow = true
+        do {
+            // Look up the follow request by requester and target
+            if let request = try await FollowService.shared.getFollowRequest(requesterId: actor.id, targetId: currentUserId) {
+                try await FollowService.shared.rejectFollowRequest(requestId: request.id)
+                FollowService.shared.clearCache(for: currentUserId)
+                await loadRelationshipIfNeeded()
+            } else {
+                print("Follow request not found")
+            }
+        } catch {
+            print("Error declining follow request: \(error)")
+        }
+        isProcessingFollow = false
+    }
+}
+
+// MARK: - List Section Spacing Modifier
+
+private struct ListSectionSpacingModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, *) {
+            content.listSectionSpacing(0)
+        } else {
+            content
+        }
     }
 }

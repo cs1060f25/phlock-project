@@ -340,8 +340,10 @@ struct TrackResultRow: View {
                                 .foregroundColor(.white)
                         }
                     }
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderless)
             }
 
 
@@ -430,7 +432,7 @@ struct EmptySearchView: View {
                 .font(.lora(size: 20, weight: .semiBold))
 
             Text("find tracks and artists to send")
-                .font(.lora(size: 10))
+                .font(.lora(size: 14))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -452,7 +454,7 @@ struct NoResultsView: View {
                 .font(.lora(size: 20, weight: .semiBold))
 
             Text("try a different search term")
-                .font(.lora(size: 10))
+                .font(.lora(size: 14))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

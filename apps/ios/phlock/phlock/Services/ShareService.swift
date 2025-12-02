@@ -110,6 +110,7 @@ class ShareService {
                 let album_art_url: String?
                 let message: String?
                 let status: String
+                let preview_url: String?
             }
 
             let shareData = ShareInsert(
@@ -120,7 +121,8 @@ class ShareService {
                 artist_name: validatedTrack.artistName ?? "Unknown Artist",
                 album_art_url: validatedTrack.albumArtUrl,  // Use validated album art
                 message: message,
-                status: ShareStatus.sent.rawValue
+                status: ShareStatus.sent.rawValue,
+                preview_url: validatedTrack.previewUrl
             )
             print("📤 Creating share for '\(validatedTrack.name)' with validated album art: \(validatedTrack.albumArtUrl ?? "nil")")
 
@@ -355,11 +357,11 @@ class ShareService {
             id: originalShare.trackId,
             name: originalShare.trackName,
             artistName: originalShare.artistName,
-            previewUrl: nil,
+            previewUrl: originalShare.previewUrl,
             albumArtUrl: originalShare.albumArtUrl,
             isrc: nil,
             playedAt: nil,
-            spotifyId: nil,
+            spotifyId: originalShare.trackId,  // Pass Spotify ID for DeepLinkService
             appleMusicId: nil,
             popularity: nil,
             followerCount: nil
@@ -649,12 +651,15 @@ class ShareService {
             let status: String
             let is_daily_song: Bool
             let selected_date: String
-            let preview_url: String
+            let preview_url: String?
         }
 
         // Use date-only format (yyyy-MM-dd) for consistent querying
         // This avoids timezone issues that occur with ISO8601 timestamps
         let todayString = Self.dateOnlyString(for: Date())
+
+        // Only store preview_url if it's non-empty
+        let previewUrl: String? = validatedTrack.previewUrl?.isEmpty == false ? validatedTrack.previewUrl : nil
 
         let shareData = DailySongInsert(
             sender_id: userId.uuidString,
@@ -667,7 +672,7 @@ class ShareService {
             status: ShareStatus.sent.rawValue,
             is_daily_song: true,
             selected_date: todayString,
-            preview_url: validatedTrack.previewUrl ?? ""
+            preview_url: previewUrl
         )
 
         let share: Share = try await supabase
@@ -774,32 +779,41 @@ class ShareService {
         return shares.first
     }
 
-    /// Get daily songs from specific users for a specific date
-    /// - Parameters:
-    ///   - userIds: Array of user IDs
-    ///   - date: The date to fetch songs for (defaults to today)
-    /// - Returns: Array of daily songs
     func getDailySongs(from userIds: [UUID], for date: Date = Date()) async throws -> [Share] {
-        // Use the same date formatting as selectDailySong to ensure consistency
-        let dateString = Self.dateOnlyString(for: date)
-
         guard !userIds.isEmpty else {
             return []
         }
 
-        let userIdStrings = userIds.map { $0.uuidString }
+        let dateString = Self.dateOnlyString(for: date)
 
-        let shares: [Share] = try await supabase
+        // Batch query: fetch all daily songs in a single request
+        let allShares: [Share] = try await supabase
             .from("shares")
             .select("*")
-            .in("sender_id", values: userIdStrings)
+            .in("sender_id", values: userIds.map { $0.uuidString })
             .eq("is_daily_song", value: true)
-            .eq("selected_date", value: dateString)
+            .order("created_at", ascending: false)
             .execute()
             .value
 
-        print("📅 Found \(shares.count) daily songs for \(userIds.count) users on \(dateString)")
-        return shares
+        // Filter for today's songs
+        // Check both selected_date string match AND created_at within last 24h as fallback
+        let filteredShares = allShares.filter { share in
+            // 1. Check explicit selected_date match
+            if let selectedDate = share.selectedDate {
+                let selectedString = Self.dateOnlyString(for: selectedDate)
+                if selectedString == dateString { return true }
+            }
+
+            // 2. Fallback: Check if created today (local time)
+            if Calendar.current.isDate(share.createdAt, inSameDayAs: date) {
+                return true
+            }
+
+            return false
+        }
+
+        return filteredShares
     }
 
     /// Update the note for today's daily song

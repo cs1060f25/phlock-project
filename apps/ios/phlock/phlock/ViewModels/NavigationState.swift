@@ -7,12 +7,10 @@ import Combine
 class NavigationState: ObservableObject {
 
     // MARK: - Tab Selection
-    @AppStorage("selectedTab") private var selectedTabStorage = 0
-    @Published var selectedTab: Int = 0 {
-        didSet {
-            selectedTabStorage = selectedTab
-        }
-    }
+    // Note: Tab selection is NOT persisted to storage
+    // This ensures the app always opens to phlock tab (index 0) on cold launch
+    // While returning from background preserves the current tab (state in memory)
+    @Published var selectedTab: Int = 0
 
     // MARK: - Navigation Paths for Each Tab
     @Published var feedNavigationPath = NavigationPath()
@@ -40,27 +38,9 @@ class NavigationState: ObservableObject {
     @Published var shareTrack: MusicItem? = nil
 
     init() {
-        // Initialize selectedTab with stored value after all properties are set
-        let storedTab = selectedTabStorage
-        switch storedTab {
-        case 3:
-            // Old alerts tab (index 3) shifts to notifications at index 2
-            selectedTabStorage = 2
-            selectedTab = 2
-        case 4, 5:
-            // Legacy phlocks/profile tabs collapse into profile at index 3
-            selectedTabStorage = 3
-            selectedTab = 3
-        case 1:
-            // Legacy browse -> friends tab
-            selectedTab = 1
-        case 2:
-            // Legacy shares tab -> default to home
-            selectedTabStorage = 0
-            selectedTab = 0
-        default:
-            selectedTab = min(storedTab, 3)
-        }
+        // Default to phlock tab (index 0) on every cold launch
+        // No tab persistence - this is intentional
+        selectedTab = 0
     }
 
     // MARK: - Helper Methods

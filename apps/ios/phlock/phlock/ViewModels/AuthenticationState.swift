@@ -12,8 +12,20 @@ class AuthenticationState: ObservableObject {
     @Published var isOnboardingComplete = false
 
     // New onboarding state flags for V3 auth flow
+    @Published var needsNameSetup = false
     @Published var needsUsernameSetup = false
+    @Published var needsContactsPermission = false
+    @Published var needsAddFriends = false
+    @Published var needsInviteFriends = false
+    @Published var needsNotificationPermission = false
     @Published var needsMusicPlatform = false
+
+    // Onboarding contact data
+    @Published var onboardingContactMatches: [ContactMatch] = []
+    @Published var onboardingAllContacts: [(name: String, phone: String)] = []
+
+    // Profile photo cache busting
+    @Published var profilePhotoVersion: Int = 0
 
     init() {
         Task {
@@ -77,8 +89,15 @@ class AuthenticationState: ObservableObject {
 
     func completeOnboarding() {
         isOnboardingComplete = true
+        needsNameSetup = false
         needsUsernameSetup = false
+        needsContactsPermission = false
+        needsAddFriends = false
+        needsInviteFriends = false
+        needsNotificationPermission = false
         needsMusicPlatform = false
+        onboardingContactMatches = []
+        onboardingAllContacts = []
         UserDefaults.standard.set(true, forKey: "isOnboardingComplete")
     }
 
@@ -118,7 +137,7 @@ class AuthenticationState: ObservableObject {
 
     // MARK: - Profile Update
 
-    func updateProfile(displayName: String, bio: String?, profilePhotoUrl: String?) async {
+    func updateProfile(displayName: String, username: String? = nil, bio: String?, profilePhotoUrl: String?) async {
         guard let userId = currentUser?.id else { return }
 
         isLoading = true
@@ -129,6 +148,7 @@ class AuthenticationState: ObservableObject {
             try await AuthServiceV3.shared.updateUserProfile(
                 userId: userId,
                 displayName: displayName,
+                username: username,
                 bio: bio,
                 profilePhotoUrl: profilePhotoUrl
             )
@@ -180,8 +200,15 @@ class AuthenticationState: ObservableObject {
         currentUser = nil
         isAuthenticated = false
         isOnboardingComplete = false
+        needsNameSetup = false
         needsUsernameSetup = false
+        needsContactsPermission = false
+        needsAddFriends = false
+        needsInviteFriends = false
+        needsNotificationPermission = false
         needsMusicPlatform = false
+        onboardingContactMatches = []
+        onboardingAllContacts = []
         UserDefaults.standard.set(false, forKey: "isOnboardingComplete")
     }
 }

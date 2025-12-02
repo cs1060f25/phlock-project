@@ -23,9 +23,10 @@ struct PhlockNetworkView: View {
                     let baseRadius = min(size.width, size.height) / 2 - 40
 
                     // Apply transformations - scale from center, then translate
+                    let safeScale = scale > 0 ? scale : 1
                     context.translateBy(x: size.width / 2, y: size.height / 2)
-                    context.scaleBy(x: scale, y: scale)
-                    context.translateBy(x: -size.width / 2 + offset.width / scale, y: -size.height / 2 + offset.height / scale)
+                    context.scaleBy(x: safeScale, y: safeScale)
+                    context.translateBy(x: -size.width / 2 + offset.width / safeScale, y: -size.height / 2 + offset.height / safeScale)
 
                     // Group nodes by generation
                     let nodesByGen = Dictionary(grouping: visualizationData.nodes, by: { $0.depth })
@@ -391,7 +392,8 @@ struct PhlockNetworkView: View {
         let radius = calculateRadius(for: generation, maxGeneration: maxGeneration, baseRadius: baseRadius)
 
         // Distribute nodes evenly around the circle
-        let angleStep = (2 * CGFloat.pi) / CGFloat(nodes.count)
+        let nodeCount = nodes.count > 0 ? nodes.count : 1
+        let angleStep = (2 * CGFloat.pi) / CGFloat(nodeCount)
         let startAngle = -CGFloat.pi / 2 // Start at top
 
         for (index, node) in nodes.enumerated() {
@@ -442,9 +444,10 @@ struct PhlockNetworkView: View {
         }
 
         // Adjust for transformations
+        let safeScale = scale > 0 ? scale : 1
         let adjustedLocation = CGPoint(
-            x: (location.x - size.width / 2 - offset.width) / scale + size.width / 2,
-            y: (location.y - size.height / 2 - offset.height) / scale + size.height / 2
+            x: (location.x - size.width / 2 - offset.width) / safeScale + size.width / 2,
+            y: (location.y - size.height / 2 - offset.height) / safeScale + size.height / 2
         )
 
         // Find tapped node

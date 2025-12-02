@@ -16,6 +16,14 @@ struct MiniPlayerView: View {
             VStack(spacing: 0) {
                 // Progress bar (display only)
                 GeometryReader { geometry in
+                    let duration = playbackService.duration
+                    let currentTime = playbackService.currentTime
+                    // Guard against NaN and invalid values
+                    let safeDuration = (duration.isNaN || duration.isInfinite || duration <= 0) ? 1 : duration
+                    let safeCurrentTime = (currentTime.isNaN || currentTime.isInfinite || currentTime < 0) ? 0 : currentTime
+                    let progress = min(max(safeCurrentTime / safeDuration, 0), 1)
+                    let safeWidth = geometry.size.width > 0 ? geometry.size.width : 1
+
                     ZStack(alignment: .leading) {
                         Rectangle()
                             .fill(Color.gray.opacity(0.3))
@@ -24,9 +32,7 @@ struct MiniPlayerView: View {
                         Rectangle()
                             .fill(Color.primary)
                             .frame(
-                                width: playbackService.duration > 0
-                                    ? geometry.size.width * CGFloat(playbackService.currentTime / playbackService.duration)
-                                    : 0,
+                                width: safeWidth * CGFloat(progress),
                                 height: 2
                             )
                     }
@@ -38,6 +44,8 @@ struct MiniPlayerView: View {
                 // Player content
                 HStack(spacing: 12) {
                     // Album Art
+                    // Use .id() to force SwiftUI to recreate AsyncImage when track changes
+                    // This prevents showing stale cached artwork during track transitions
                     if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
                         AsyncImage(url: url) { image in
                             image
@@ -51,6 +59,7 @@ struct MiniPlayerView: View {
                                 .frame(width: 48, height: 48)
                                 .cornerRadius(8)
                         }
+                        .id(track.id)
                     } else {
                         // Fallback for missing album art
                         ZStack {

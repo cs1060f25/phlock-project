@@ -168,21 +168,16 @@ class NotificationService {
     // MARK: - Specific Notification Creators
 
     /// Notify user that someone followed them
+    /// Uses upsert pattern (like Instagram) - if the same person unfollows and refollows,
+    /// we update the existing notification instead of creating a duplicate
     func createNewFollowerNotification(userId: UUID, followerId: UUID) async throws {
-        try await createNotification(
-            userId: userId,
-            actorId: followerId,
-            type: .newFollower
-        )
+        try await upsertFollowerNotification(userId: userId, followerId: followerId)
     }
 
     /// Notify private profile user that someone requested to follow them
+    /// Uses upsert pattern to prevent duplicates from same requester
     func createFollowRequestNotification(userId: UUID, requesterId: UUID) async throws {
-        try await createNotification(
-            userId: userId,
-            actorId: requesterId,
-            type: .followRequestReceived
-        )
+        try await upsertFollowRequestNotification(userId: userId, requesterId: requesterId)
     }
 
     /// Notify user that a contact joined (requires contacts sync)
@@ -369,6 +364,126 @@ class NotificationService {
         await sendPushNotification(userId: userId, type: type, message: message)
     }
 
+    /// Upsert new follower notification - prevents duplicates from same follower
+    /// Like Instagram: if someone unfollows and refollows, we update the existing
+    /// notification instead of creating a new one (brings it to top with fresh timestamp)
+    private func upsertFollowerNotification(userId: UUID, followerId: UUID) async throws {
+        print("🔍 Checking for existing new_follower notification from \(followerId)")
+
+        // Check if there's already a notification from this follower
+        let existing: [NotificationRecord] = try await supabase
+            .from("notifications")
+            .select("*")
+            .eq("user_id", value: userId.uuidString)
+            .eq("actor_user_id", value: followerId.uuidString)
+            .eq("type", value: NotificationType.newFollower.rawValue)
+            .order("created_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+
+        if let current = existing.first {
+            print("📝 Found existing follower notification (id: \(current.id)), updating timestamp...")
+
+            // Update the notification to bring it to the top with fresh timestamp
+            // We update created_at to make it appear as a new notification
+            // Also mark as unread so user sees it again
+            struct FollowerNotificationUpdate: Encodable {
+                let created_at: String
+                let read_at: String?
+            }
+
+            let updateData = FollowerNotificationUpdate(
+                created_at: ISO8601DateFormatter().string(from: Date()),
+                read_at: nil  // Mark as unread
+            )
+
+            try await supabase
+                .from("notifications")
+                .update(updateData)
+                .eq("id", value: current.id.uuidString)
+                .execute()
+
+            print("✅ Updated existing follower notification (refreshed to top)")
+            // Don't send push again for re-follow
+            return
+        }
+
+        print("✨ No existing follower notification found, creating new one...")
+
+        let insertData = BasicNotificationInsert(
+            user_id: userId.uuidString,
+            actor_user_id: followerId.uuidString,
+            type: NotificationType.newFollower.rawValue,
+            message: nil
+        )
+
+        try await supabase
+            .from("notifications")
+            .insert(insertData)
+            .execute()
+
+        print("✅ Created new follower notification")
+        await sendPushNotification(userId: userId, type: .newFollower, message: "started following you")
+    }
+
+    /// Upsert follow request notification - prevents duplicates from same requester
+    private func upsertFollowRequestNotification(userId: UUID, requesterId: UUID) async throws {
+        print("🔍 Checking for existing follow_request notification from \(requesterId)")
+
+        // Check if there's already a notification from this requester
+        let existing: [NotificationRecord] = try await supabase
+            .from("notifications")
+            .select("*")
+            .eq("user_id", value: userId.uuidString)
+            .eq("actor_user_id", value: requesterId.uuidString)
+            .eq("type", value: NotificationType.followRequestReceived.rawValue)
+            .order("created_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+
+        if let current = existing.first {
+            print("📝 Found existing follow request notification (id: \(current.id)), updating timestamp...")
+
+            struct FollowRequestNotificationUpdate: Encodable {
+                let created_at: String
+                let read_at: String?
+            }
+
+            let updateData = FollowRequestNotificationUpdate(
+                created_at: ISO8601DateFormatter().string(from: Date()),
+                read_at: nil
+            )
+
+            try await supabase
+                .from("notifications")
+                .update(updateData)
+                .eq("id", value: current.id.uuidString)
+                .execute()
+
+            print("✅ Updated existing follow request notification")
+            return
+        }
+
+        print("✨ No existing follow request notification found, creating new one...")
+
+        let insertData = BasicNotificationInsert(
+            user_id: userId.uuidString,
+            actor_user_id: requesterId.uuidString,
+            type: NotificationType.followRequestReceived.rawValue,
+            message: nil
+        )
+
+        try await supabase
+            .from("notifications")
+            .insert(insertData)
+            .execute()
+
+        print("✅ Created new follow request notification")
+        await sendPushNotification(userId: userId, type: .followRequestReceived, message: "requested to follow you")
+    }
+
     // MARK: - Push Notifications
 
     private struct PushNotificationPayload: Encodable {
@@ -512,5 +627,20 @@ class NotificationService {
             .execute()
 
         print("✅ Marked notification \(notificationId) as read")
+    }
+
+    /// Mark multiple notifications as read in a single batch
+    func markAllAsRead(notificationIds: [UUID]) async throws {
+        guard !notificationIds.isEmpty else { return }
+
+        let updateData = ReadAtUpdate(read_at: ISO8601DateFormatter().string(from: Date()))
+
+        try await supabase
+            .from("notifications")
+            .update(updateData)
+            .in("id", values: notificationIds.map { $0.uuidString })
+            .execute()
+
+        print("✅ Marked \(notificationIds.count) notifications as read")
     }
 }

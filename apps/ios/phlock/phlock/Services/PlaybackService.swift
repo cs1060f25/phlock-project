@@ -88,39 +88,31 @@ class PlaybackService: ObservableObject {
     // MARK: - Pre-fetching
 
     /// Pre-fetch preview URLs for tracks in the background to reduce latency
+    /// Uses server-side validate-track edge function (no MusicKit permission needed)
     func prefetchPreviewUrls(for tracks: [MusicItem]) {
         Task {
             for track in tracks {
-                // Skip if already has preview URL or already cached
+                // Skip if already has preview URL
                 if track.previewUrl != nil { continue }
                 guard let spotifyId = track.spotifyId else { continue }
-                if getCachedISRC(for: spotifyId) != nil {
+
+                // Check if already fully cached
+                if let cachedIsrc = getCachedISRC(for: spotifyId),
+                   getCachedPreviewUrl(for: cachedIsrc) != nil {
                     continue // Already cached
                 }
 
-                // Fetch in background
+                // Fetch in background using server-side API
                 do {
-                    // Get ISRC if not cached
-                    let isrc: String
-                    if let cachedIsrc = getCachedISRC(for: spotifyId) {
-                        isrc = cachedIsrc
-                    } else if let fetchedIsrc = try await fetchSpotifyISRC(spotifyId: spotifyId) {
-                        setCachedISRC(fetchedIsrc, for: spotifyId)
-                        isrc = fetchedIsrc
-                    } else {
-                        continue
-                    }
+                    let validatedTrack = try await fetchPreviewFromServer(
+                        spotifyId: spotifyId,
+                        trackName: track.name,
+                        artistName: track.artistName ?? ""
+                    )
 
-                    // Skip if preview URL already cached
-                    if getCachedPreviewUrl(for: isrc) != nil { continue }
-
-                    // Fetch Apple Music preview
-                    guard let artistName = track.artistName else { continue }
-                    if let appleMusicTrack = try await AppleMusicService.shared.searchTrack(
-                        name: track.name,
-                        artist: artistName,
-                        isrc: isrc
-                    ), let previewUrl = appleMusicTrack.previewURL, !previewUrl.isEmpty {
+                    // Cache the results
+                    if let isrc = validatedTrack.isrc, let previewUrl = validatedTrack.previewUrl, !previewUrl.isEmpty {
+                        setCachedISRC(isrc, for: spotifyId)
                         setCachedPreviewUrl(previewUrl, for: isrc)
                     }
                 } catch {
@@ -138,7 +130,9 @@ class PlaybackService: ObservableObject {
         sourceId: String? = nil,
         showMiniPlayer: Bool = true,
         resetQueue: Bool = true,
-        allowSameSourceToggle: Bool = true
+        allowSameSourceToggle: Bool = true,
+        autoPlay: Bool = true,
+        seekToPosition: Double? = nil
     ) {
         // Set whether mini player should be shown
         shouldShowMiniPlayer = showMiniPlayer
@@ -152,7 +146,7 @@ class PlaybackService: ObservableObject {
             PhlockLogger.playback.infoLog("Attempting to play track: \(track.name)")
             PhlockLogger.playback.debugLog("Source ID: \(sourceId ?? "nil"), Current: \(self.currentSourceId ?? "nil")")
             PhlockLogger.playback.debugLog("Preview URL: \(track.previewUrl ?? "nil")")
-            PhlockLogger.playback.debugLog("Show Mini Player: \(showMiniPlayer)")
+            PhlockLogger.playback.debugLog("Show Mini Player: \(showMiniPlayer), autoPlay: \(autoPlay), seekTo: \(seekToPosition ?? -1)")
         }
 
         // Check if this is the exact same instance already playing
@@ -174,138 +168,90 @@ class PlaybackService: ObservableObject {
         // Different instance or different track - update sourceId and play fresh
         currentSourceId = sourceId
 
+        // IMPORTANT: Set currentTrack immediately so mini player shows correct artwork
+        // This prevents briefly showing stale artwork while fetching preview URL
+        currentTrack = track
+
         // If track has a preview URL, use it
         if let previewUrl = track.previewUrl, !previewUrl.isEmpty {
-            playFromURL(previewUrl, track: track, sourceId: sourceId)
+            playFromURL(previewUrl, track: track, sourceId: sourceId, autoPlay: autoPlay, seekToPosition: seekToPosition)
             return
         }
 
-        // No preview URL - fetch ISRC from Spotify, then find exact match on Apple Music
-        if let spotifyId = track.spotifyId {
-            print("⚠️ No preview URL, fetching ISRC and Apple Music preview")
+        // No preview URL - fetch from server using validate-track edge function
+        // This uses Apple Music Catalog API server-side (no MusicKit permission needed)
+        // Use spotifyId if available, otherwise fall back to track.id (which is often the Spotify ID for Spotify tracks)
+        let effectiveSpotifyId = track.spotifyId ?? track.id
+        if !effectiveSpotifyId.isEmpty {
+            print("⚠️ No preview URL, fetching from server via validate-track (id: \(effectiveSpotifyId))")
             Task {
                 do {
-                    // Step 1: Get ISRC from Spotify (check cache first)
-                    let isrc: String
-                    if let cachedIsrc = getCachedISRC(for: spotifyId) {
-                        print("⚡️ Using cached ISRC: \(cachedIsrc)")
-                        isrc = cachedIsrc
-                    } else if let fetchedIsrc = try await fetchSpotifyISRC(spotifyId: spotifyId) {
-                        print("✅ Got ISRC from Spotify: \(fetchedIsrc)")
-                        setCachedISRC(fetchedIsrc, for: spotifyId)
-                        isrc = fetchedIsrc
-                    } else {
-                        print("⚠️ No ISRC available from Spotify")
+                    // Check cache first
+                    if let cachedIsrc = getCachedISRC(for: effectiveSpotifyId),
+                       let cachedUrl = getCachedPreviewUrl(for: cachedIsrc) {
+                        print("⚡️ Using cached preview URL")
+                        await MainActor.run {
+                            self.playFromURL(cachedUrl, track: MusicItem(
+                                id: track.id,
+                                name: track.name,
+                                artistName: track.artistName,
+                                previewUrl: cachedUrl,
+                                albumArtUrl: track.albumArtUrl,
+                                isrc: cachedIsrc,
+                                playedAt: track.playedAt,
+                                spotifyId: track.spotifyId ?? effectiveSpotifyId,
+                                appleMusicId: track.appleMusicId,
+                                popularity: track.popularity,
+                                followerCount: track.followerCount
+                            ), sourceId: sourceId, autoPlay: autoPlay, seekToPosition: seekToPosition)
+                        }
                         return
                     }
 
-                    // Step 2: Get preview URL from Apple Music (check cache first)
-                    let applePreviewUrl: String
-                    var appleMusicTrack: AppleMusicTrack? = nil
-
-                    if let cachedUrl = getCachedPreviewUrl(for: isrc) {
-                        print("⚡️ Using cached preview URL")
-                        applePreviewUrl = cachedUrl
-                    } else {
-                        // Search Apple Music with ISRC
-                        guard let artistName = track.artistName else {
-                            print("❌ Cannot search Apple Music - missing artist name")
-                            return
-                        }
-
-                        // Store the Apple Music track for later use
-                        if let fetchedTrack = try await AppleMusicService.shared.searchTrack(
-                            name: track.name,
-                            artist: artistName,
-                            isrc: isrc
-                        ) {
-                            appleMusicTrack = fetchedTrack
-                            if let url = fetchedTrack.previewURL, !url.isEmpty {
-                                print("✅ Found exact match on Apple Music with preview URL")
-                                setCachedPreviewUrl(url, for: isrc)
-                                applePreviewUrl = url
-                            } else {
-                                print("❌ Apple Music match found but no preview URL available")
-                                return
-                            }
-                        } else {
-                            print("❌ Could not find matching track on Apple Music with ISRC")
-                            return
-                        }
-                    }
-
-                    // Use Apple Music preview but keep original Spotify metadata
-                    var updatedTrack = track
-                    updatedTrack = MusicItem(
-                        id: track.id,
-                        name: track.name,
-                        artistName: track.artistName,
-                        previewUrl: applePreviewUrl,
-                        // IMPORTANT: Keep original Spotify album art
-                        albumArtUrl: track.albumArtUrl,
-                        isrc: isrc,
-                        playedAt: track.playedAt,
-                        spotifyId: track.spotifyId,
-                        appleMusicId: appleMusicTrack?.id ?? track.appleMusicId,
-                        popularity: track.popularity,
-                        followerCount: track.followerCount
+                    // Call validate-track edge function which uses Apple Music Catalog API server-side
+                    let validatedTrack = try await fetchPreviewFromServer(
+                        spotifyId: effectiveSpotifyId,
+                        trackName: track.name,
+                        artistName: track.artistName ?? ""
                     )
-                    await MainActor.run {
-                        self.playFromURL(applePreviewUrl, track: updatedTrack, sourceId: sourceId)
-                    }
-                } catch {
-                    print("❌ Error fetching preview: \(error)")
-                }
-            }
-            return
-        }
 
-        // Fallback: try to find preview from Apple Music catalog
-        print("⚠️ No Spotify ID, searching Apple Music catalog as fallback...")
+                    if let previewUrl = validatedTrack.previewUrl, !previewUrl.isEmpty {
+                        print("✅ Got preview URL from server: \(previewUrl)")
 
-        guard let artistName = track.artistName else {
-            print("❌ Cannot search Apple Music - missing artist name")
-            return
-        }
+                        // Cache the results
+                        if let isrc = validatedTrack.isrc {
+                            setCachedISRC(isrc, for: effectiveSpotifyId)
+                            setCachedPreviewUrl(previewUrl, for: isrc)
+                        }
 
-        Task {
-            do {
-                // Pass ISRC if available for exact matching
-                if let appleMusicTrack = try await AppleMusicService.shared.searchTrack(
-                    name: track.name,
-                    artist: artistName,
-                    isrc: track.isrc
-                ) {
-                    if let applePreviewUrl = appleMusicTrack.previewURL, !applePreviewUrl.isEmpty {
-                        // Update track with Apple Music preview but keep original Spotify metadata
-                        var updatedTrack = track
-                        updatedTrack = MusicItem(
+                        let updatedTrack = MusicItem(
                             id: track.id,
                             name: track.name,
                             artistName: track.artistName,
-                            previewUrl: applePreviewUrl,
-                            // IMPORTANT: Keep original Spotify album art
+                            previewUrl: previewUrl,
                             albumArtUrl: track.albumArtUrl,
-                            isrc: track.isrc,
+                            isrc: validatedTrack.isrc,
                             playedAt: track.playedAt,
-                            spotifyId: track.spotifyId, // Preserve Spotify ID
-                            appleMusicId: appleMusicTrack.id, // Use Apple Music ID from match
+                            spotifyId: track.spotifyId ?? effectiveSpotifyId,
+                            appleMusicId: track.appleMusicId,  // Keep original, not available from edge function
                             popularity: track.popularity,
                             followerCount: track.followerCount
                         )
                         await MainActor.run {
-                            self.playFromURL(applePreviewUrl, track: updatedTrack, sourceId: sourceId)
+                            self.playFromURL(previewUrl, track: updatedTrack, sourceId: sourceId, autoPlay: autoPlay, seekToPosition: seekToPosition)
                         }
                     } else {
-                        print("❌ Apple Music match found but no preview URL available")
+                        print("❌ No preview URL available from server")
                     }
-                } else {
-                    print("❌ Could not find track in Apple Music catalog")
+                } catch {
+                    print("❌ Error fetching preview from server: \(error)")
                 }
-            } catch {
-                print("❌ Error searching Apple Music: \(error)")
             }
+            return
         }
+
+        // No Spotify ID available - cannot fetch preview
+        print("❌ No Spotify ID available, cannot fetch preview")
     }
 
     /// Fetch ISRC from Spotify by track ID to enable exact matching on Apple Music
@@ -362,11 +308,61 @@ class PlaybackService: ObservableObject {
         return response.externalIds?.isrc
     }
 
-    private func playFromURL(_ urlString: String, track: MusicItem, sourceId: String? = nil) {
+    /// Fetch preview URL from server using validate-track edge function
+    /// This uses Apple Music Catalog API server-side (no MusicKit permission needed)
+    private func fetchPreviewFromServer(spotifyId: String, trackName: String, artistName: String) async throws -> ValidatedTrack {
+        let supabase = PhlockSupabaseClient.shared.client
+
+        // The edge function expects 'trackId', not 'spotifyId'
+        struct ValidateRequest: Encodable {
+            let trackId: String
+            let trackName: String
+            let artistName: String
+        }
+
+        let request = ValidateRequest(trackId: spotifyId, trackName: trackName, artistName: artistName)
+        let response: ValidateTrackResponse = try await supabase.functions.invoke(
+            "validate-track",
+            options: FunctionInvokeOptions(body: request)
+        )
+
+        guard response.success, let track = response.track else {
+            throw NSError(domain: "PlaybackService", code: 1, userInfo: [NSLocalizedDescriptionKey: response.error ?? "Track not found"])
+        }
+
+        return track
+    }
+
+    /// Response wrapper from validate-track edge function
+    private struct ValidateTrackResponse: Decodable {
+        let success: Bool
+        let method: String?
+        let track: ValidatedTrack?
+        let error: String?
+    }
+
+    /// Track data from validate-track edge function
+    private struct ValidatedTrack: Decodable {
+        let id: String
+        let name: String
+        let artistName: String
+        let artists: [String]?
+        let albumArtUrl: String?
+        let previewUrl: String?
+        let isrc: String?
+        let popularity: Int?
+        let spotifyUrl: String?
+    }
+
+    private func playFromURL(_ urlString: String, track: MusicItem, sourceId: String? = nil, autoPlay: Bool = true, seekToPosition: Double? = nil) {
         guard let url = URL(string: urlString) else {
             print("❌ Invalid URL: \(urlString)")
             return
         }
+
+        // Signal track switch start to prevent time observer from updating currentTime
+        // This prevents the playhead from briefly jumping to 0:00 during track transitions
+        isTrackSwitching = true
 
         // Preserve the shouldShowMiniPlayer flag before stopPlayback resets it
         let preserveShowMiniPlayer = shouldShowMiniPlayer
@@ -377,6 +373,13 @@ class PlaybackService: ObservableObject {
 
         // Restore the flag after stopPlayback
         shouldShowMiniPlayer = preserveShowMiniPlayer
+
+        // IMPORTANT: Pre-set currentTime to seekToPosition IMMEDIATELY after stopPlayback
+        // This prevents the UI from briefly showing 0:00 before the seek completes
+        // Must happen BEFORE setupTimeObserver() so the time observer doesn't overwrite it
+        if let position = seekToPosition, position > 0 {
+            currentTime = position
+        }
 
         // Create new player
         let playerItem = AVPlayerItem(url: url)
@@ -396,19 +399,37 @@ class PlaybackService: ObservableObject {
         // Update state
         currentTrack = track
         currentSourceId = sourceId  // Preserve source ID so we can detect same track on next tap
-        isPlaying = true
 
-        // Get duration
+        // Set initial playback state based on autoPlay
+        isPlaying = autoPlay
+
+        // Get duration and then seek if needed
         Task { @MainActor in
             if let duration = try? await playerItem.asset.load(.duration) {
                 self.duration = CMTimeGetSeconds(duration)
             }
+
+            // Seek to saved position if provided (must happen after player is ready)
+            if let position = seekToPosition, position > 0 {
+                let cmTime = CMTime(seconds: position, preferredTimescale: 600)
+                await player?.seek(to: cmTime)
+                // currentTime already set above, but update again to be safe
+                self.currentTime = position
+                print("⏩ Seeked to saved position: \(position)s")
+            }
+
+            // Signal that track switch is complete - time observer can now update currentTime
+            self.isTrackSwitching = false
         }
 
-        // Start playback
-        player?.play()
-
-        print("▶️ Playing: \(track.name)")
+        // Start or pause based on autoPlay
+        if autoPlay {
+            player?.play()
+            print("▶️ Playing: \(track.name)")
+        } else {
+            player?.pause()
+            print("⏸️ Loaded (paused): \(track.name)")
+        }
     }
 
     /// Pause playback
@@ -483,8 +504,9 @@ class PlaybackService: ObservableObject {
             // Use MainActor.assumeIsolated since we know we're on main queue
             MainActor.assumeIsolated { [weak self] in
                 guard let self = self else { return }
-                // Ignore updates while seeking to prevent jumping back to old time
-                guard !self.isPerformingSeek else { return }
+                // Ignore updates while seeking or switching tracks to prevent UI jitter
+                // This prevents the playhead from briefly jumping to 0:00 before seek completes
+                guard !self.isPerformingSeek && !self.isTrackSwitching else { return }
                 self.currentTime = CMTimeGetSeconds(time)
             }
         }
@@ -515,7 +537,7 @@ class PlaybackService: ObservableObject {
 
     // MARK: - Queue Helpers
 
-    private func playQueueItem(at index: Int, showMiniPlayer: Bool) {
+    private func playQueueItem(at index: Int, showMiniPlayer: Bool, autoPlay: Bool = true, seekToPosition: Double? = nil) {
         guard queue.indices.contains(index) else { return }
         currentQueueIndex = index
         let item = queue[index]
@@ -524,7 +546,9 @@ class PlaybackService: ObservableObject {
             sourceId: item.sourceId,
             showMiniPlayer: showMiniPlayer,
             resetQueue: false,
-            allowSameSourceToggle: false
+            allowSameSourceToggle: false,
+            autoPlay: autoPlay,
+            seekToPosition: seekToPosition
         )
     }
 
@@ -536,7 +560,7 @@ class PlaybackService: ObservableObject {
         return currentTrack != nil && !queue.isEmpty
     }
 
-    func startQueue(tracks: [MusicItem], startAt index: Int, sourceIds: [String?]? = nil, showMiniPlayer: Bool = true) {
+    func startQueue(tracks: [MusicItem], startAt index: Int, sourceIds: [String?]? = nil, showMiniPlayer: Bool = true, autoPlay: Bool = true, seekToPosition: Double? = nil) {
         guard !tracks.isEmpty, index >= 0, index < tracks.count else { return }
 
         queue = tracks.enumerated().map { idx, track in
@@ -544,7 +568,7 @@ class PlaybackService: ObservableObject {
             return PlaybackQueueItem(track: track, sourceId: sourceId)
         }
 
-        playQueueItem(at: index, showMiniPlayer: showMiniPlayer)
+        playQueueItem(at: index, showMiniPlayer: showMiniPlayer, autoPlay: autoPlay, seekToPosition: seekToPosition)
     }
 
     func skipForward(wrap: Bool = true) {
@@ -585,5 +609,31 @@ class PlaybackService: ObservableObject {
         let index = currentQueueIndex ?? 0
         let previousIndex = index == 0 ? (queue.count - 1) : (index - 1)
         playQueueItem(at: previousIndex, showMiniPlayer: shouldShowMiniPlayer)
+    }
+
+    // MARK: - Position Saving (for immersive layout resume)
+
+    private nonisolated(unsafe) var savedPositions: [String: Double] = [:]
+    private nonisolated(unsafe) var isTrackSwitching = false
+
+    /// Save the current playback position for the current track
+    func saveCurrentPosition() {
+        guard let trackId = currentTrack?.id else { return }
+        savedPositions[trackId] = currentTime
+    }
+
+    /// Get the saved position for a track (if any)
+    func getSavedPosition(for trackId: String) -> Double? {
+        return savedPositions[trackId]
+    }
+
+    /// Signal that we're about to switch tracks (prevents time observer jitter)
+    func beginTrackSwitch() {
+        isTrackSwitching = true
+    }
+
+    /// Called after track switch is complete
+    func endTrackSwitch() {
+        isTrackSwitching = false
     }
 }

@@ -212,7 +212,7 @@ struct CustomTabBar: View {
             TabBarButton(
                 icon: "person.2",
                 selectedIcon: "person.2.fill",
-                title: "friends",
+                title: "discover",
                 tag: 1,
                 isSelected: selectedTab == 1,
                 onTap: { onTabTapped(1) }
@@ -221,7 +221,7 @@ struct CustomTabBar: View {
             TabBarButton(
                 icon: "bell",
                 selectedIcon: "bell.fill",
-                title: "alerts",
+                title: "activity",
                 tag: 2,
                 isSelected: selectedTab == 2,
                 onTap: { onTabTapped(2) }
@@ -238,7 +238,8 @@ struct CustomTabBar: View {
                     ProfileTabIcon(
                         photoUrl: authState.currentUser?.profilePhotoUrl,
                         displayName: authState.currentUser?.displayName ?? "",
-                        isSelected: selectedTab == 3
+                        isSelected: selectedTab == 3,
+                        photoVersion: authState.profilePhotoVersion
                     )
                 )
             )
@@ -330,6 +331,7 @@ struct ProfileTabIcon: View {
     let photoUrl: String?
     let displayName: String
     let isSelected: Bool
+    var photoVersion: Int = 0  // Used to bust AsyncImage cache
     @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
@@ -356,6 +358,7 @@ struct ProfileTabIcon: View {
                 initialsView
             }
             .clipShape(Circle())
+            .id("\(photoUrl)_\(photoVersion)")  // Force refresh when version changes
         } else {
             initialsView
         }

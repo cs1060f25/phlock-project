@@ -191,7 +191,9 @@ struct FullScreenPlayerView: View {
             Color(.systemBackground)
 
             // Blurred album art background
-            if let artworkUrl = playbackService.currentTrack?.albumArtUrl,
+            // Use .id() to force SwiftUI to recreate AsyncImage when track changes
+            if let track = playbackService.currentTrack,
+               let artworkUrl = track.albumArtUrl,
                let url = URL(string: artworkUrl) {
                 AsyncImage(url: url) { image in
                     image
@@ -212,6 +214,7 @@ struct FullScreenPlayerView: View {
                         endPoint: .bottomTrailing
                     )
                 }
+                .id(track.id)
             } else {
                 LinearGradient(
                     colors: [
@@ -540,9 +543,9 @@ struct FullScreenPlayerView: View {
                         }
                     }
                 } label: {
-                    Image(systemName: isTrackSaved ? "checkmark.circle.fill" : "plus.circle")
+                    Image(systemName: isTrackSaved ? "heart.fill" : "heart")
                         .font(.system(size: 28))
-                        .foregroundColor(isTrackSaved ? .green : .white.opacity(0.7))
+                        .foregroundColor(isTrackSaved ? .red : .white.opacity(0.7))
                 }
                 .padding(.leading, 12)
             }

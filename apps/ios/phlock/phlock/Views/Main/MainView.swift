@@ -10,8 +10,13 @@ struct MainView: View {
     @State private var recognitionTrackToShare: MusicItem? = nil
     @State private var showRecognitionQuickSend = false
 
+    // Hide mini player on Phlock tab (immersive view has its own playback UI)
+    private var shouldHideMiniPlayerOnPhlockTab: Bool {
+        navigationState.selectedTab == 0
+    }
+
     var body: some View {
-        let miniPlayerInset = playbackService.currentTrack != nil && playbackService.shouldShowMiniPlayer
+        let miniPlayerInset = playbackService.currentTrack != nil && playbackService.shouldShowMiniPlayer && !shouldHideMiniPlayerOnPhlockTab
             ? MiniPlayerView.Layout.height
             : 0
 
@@ -70,7 +75,8 @@ struct MainView: View {
                 }
 
                 // Mini Player sits above tab bar (only show if shouldShowMiniPlayer is true)
-                if playbackService.currentTrack != nil && playbackService.shouldShowMiniPlayer && !playbackService.isShareOverlayPresented {
+                // Hide on Phlock tab (immersive view has its own playback UI)
+                if playbackService.currentTrack != nil && playbackService.shouldShowMiniPlayer && !playbackService.isShareOverlayPresented && !shouldHideMiniPlayerOnPhlockTab {
                     VStack(spacing: 0) {
                         Spacer()
                         MiniPlayerView(
@@ -87,16 +93,17 @@ struct MainView: View {
             }
             .zIndex(playbackService.isShareOverlayPresented ? 2 : 0)
 
-            if !navigationState.isFabHidden && !playbackService.isShareOverlayPresented {
-                SongRecognitionFab(
-                    bottomInset: miniPlayerInset
-                ) { track in
-                    recognitionTrackToShare = track
-                    showRecognitionQuickSend = true
-                }
-                .opacity(showMiniPlayerShareSheet || showRecognitionQuickSend ? 0 : 1)
-                .zIndex(10)
-            }
+            // MARK: - Commented out: Song Recognition FAB (may re-implement later)
+            // if !navigationState.isFabHidden && !playbackService.isShareOverlayPresented {
+            //     SongRecognitionFab(
+            //         bottomInset: miniPlayerInset
+            //     ) { track in
+            //         recognitionTrackToShare = track
+            //         showRecognitionQuickSend = true
+            //     }
+            //     .opacity(showMiniPlayerShareSheet || showRecognitionQuickSend ? 0 : 1)
+            //     .zIndex(10)
+            // }
 
             // QuickSendBar overlay - sits above everything including mini player
             if showMiniPlayerShareSheet, let track = miniPlayerTrackToShare {

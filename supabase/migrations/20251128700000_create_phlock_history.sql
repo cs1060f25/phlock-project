@@ -24,6 +24,7 @@ CREATE INDEX IF NOT EXISTS idx_phlock_history_owner ON phlock_history(phlock_own
 ALTER TABLE phlock_history ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies: Anyone authenticated can read phlock history
+DROP POLICY IF EXISTS "Anyone can view phlock history" ON phlock_history;
 CREATE POLICY "Anyone can view phlock history"
     ON phlock_history FOR SELECT
     TO authenticated

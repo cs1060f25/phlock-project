@@ -19,8 +19,15 @@ struct ArtistDetailView: View {
     @State private var keyboardHeight: CGFloat = 0
     @FocusState private var isSearchFieldFocused: Bool
 
-    // Share state for tracks
-    @State private var showShareSheetForTrackId: String? = nil
+    // Daily song selection state
+    @State private var todaysDailySong: Share?
+    @State private var selectedDailyTrackId: String?
+    @State private var pendingDailySong: MusicItem?
+    @State private var dailySongNote = ""
+    @State private var isSubmittingDailySong = false
+    @State private var showDailySongToast = false
+    @State private var dailySongToastMessage = ""
+    @FocusState private var isNoteFieldFocused: Bool
 
     // Store observer tokens to properly remove them later
     @State private var keyboardShowObserver: NSObjectProtocol?
@@ -28,6 +35,14 @@ struct ArtistDetailView: View {
 
     var displayedTracks: [MusicItem] {
         searchText.isEmpty ? topTracks : searchResults
+    }
+
+    private func isCommittedAsDaily(_ track: MusicItem) -> Bool {
+        todaysDailySong?.trackId == track.id
+    }
+
+    private func isPendingSelection(_ track: MusicItem) -> Bool {
+        selectedDailyTrackId == track.id && !isCommittedAsDaily(track)
     }
 
     var body: some View {
@@ -127,36 +142,49 @@ struct ArtistDetailView: View {
                                         }
 
                                         // Track Info
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(track.name)
-                                                .font(.lora(size: 10))
-                                                .lineLimit(1)
-                                                .foregroundColor(.primary)
-
-                                            if let artistName = track.artistName {
-                                                Text(artistName)
-                                                    .font(.lora(size: 10))
-                                                    .foregroundColor(.secondary)
-                                                    .lineLimit(1)
-                                            }
-                                        }
+                                        Text(track.name)
+                                            .font(.lora(size: 16))
+                                            .lineLimit(1)
+                                            .foregroundColor(.primary)
 
                                         Spacer()
 
-                                        // Share Button
+                                        // Daily Song Selection Button
                                         Button {
-                                            showShareSheetForTrackId = track.id
+                                            selectDailySong(track)
                                         } label: {
-                                            Image(systemName: showShareSheetForTrackId == track.id ? "paperplane.fill" : "paperplane")
-                                                .font(.lora(size: 20, weight: .semiBold))
-                                                .foregroundColor(showShareSheetForTrackId == track.id ? .primary : .secondary)
+                                            ZStack {
+                                                Circle()
+                                                    .fill((isCommittedAsDaily(track) || isPendingSelection(track)) ? Color.accentColor : Color.white.opacity(0.65))
+                                                    .overlay(
+                                                        Circle()
+                                                            .stroke((isCommittedAsDaily(track) || isPendingSelection(track)) ? Color.accentColor : Color.secondary, lineWidth: 2)
+                                                    )
+                                                    .frame(width: 24, height: 24)
+                                                if isCommittedAsDaily(track) || isPendingSelection(track) {
+                                                    Image(systemName: "checkmark")
+                                                        .font(.lora(size: 10))
+                                                        .foregroundColor(.white)
+                                                }
+                                            }
+                                            .frame(width: 44, height: 44)
+                                            .contentShape(Rectangle())
                                         }
-                                        .buttonStyle(.plain)
+                                        .buttonStyle(.borderless)
 
                                         // Play Button
-                                        Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                                            .font(.lora(size: 20, weight: .bold))
-                                            .foregroundColor(isCurrentTrack ? .primary : .secondary)
+                                        Button {
+                                            if isPlaying {
+                                                playbackService.pause()
+                                            } else {
+                                                playbackService.play(track: track)
+                                            }
+                                        } label: {
+                                            Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                                                .font(.lora(size: 20, weight: .bold))
+                                                .foregroundColor(isCurrentTrack ? .primary : .secondary)
+                                        }
+                                        .buttonStyle(.borderless)
                                     }
                                     .padding(.horizontal, isCurrentTrack ? 12 : 16)
                                     .padding(.vertical, 8)
@@ -166,29 +194,7 @@ struct ArtistDetailView: View {
                                             : Color.clear
                                     )
                                     .cornerRadius(8)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        playTrack(track)
-                                    }
 
-                                        // QuickSendBar appears below track when sharing
-                                        if showShareSheetForTrackId == track.id {
-                                            QuickSendBar(
-                                                track: track,
-                                                onDismiss: {
-                                                    withAnimation {
-                                                        showShareSheetForTrackId = nil
-                                                    }
-                                                },
-                                                onSendComplete: { sentToFriends in
-                                                    handleShareComplete(sentToFriends: sentToFriends)
-                                                },
-                                                additionalBottomInset: QuickSendBar.Layout.overlayInset
-                                            )
-                                            .environmentObject(authState)
-                                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                                            .zIndex(QuickSendBar.Layout.overlayZ)
-                                        }
                                     }
                                 }
                             }
@@ -309,7 +315,32 @@ struct ArtistDetailView: View {
                 }
             }
             .allowsHitTesting(true)
+
+            // Pending Selection Bar
+            if let pendingTrack = pendingDailySong {
+                VStack {
+                    Spacer()
+                    DailySongSelectionBar(
+                        track: pendingTrack,
+                        note: $dailySongNote,
+                        isFocused: _isNoteFieldFocused,
+                        onSend: {
+                            submitDailySong(track: pendingTrack, note: dailySongNote)
+                        },
+                        onCancel: {
+                            withAnimation {
+                                pendingDailySong = nil
+                                dailySongNote = ""
+                                selectedDailyTrackId = todaysDailySong?.trackId
+                            }
+                        }
+                    )
+                    .transition(.move(edge: .bottom))
+                }
+                .zIndex(100)
+            }
         }
+        .toast(isPresented: $showDailySongToast, message: dailySongToastMessage, type: .success, duration: 3.0)
         .navigationTitle("Artist")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -327,6 +358,7 @@ struct ArtistDetailView: View {
         .fullScreenSwipeBack()
         .onAppear {
             loadTopTracks()
+            loadTodaysDailySong()
             // Subscribe to keyboard notifications and store observers for proper cleanup
             keyboardShowObserver = NotificationCenter.default.addObserver(
                 forName: UIResponder.keyboardWillShowNotification,
@@ -432,13 +464,73 @@ struct ArtistDetailView: View {
         PlaybackService.shared.play(track: track)
     }
 
-    private func handleShareComplete(sentToFriends: [User]) {
-        // Check if this is a close signal (empty array)
-        if sentToFriends.isEmpty {
-            showShareSheetForTrackId = nil
+    private func loadTodaysDailySong() {
+        guard let userId = authState.currentUser?.id else { return }
+
+        Task {
+            do {
+                todaysDailySong = try await ShareService.shared.getTodaysDailySong(for: userId)
+                selectedDailyTrackId = todaysDailySong?.trackId
+            } catch {
+                print("Failed to load daily song: \(error)")
+            }
         }
-        // Otherwise keep QuickSendBar open for more sends
-        // Feedback is handled directly in QuickSendBar
+    }
+
+    private func selectDailySong(_ track: MusicItem) {
+        // Toggle selection: if already selected, deselect
+        if pendingDailySong?.id == track.id {
+            withAnimation {
+                pendingDailySong = nil
+                selectedDailyTrackId = todaysDailySong?.trackId
+                dailySongNote = ""
+            }
+        } else {
+            // Otherwise select new track
+            withAnimation {
+                pendingDailySong = track
+                selectedDailyTrackId = track.id
+                dailySongNote = ""
+            }
+        }
+    }
+
+    private func submitDailySong(track: MusicItem, note: String) {
+        guard let userId = authState.currentUser?.id else { return }
+
+        // Prevent double-submission
+        guard !isSubmittingDailySong else {
+            print("⚠️ Already submitting daily song, ignoring duplicate tap")
+            return
+        }
+
+        isSubmittingDailySong = true
+
+        Task {
+            defer {
+                Task { @MainActor in
+                    isSubmittingDailySong = false
+                }
+            }
+
+            do {
+                let share = try await ShareService.shared.selectDailySong(track: track, note: note.isEmpty ? nil : note, userId: userId)
+                todaysDailySong = share
+
+                dailySongToastMessage = "🔥 \(track.name) is your song today!"
+                showDailySongToast = true
+
+                await MainActor.run {
+                    selectedDailyTrackId = share.trackId
+                    pendingDailySong = nil
+                    dailySongNote = ""
+                    dismiss()
+                }
+            } catch {
+                dailySongToastMessage = "❌ \(error.localizedDescription)"
+                showDailySongToast = true
+            }
+        }
     }
 }
 

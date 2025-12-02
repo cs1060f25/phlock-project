@@ -10,12 +10,18 @@ struct AnimatedPlayingIndicator: View {
     private let barCount = 3
     private let barSpacing: CGFloat = 2
 
+    private var safeSize: CGFloat {
+        size > 0 ? size : 16 // Default fallback size
+    }
+
     var body: some View {
+        let barWidth = max((safeSize - CGFloat(barCount - 1) * barSpacing) / CGFloat(barCount), 1)
+
         HStack(alignment: .bottom, spacing: barSpacing) {
             ForEach(0..<barCount, id: \.self) { index in
-                RoundedRectangle(cornerRadius: size * 0.1)
+                RoundedRectangle(cornerRadius: safeSize * 0.1)
                     .fill(Color.primary)
-                    .frame(width: (size - CGFloat(barCount - 1) * barSpacing) / CGFloat(barCount),
+                    .frame(width: barWidth,
                            height: calculateBarHeight(for: index))
                     .animation(
                         isPlaying
@@ -45,11 +51,11 @@ struct AnimatedPlayingIndicator: View {
 
     private func calculateBarHeight(for index: Int) -> CGFloat {
         if !isPlaying {
-            return size * 0.3  // Static short bars when not playing
+            return safeSize * 0.3  // Static short bars when not playing
         }
 
-        let baseHeight = size * 0.3
-        let maxHeight = size * 0.9
+        let baseHeight = safeSize * 0.3
+        let maxHeight = safeSize * 0.9
         let amplitude = maxHeight - baseHeight
 
         return baseHeight + amplitude * CGFloat(animationPhase[index])

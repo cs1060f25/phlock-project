@@ -109,8 +109,6 @@ struct SignInView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
-        // Disable the global keyboard dismiss gesture so SignInWithAppleButton can receive touches
-        .disableGlobalKeyboardDismiss(true)
     }
 
     // MARK: - Apple Sign In

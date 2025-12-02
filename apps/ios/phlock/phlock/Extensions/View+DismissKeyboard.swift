@@ -31,8 +31,8 @@ private struct KeyboardDismissOnTouchModifier: ViewModifier {
         Group {
             if isEnabled && !isDisabled {
                 content.simultaneousGesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { _ in
+                    TapGesture()
+                        .onEnded { _ in
                             guard !keyboardDismissCoordinator.isDisabled else { return }
                             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                         }

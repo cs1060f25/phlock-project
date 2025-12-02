@@ -3,17 +3,86 @@ import Supabase
 
 /// Service for follow-related operations (follow, unfollow, phlock management)
 /// Uses the unilateral follow model where A can follow B without B following A
+/// Thread-safe using actor isolation for cache access
 class FollowService {
     static let shared = FollowService()
 
     private let supabase = PhlockSupabaseClient.shared.client
 
-    // Cache for follow data
-    private var followingCache: [UUID: [User]] = [:]        // Users this person follows
-    private var followersCache: [UUID: [User]] = [:]        // Users who follow this person
-    private var phlockMembersCache: [UUID: [FollowWithPosition]] = [:]
-    private var cacheTimestamp: [String: Date] = [:]
-    private let cacheExpiration: TimeInterval = 60 // 1 minute
+    // Thread-safe cache actor
+    private actor CacheStore {
+        var followingCache: [UUID: [User]] = [:]
+        var followersCache: [UUID: [User]] = [:]
+        var phlockMembersCache: [UUID: [FollowWithPosition]] = [:]
+        var cacheTimestamp: [String: Date] = [:]
+        let cacheExpiration: TimeInterval = 60 // 1 minute
+
+        func getFollowing(for userId: UUID) -> [User]? {
+            let cacheKey = "following_\(userId.uuidString)"
+            guard let cached = followingCache[userId],
+                  let timestamp = cacheTimestamp[cacheKey],
+                  Date().timeIntervalSince(timestamp) < cacheExpiration else {
+                return nil
+            }
+            return cached
+        }
+
+        func setFollowing(_ users: [User], for userId: UUID) {
+            let cacheKey = "following_\(userId.uuidString)"
+            followingCache[userId] = users
+            cacheTimestamp[cacheKey] = Date()
+        }
+
+        func getFollowers(for userId: UUID) -> [User]? {
+            let cacheKey = "followers_\(userId.uuidString)"
+            guard let cached = followersCache[userId],
+                  let timestamp = cacheTimestamp[cacheKey],
+                  Date().timeIntervalSince(timestamp) < cacheExpiration else {
+                return nil
+            }
+            return cached
+        }
+
+        func setFollowers(_ users: [User], for userId: UUID) {
+            let cacheKey = "followers_\(userId.uuidString)"
+            followersCache[userId] = users
+            cacheTimestamp[cacheKey] = Date()
+        }
+
+        func getPhlockMembers(for userId: UUID) -> [FollowWithPosition]? {
+            let cacheKey = "phlock_\(userId.uuidString)"
+            guard let cached = phlockMembersCache[userId],
+                  let timestamp = cacheTimestamp[cacheKey],
+                  Date().timeIntervalSince(timestamp) < cacheExpiration else {
+                return nil
+            }
+            return cached
+        }
+
+        func setPhlockMembers(_ members: [FollowWithPosition], for userId: UUID) {
+            let cacheKey = "phlock_\(userId.uuidString)"
+            phlockMembersCache[userId] = members
+            cacheTimestamp[cacheKey] = Date()
+        }
+
+        func clear(for userId: UUID) {
+            followingCache.removeValue(forKey: userId)
+            followersCache.removeValue(forKey: userId)
+            phlockMembersCache.removeValue(forKey: userId)
+            cacheTimestamp.removeValue(forKey: "following_\(userId.uuidString)")
+            cacheTimestamp.removeValue(forKey: "followers_\(userId.uuidString)")
+            cacheTimestamp.removeValue(forKey: "phlock_\(userId.uuidString)")
+        }
+
+        func clearAll() {
+            followingCache.removeAll()
+            followersCache.removeAll()
+            phlockMembersCache.removeAll()
+            cacheTimestamp.removeAll()
+        }
+    }
+
+    private let cache = CacheStore()
 
     private init() {}
 
@@ -127,11 +196,8 @@ class FollowService {
 
     /// Get all users that a user is following (with caching)
     func getFollowing(for userId: UUID) async throws -> [User] {
-        let cacheKey = "following_\(userId.uuidString)"
-        if let cached = followingCache[userId],
-           let timestamp = cacheTimestamp[cacheKey],
-           Date().timeIntervalSince(timestamp) < cacheExpiration {
-            print("⚡️ Using cached following list")
+        // Check cache first (thread-safe via actor)
+        if let cached = await cache.getFollowing(for: userId) {
             return cached
         }
 
@@ -147,8 +213,7 @@ class FollowService {
         let followingIds = follows.map { $0.followingId }
 
         guard !followingIds.isEmpty else {
-            followingCache[userId] = []
-            cacheTimestamp[cacheKey] = Date()
+            await cache.setFollowing([], for: userId)
             return []
         }
 
@@ -160,19 +225,15 @@ class FollowService {
             .execute()
             .value
 
-        followingCache[userId] = users
-        cacheTimestamp[cacheKey] = Date()
+        await cache.setFollowing(users, for: userId)
 
         return users
     }
 
     /// Get all users who follow a user (with caching)
     func getFollowers(for userId: UUID) async throws -> [User] {
-        let cacheKey = "followers_\(userId.uuidString)"
-        if let cached = followersCache[userId],
-           let timestamp = cacheTimestamp[cacheKey],
-           Date().timeIntervalSince(timestamp) < cacheExpiration {
-            print("⚡️ Using cached followers list")
+        // Check cache first (thread-safe via actor)
+        if let cached = await cache.getFollowers(for: userId) {
             return cached
         }
 
@@ -188,8 +249,7 @@ class FollowService {
         let followerIds = follows.map { $0.followerId }
 
         guard !followerIds.isEmpty else {
-            followersCache[userId] = []
-            cacheTimestamp[cacheKey] = Date()
+            await cache.setFollowers([], for: userId)
             return []
         }
 
@@ -201,8 +261,7 @@ class FollowService {
             .execute()
             .value
 
-        followersCache[userId] = users
-        cacheTimestamp[cacheKey] = Date()
+        await cache.setFollowers(users, for: userId)
 
         return users
     }
@@ -220,11 +279,8 @@ class FollowService {
 
     /// Get the user's phlock members (up to 5 users they follow with positions 1-5)
     func getPhlockMembers(for userId: UUID) async throws -> [FollowWithPosition] {
-        let cacheKey = "phlock_\(userId.uuidString)"
-        if let cached = phlockMembersCache[userId],
-           let timestamp = cacheTimestamp[cacheKey],
-           Date().timeIntervalSince(timestamp) < cacheExpiration {
-            print("⚡️ Using cached phlock members")
+        // Check cache first (thread-safe via actor)
+        if let cached = await cache.getPhlockMembers(for: userId) {
             return cached
         }
 
@@ -239,8 +295,7 @@ class FollowService {
             .value
 
         guard !follows.isEmpty else {
-            phlockMembersCache[userId] = []
-            cacheTimestamp[cacheKey] = Date()
+            await cache.setPhlockMembers([], for: userId)
             return []
         }
 
@@ -266,8 +321,7 @@ class FollowService {
         // Sort by position
         result.sort { $0.position < $1.position }
 
-        phlockMembersCache[userId] = result
-        cacheTimestamp[cacheKey] = Date()
+        await cache.setPhlockMembers(result, for: userId)
 
         return result
     }
@@ -459,15 +513,22 @@ class FollowService {
     /// This queries the phlock_history table which tracks all-time phlock additions
     func getHistoricalReach(userId: UUID) async throws -> Int {
         // Query phlock_history for distinct phlock owners who have ever added this user
+        // Use lowercased UUID to match Postgres format
+        let userIdString = userId.uuidString.lowercased()
+        print("🔍 getHistoricalReach: querying for phlock_member_id = \(userIdString)")
+
         let history: [[String: String]] = try await supabase
             .from("phlock_history")
             .select("phlock_owner_id")
-            .eq("phlock_member_id", value: userId.uuidString)
+            .eq("phlock_member_id", value: userIdString)
             .execute()
             .value
 
+        print("🔍 getHistoricalReach: got \(history.count) records: \(history)")
+
         // Count unique phlock owners
         let uniqueOwners = Set(history.compactMap { $0["phlock_owner_id"] })
+        print("🔍 getHistoricalReach: unique owners = \(uniqueOwners.count)")
         return uniqueOwners.count
     }
 
@@ -606,22 +667,142 @@ class FollowService {
         return requests.count
     }
 
+    // MARK: - Friend Recommendations
+
+    /// Get recommended friends for the current user
+    /// Aggregates recommendations from contacts, mutual friends, and general discovery
+    func getRecommendedFriends(for userId: UUID, contactMatches: [ContactMatch] = []) async throws -> [RecommendedFriend] {
+        var recommendations: [RecommendedFriend] = []
+        var seenUserIds = Set<UUID>()
+
+        // Get users we're already following to exclude them
+        let following = try await getFollowing(for: userId)
+        let followingIds = Set(following.map { $0.id })
+
+        // 1. Add contact matches (highest priority)
+        for contact in contactMatches {
+            guard !followingIds.contains(contact.user.id),
+                  contact.user.id != userId,
+                  !seenUserIds.contains(contact.user.id) else { continue }
+            recommendations.append(RecommendedFriend(user: contact.user, context: .inContacts))
+            seenUserIds.insert(contact.user.id)
+        }
+
+        // 2. Get mutual friends (friends of friends)
+        let mutualRecommendations = try await getMutualFriendRecommendations(for: userId, excluding: followingIds.union(seenUserIds))
+        for rec in mutualRecommendations where !seenUserIds.contains(rec.user.id) {
+            recommendations.append(rec)
+            seenUserIds.insert(rec.user.id)
+        }
+
+        // 3. Get "you may know" recommendations (users with similar activity or popular users)
+        let youMayKnow = try await getYouMayKnowRecommendations(for: userId, excluding: followingIds.union(seenUserIds))
+        for rec in youMayKnow where !seenUserIds.contains(rec.user.id) {
+            recommendations.append(rec)
+            seenUserIds.insert(rec.user.id)
+        }
+
+        return recommendations
+    }
+
+    /// Get recommendations based on mutual friends (friends of friends)
+    /// Uses parallel fetching to avoid N+1 query performance issues
+    private func getMutualFriendRecommendations(for userId: UUID, excluding: Set<UUID>) async throws -> [RecommendedFriend] {
+        // Get who I follow
+        let myFollowing = try await getFollowing(for: userId)
+
+        guard !myFollowing.isEmpty else { return [] }
+
+        // Fetch all friends' following lists in parallel (limit to 10 to reduce load)
+        let friendsToQuery = Array(myFollowing.prefix(10))
+
+        // Use TaskGroup for parallel fetching
+        var friendsOfFriends: [UUID: Int] = [:]
+
+        await withTaskGroup(of: [User].self) { group in
+            for friend in friendsToQuery {
+                group.addTask {
+                    (try? await self.getFollowing(for: friend.id)) ?? []
+                }
+            }
+
+            for await theirFollowing in group {
+                for user in theirFollowing {
+                    guard user.id != userId, !excluding.contains(user.id) else { continue }
+                    friendsOfFriends[user.id, default: 0] += 1
+                }
+            }
+        }
+
+        // Sort by mutual count and take top 20
+        let sortedIds = friendsOfFriends
+            .sorted { $0.value > $1.value }
+            .prefix(20)
+            .map { $0.key }
+
+        guard !sortedIds.isEmpty else { return [] }
+
+        // Fetch user data
+        let users: [User] = try await supabase
+            .from("users")
+            .select("*")
+            .in("id", values: sortedIds.map { $0.uuidString })
+            .execute()
+            .value
+
+        let userDict = Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
+
+        return sortedIds.compactMap { id -> RecommendedFriend? in
+            guard let user = userDict[id] else { return nil }
+            return RecommendedFriend(
+                user: user,
+                context: .mutualFriends,
+                mutualCount: friendsOfFriends[id]
+            )
+        }
+    }
+
+    /// Get "you may know" recommendations based on popularity or recent activity
+    private func getYouMayKnowRecommendations(for userId: UUID, excluding: Set<UUID>) async throws -> [RecommendedFriend] {
+        // Get popular users (high phlock_count) that we're not following
+        let excludeIds = Array(excluding).map { $0.uuidString }
+
+        var query = supabase
+            .from("users")
+            .select("*")
+            .neq("id", value: userId.uuidString)
+            .gt("phlock_count", value: 0)
+            .order("phlock_count", ascending: false)
+            .limit(30)
+
+        // Note: Can't directly exclude array in Supabase Swift SDK easily,
+        // so we'll filter after fetching
+        let users: [User] = try await query.execute().value
+
+        return users
+            .filter { !excluding.contains($0.id) }
+            .prefix(15)
+            .map { RecommendedFriend(user: $0, context: .youMayKnow) }
+    }
+
+    /// Get recommendations grouped by context type for section display
+    func getRecommendationsByContext(for userId: UUID, contactMatches: [ContactMatch] = []) async throws -> [RecommendationContext: [RecommendedFriend]] {
+        let all = try await getRecommendedFriends(for: userId, contactMatches: contactMatches)
+        return Dictionary(grouping: all) { $0.context }
+    }
+
     // MARK: - Cache Management
 
     func clearCache(for userId: UUID) {
-        followingCache.removeValue(forKey: userId)
-        followersCache.removeValue(forKey: userId)
-        phlockMembersCache.removeValue(forKey: userId)
-        cacheTimestamp.removeValue(forKey: "following_\(userId.uuidString)")
-        cacheTimestamp.removeValue(forKey: "followers_\(userId.uuidString)")
-        cacheTimestamp.removeValue(forKey: "phlock_\(userId.uuidString)")
+        Task {
+            await cache.clear(for: userId)
+        }
     }
 
     func clearAllCaches() {
-        followingCache.removeAll()
-        followersCache.removeAll()
-        phlockMembersCache.removeAll()
-        cacheTimestamp.removeAll()
+        Task {
+            await cache.clearAll()
+        }
     }
 }
 

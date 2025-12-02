@@ -130,26 +130,26 @@ struct PhlockView: View {
 
     private var sortedPhlockItems: [PhlockItem] {
         var items: [PhlockItem] = []
-        
-        // 1. Members with songs (sorted by time)
+
+        // 1. Members with songs (sorted by streak count, highest first)
         let membersWithSongs = phlockMembers.compactMap { member -> (FriendWithPosition, Share)? in
             guard let song = dailySongs.first(where: { $0.senderId == member.user.id }) else { return nil }
             return (member, song)
-        }.sorted { $0.1.createdAt < $1.1.createdAt }
-        
+        }.sorted { $0.0.user.dailySongStreak > $1.0.user.dailySongStreak }
+
         for (member, song) in membersWithSongs {
             items.append(PhlockItem(id: member.user.id, member: member.user, song: song, type: .song))
         }
-        
-        // 2. Members without songs (sorted alphabetically)
+
+        // 2. Members without songs (sorted by streak count, highest first)
         let membersWithoutSongs = phlockMembers.filter { member in
             !dailySongs.contains(where: { $0.senderId == member.user.id })
-        }.sorted { $0.user.displayName.localizedCaseInsensitiveCompare($1.user.displayName) == .orderedAscending }
-        
+        }.sorted { $0.user.dailySongStreak > $1.user.dailySongStreak }
+
         for member in membersWithoutSongs {
             items.append(PhlockItem(id: member.user.id, member: member.user, song: nil, type: .waiting))
         }
-        
+
         // 3. Empty slots (up to 5 total)
         let currentCount = items.count
         if currentCount < 5 {
@@ -157,7 +157,7 @@ struct PhlockView: View {
                 items.append(PhlockItem(id: UUID(), member: nil, song: nil, type: .empty))
             }
         }
-        
+
         return items
     }
 
@@ -170,73 +170,67 @@ struct PhlockView: View {
     var body: some View {
         NavigationStack(path: $navigationPath) {
             ZStack {
-                VStack(spacing: 0) {
-                    if isLoading {
-                        ProgressView()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if let error = errorMessage {
-                        FeedErrorStateView(
-                            error: error,
-                            onRetry: {
-                                Task { await loadDailyPlaylist() }
-                            }
-                        )
-                    } else if dailySongs.isEmpty && phlockMembers.isEmpty {
-                        EmptyDailyPlaylistView(
-                            phlockMembers: phlockMembers,
-                            myDailySong: myDailySong,
-                            isPlaying: playbackService.currentTrack?.id == myDailySong?.trackId && playbackService.isPlaying,
-                            onAddMemberTapped: { position in
-                                selectedPositionToAdd = position
-                                showAddSheet = true
-                            },
-                            onSelectDailySong: {
-                                showDailySongSheet = true
-                            },
-                            onPlayMyPick: {
-                                if let mySong = myDailySong {
-                                    if playbackService.currentTrack?.id == mySong.trackId && playbackService.isPlaying {
-                                        playbackService.pause()
-                                    } else {
-                                        playTrack(song: mySong)
-                                    }
+                if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let error = errorMessage {
+                    FeedErrorStateView(
+                        error: error,
+                        onRetry: {
+                            Task { await loadDailyPlaylist() }
+                        }
+                    )
+                } else {
+                    // Use immersive layout as default
+                    PhlockImmersiveLayout(
+                        items: sortedPhlockItems,
+                        dailySongs: dailySongs,
+                        myDailySong: myDailySong,
+                        savedTrackIds: savedTrackIds,
+                        nudgedUserIds: nudgedUserIds,
+                        currentlyPlayingId: playbackService.currentTrack?.id,
+                        isPlaying: playbackService.isPlaying,
+                        onPlayTapped: { song, shouldAutoPlay, savedPosition in
+                            playTrack(song: song, autoPlay: shouldAutoPlay, fromPosition: savedPosition)
+                        },
+                        onSwapTapped: { member in
+                            selectedMemberToSwap = member
+                            showSwapSheet = true
+                        },
+                        onAddToLibrary: { song in
+                            addToLibrary(song)
+                        },
+                        onRemoveFromLibrary: { song in
+                            removeFromLibrary(song)
+                        },
+                        onProfileTapped: { user in
+                            navigationPath.append(PhlockDestination.userProfile(user))
+                        },
+                        onNudgeTapped: { member in
+                            nudgeMember(member)
+                        },
+                        onAddMemberTapped: {
+                            showAddSheet = true
+                        },
+                        onSelectDailySong: {
+                            showDailySongSheet = true
+                        },
+                        onPlayMyPick: {
+                            if let mySong = myDailySong {
+                                if playbackService.currentTrack?.id == mySong.trackId && playbackService.isPlaying {
+                                    playbackService.pause()
+                                } else {
+                                    playTrack(song: mySong)
                                 }
                             }
-                        )
-                    } else {
-                        dailyPlaylistList
-                    }
-                }
-                .disabled(shouldGatePhlock)
-                .blur(radius: shouldGatePhlock ? 4 : 0)
-
-                if shouldGatePhlock {
-                    Rectangle()
-                        .fill(.thinMaterial)
-                        .opacity(0.6)
-                        .mask(
-                            LinearGradient(
-                                gradient: Gradient(stops: [
-                                    .init(color: .clear, location: 0.0),
-                                    .init(color: .white, location: 0.06),
-                                    .init(color: .white, location: 0.94),
-                                    .init(color: .clear, location: 1.0)
-                                ]),
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .ignoresSafeArea(edges: [.horizontal])
-                        .allowsHitTesting(false)
-
-                    DailySongGateView {
-                        showDailySongSheet = true
-                    }
-                    .transition(.opacity)
+                        },
+                        onOpenFullPlayer: {
+                            navigationState.showFullPlayer = true
+                        }
+                    )
+                    .ignoresSafeArea(edges: .top)
                 }
             }
-            .navigationTitle("your phlock")
-            .navigationBarTitleDisplayMode(.large)
             .navigationDestination(for: PhlockDestination.self) { destination in
                 switch destination {
                 case .profile:
@@ -552,6 +546,7 @@ struct PhlockView: View {
             // Sort daily songs by time (earliest first)
             dailySongs.sort { $0.createdAt < $1.createdAt }
 
+            // Initial saved state from database
             savedTrackIds = Set(dailySongs.compactMap { share in
                 share.savedAt != nil ? share.trackId : nil
             })
@@ -563,6 +558,9 @@ struct PhlockView: View {
 
             hasLoadedPhlockOnce = true
             print("✅ Loaded \(dailySongs.count) daily songs from \(phlockMembers.count) phlock members")
+
+            // Check actual Spotify library status (async, doesn't block UI)
+            await checkSpotifyLibraryStatus(for: dailySongs)
         } catch is CancellationError {
             print("ℹ️ Daily playlist load cancelled")
         } catch {
@@ -944,17 +942,21 @@ struct PhlockView: View {
         )
     }
 
-    private func playTrack(song: Share) {
+    private func playTrack(song: Share, autoPlay: Bool = true, fromPosition: Double? = nil) {
         let track = musicItem(from: song)
 
         // Pass saved track IDs to PlaybackService for FullScreenPlayerView to use
         playbackService.savedTrackIds = savedTrackIds
 
+        // Pass autoPlay and seekToPosition directly to startQueue
+        // This ensures the track starts in the correct state without play-then-pause jitter
         playbackService.startQueue(
             tracks: [track],
             startAt: 0,
             sourceIds: [Optional(song.id.uuidString)],
-            showMiniPlayer: true
+            showMiniPlayer: false,  // Immersive layout has its own controls
+            autoPlay: autoPlay,
+            seekToPosition: fromPosition
         )
     }
 
@@ -967,7 +969,7 @@ struct PhlockView: View {
             albumArtUrl: share.albumArtUrl,
             isrc: nil,
             playedAt: nil,
-            spotifyId: nil,
+            spotifyId: share.trackId,  // track_id is the Spotify ID
             appleMusicId: nil,
             popularity: nil,
             followerCount: nil

@@ -100,3 +100,61 @@ struct FollowRequestWithUser: Identifiable {
     let request: FollowRequest
     let user: User  // The user who sent the request
 }
+
+// MARK: - Friend Recommendations
+
+/// Context for why a user is being recommended
+enum RecommendationContext: String, CaseIterable {
+    case inContacts = "in_contacts"
+    case recentActivity = "recent_activity"
+    case youMayKnow = "you_may_know"
+    case mutualFriends = "mutual_friends"
+
+    var displayText: String {
+        switch self {
+        case .inContacts:
+            return "In your contacts"
+        case .recentActivity:
+            return "Based on recent activity"
+        case .youMayKnow:
+            return "You may know"
+        case .mutualFriends:
+            return "Mutual friends"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .inContacts:
+            return "person.crop.circle"
+        case .recentActivity:
+            return "clock.arrow.circlepath"
+        case .youMayKnow:
+            return "person.2"
+        case .mutualFriends:
+            return "person.3"
+        }
+    }
+}
+
+/// A recommended friend with context about why they're recommended
+struct RecommendedFriend: Identifiable, Hashable {
+    var id: UUID { user.id }
+    let user: User
+    let context: RecommendationContext
+    let mutualCount: Int?  // Number of mutual friends (if context is mutualFriends)
+
+    init(user: User, context: RecommendationContext, mutualCount: Int? = nil) {
+        self.user = user
+        self.context = context
+        self.mutualCount = mutualCount
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
+    static func == (lhs: RecommendedFriend, rhs: RecommendedFriend) -> Bool {
+        lhs.id == rhs.id
+    }
+}
