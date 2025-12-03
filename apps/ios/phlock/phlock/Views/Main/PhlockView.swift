@@ -114,6 +114,12 @@ struct PhlockView: View {
     @State private var myDailySongScrollToTopTrigger = 0
     @State private var hasLoadedPhlockOnce = false
 
+    // Edit mode state
+    @State private var showFriendPicker = false
+    @State private var editMemberToSwap: User?  // Member being replaced in edit mode
+    @State private var availableFriendsForEdit: [User] = []
+    @State private var isLoadingFriends = false
+
     // Helper struct to organize phlock items
     struct PhlockItem: Identifiable {
         let id: UUID
@@ -226,6 +232,19 @@ struct PhlockView: View {
                         },
                         onOpenFullPlayer: {
                             navigationState.showFullPlayer = true
+                        },
+                        onEditSwapTapped: { member in
+                            editMemberToSwap = member
+                            Task { await loadAvailableFriendsForEdit() }
+                            showFriendPicker = true
+                        },
+                        onEditRemoveTapped: { member in
+                            Task { await handleRemoveMember(user: member) }
+                        },
+                        onEditAddTapped: {
+                            editMemberToSwap = nil
+                            Task { await loadAvailableFriendsForEdit() }
+                            showFriendPicker = true
                         }
                     )
                     .ignoresSafeArea(edges: .top)
@@ -291,6 +310,62 @@ struct PhlockView: View {
                     }
                 }
             }
+            .overlay(alignment: .bottom) {
+                // Friend picker panel for edit mode
+                if showFriendPicker {
+                    ZStack {
+                        // Dimmed background
+                        Color.black.opacity(0.4)
+                            .ignoresSafeArea()
+                            .onTapGesture {
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    showFriendPicker = false
+                                    editMemberToSwap = nil
+                                }
+                            }
+
+                        // Panel
+                        VStack {
+                            Spacer()
+                            FriendPickerPanel(
+                                availableFriends: availableFriendsForEdit,
+                                isSwapMode: editMemberToSwap != nil,
+                                memberBeingReplaced: editMemberToSwap,
+                                onFriendSelected: { selectedFriend in
+                                    Task {
+                                        if let memberToReplace = editMemberToSwap {
+                                            // Swap mode
+                                            await handleEditSwap(oldMember: memberToReplace, newMember: selectedFriend)
+                                        } else {
+                                            // Add mode
+                                            let usedPositions = Set(phlockMembers.map { $0.position })
+                                            for pos in 1...5 {
+                                                if !usedPositions.contains(pos) {
+                                                    handleAddMember(user: selectedFriend, position: pos)
+                                                    break
+                                                }
+                                            }
+                                        }
+                                        withAnimation(.easeInOut(duration: 0.25)) {
+                                            showFriendPicker = false
+                                            editMemberToSwap = nil
+                                        }
+                                    }
+                                },
+                                onDismiss: {
+                                    withAnimation(.easeInOut(duration: 0.25)) {
+                                        showFriendPicker = false
+                                        editMemberToSwap = nil
+                                    }
+                                }
+                            )
+                            .padding(.bottom, 100) // Above tab bar
+                        }
+                    }
+                    .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: showFriendPicker)
         }
         .toast(isPresented: $showToast, message: toastMessage, type: toastType)
         .task {
@@ -319,7 +394,7 @@ struct PhlockView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { _ in
             if autoplayEnabled {
-                playbackService.skipForward(wrap: false)
+                playbackService.skipForward(wrap: true)
             }
         }
     }
@@ -847,6 +922,84 @@ struct PhlockView: View {
                 showToast = true
                 print("❌ Error scheduling swap: \(error)")
             }
+        }
+    }
+
+    // MARK: - Edit Mode Functions
+
+    private func loadAvailableFriendsForEdit() async {
+        guard let userId = authState.currentUser?.id else { return }
+
+        isLoadingFriends = true
+        do {
+            let following = try await FollowService.shared.getFollowing(for: userId)
+            let phlockMemberIds = Set(phlockMembers.map { $0.user.id })
+            // Filter out users already in phlock
+            await MainActor.run {
+                availableFriendsForEdit = following.filter { !phlockMemberIds.contains($0.id) }
+                isLoadingFriends = false
+            }
+        } catch {
+            print("❌ Failed to load friends for edit: \(error)")
+            await MainActor.run {
+                availableFriendsForEdit = []
+                isLoadingFriends = false
+            }
+        }
+    }
+
+    private func handleEditSwap(oldMember: User, newMember: User) async {
+        do {
+            guard let userId = authState.currentUser?.id else { return }
+            let swappedImmediately = try await UserService.shared.scheduleSwap(
+                oldMemberId: oldMember.id,
+                newMemberId: newMember.id,
+                for: userId
+            )
+
+            await MainActor.run {
+                if swappedImmediately {
+                    toastMessage = "Swapped \(oldMember.displayName) for \(newMember.displayName)"
+                    toastType = .success
+                } else {
+                    toastMessage = "Swap scheduled for midnight"
+                    toastType = .info
+                }
+                showToast = true
+            }
+
+            // Refresh to show change
+            await loadDailyPlaylist()
+        } catch {
+            await MainActor.run {
+                toastMessage = "Failed to swap"
+                toastType = .error
+                showToast = true
+            }
+            print("❌ Error in edit swap: \(error)")
+        }
+    }
+
+    private func handleRemoveMember(user: User) async {
+        do {
+            guard let userId = authState.currentUser?.id else { return }
+            try await UserService.shared.removeFromPhlock(friendId: user.id, for: userId)
+
+            await MainActor.run {
+                toastMessage = "Removed \(user.displayName) from phlock"
+                toastType = .success
+                showToast = true
+            }
+
+            // Refresh to show change
+            await loadDailyPlaylist()
+        } catch {
+            await MainActor.run {
+                toastMessage = "Failed to remove"
+                toastType = .error
+                showToast = true
+            }
+            print("❌ Error removing member: \(error)")
         }
     }
 

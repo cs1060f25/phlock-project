@@ -193,6 +193,9 @@ class AuthenticationState: ObservableObject {
     // MARK: - Sign Out
 
     func signOut() async {
+        // Stop any playing audio before signing out
+        PlaybackService.shared.stopPlayback()
+
         // Sign out from both services (ignore errors)
         try? await AuthServiceV3.shared.signOut()
         try? await AuthServiceV2.shared.signOut()

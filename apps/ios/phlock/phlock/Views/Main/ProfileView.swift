@@ -50,6 +50,9 @@ struct ProfileView: View {
     // Historical reach: unique users who have EVER had this user in their phlock
     @State private var historicalReachCount: Int = 0
 
+    // Feedback dialog (only for @woon)
+    @State private var showFeedbackDialog = false
+
     var body: some View {
         ScrollViewReader { scrollProxy in
             ScrollView {
@@ -61,135 +64,157 @@ struct ProfileView: View {
                 VStack(spacing: 24) {
                     if let user = authState.currentUser {
                         // Profile Header
-                        VStack(spacing: 16) {
-                            // Profile Photo with Streak Badge and Camera Overlay
-                            VStack(spacing: 0) {
-                                Button {
-                                    showImagePicker = true
-                                } label: {
-                                    ZStack {
-                                        // Profile photo or placeholder
-                                        if let photoUrl = user.profilePhotoUrl, let url = URL(string: photoUrl) {
-                                            AsyncImage(url: url) { image in
-                                                image
-                                                    .resizable()
-                                                    .scaledToFill()
-                                            } placeholder: {
+                        VStack(alignment: .leading, spacing: 12) {
+                            // Top row: Profile photo on left, followers/following on right
+                            HStack(alignment: .top, spacing: 16) {
+                                // Profile Photo with Streak Badge and Camera Overlay
+                                VStack(spacing: 0) {
+                                    Button {
+                                        showImagePicker = true
+                                    } label: {
+                                        ZStack {
+                                            // Profile photo or placeholder
+                                            if let photoUrl = user.profilePhotoUrl, let url = URL(string: photoUrl) {
+                                                AsyncImage(url: url) { image in
+                                                    image
+                                                        .resizable()
+                                                        .scaledToFill()
+                                                } placeholder: {
+                                                    ProfilePhotoPlaceholder(displayName: user.displayName)
+                                                }
+                                                .frame(width: 90, height: 90)
+                                                .clipShape(Circle())
+                                            } else {
                                                 ProfilePhotoPlaceholder(displayName: user.displayName)
+                                                    .frame(width: 90, height: 90)
                                             }
-                                            .frame(width: 100, height: 100)
-                                            .clipShape(Circle())
-                                        } else {
-                                            ProfilePhotoPlaceholder(displayName: user.displayName)
-                                                .frame(width: 100, height: 100)
-                                        }
 
-                                        // Camera overlay based on state
-                                        // State 1: Has streak + No photo → Full circle camera overlay
-                                        if user.dailySongStreak > 0 && user.profilePhotoUrl == nil {
+                                            // Camera overlay based on state
+                                            // State 1: Has streak + No photo → Full circle camera overlay
+                                            if user.dailySongStreak > 0 && user.profilePhotoUrl == nil {
+                                                Circle()
+                                                    .fill(Color.black.opacity(0.5))
+                                                    .frame(width: 90, height: 90)
+
+                                                Image(systemName: "camera.fill")
+                                                    .font(.system(size: 24))
+                                                    .foregroundColor(.white)
+                                            }
+                                            // State 2: Has streak + Has photo → No overlay (just tappable)
+                                            // (no overlay needed)
+
+                                            // State 3: No streak → Small camera badge at bottom center
+                                            if user.dailySongStreak == 0 {
+                                                VStack {
+                                                    Spacer()
+                                                    ZStack {
+                                                        Circle()
+                                                            .fill(Color.black.opacity(0.7))
+                                                            .frame(width: 26, height: 26)
+
+                                                        Image(systemName: "camera.fill")
+                                                            .font(.system(size: 11))
+                                                            .foregroundColor(.white)
+                                                    }
+                                                    .offset(y: 5)
+                                                }
+                                                .frame(width: 90, height: 90)
+                                            }
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(isUploadingPhoto)
+                                    .overlay {
+                                        if isUploadingPhoto {
                                             Circle()
                                                 .fill(Color.black.opacity(0.5))
-                                                .frame(width: 100, height: 100)
-
-                                            Image(systemName: "camera.fill")
-                                                .font(.system(size: 28))
-                                                .foregroundColor(.white)
+                                                .frame(width: 90, height: 90)
+                                            ProgressView()
+                                                .tint(.white)
                                         }
-                                        // State 2: Has streak + Has photo → No overlay (just tappable)
-                                        // (no overlay needed)
+                                    }
 
-                                        // State 3: No streak → Small camera badge at bottom center
-                                        if user.dailySongStreak == 0 {
-                                            VStack {
-                                                Spacer()
-                                                ZStack {
-                                                    Circle()
-                                                        .fill(Color.black.opacity(0.7))
-                                                        .frame(width: 28, height: 28)
+                                    // Streak badge overlapping the photo bottom (only when streak > 0)
+                                    if user.dailySongStreak > 0 {
+                                        StreakBadge(streak: user.dailySongStreak, size: .medium)
+                                            .offset(y: -10)
+                                    }
+                                }
 
-                                                    Image(systemName: "camera.fill")
-                                                        .font(.system(size: 12))
-                                                        .foregroundColor(.white)
-                                                }
-                                                .offset(y: 6)
+                                // Right side: Display name at top, stats row below
+                                VStack(alignment: .leading, spacing: 8) {
+                                    // Display Name with Platform Logo
+                                    HStack(spacing: 6) {
+                                        Text(user.displayName)
+                                            .font(.lora(size: 20, weight: .bold))
+
+                                        if let platform = user.resolvedPlatformType {
+                                            Image(platform == .spotify ? "SpotifyLogo" : "AppleMusicLogo")
+                                                .resizable()
+                                                .scaledToFit()
+                                                .frame(width: 16, height: 16)
+                                        }
+                                    }
+
+                                    // Stats Row: picks | followers | following
+                                    HStack(spacing: 0) {
+                                        // Picks
+                                        VStack(spacing: 0) {
+                                            Text("\(pastPicks.count + (todaysPick != nil ? 1 : 0))")
+                                                .font(.lora(size: 16, weight: .bold))
+                                                .foregroundColor(.primary)
+                                            Text("picks")
+                                                .font(.lora(size: 12))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        .frame(maxWidth: .infinity)
+
+                                        // Followers
+                                        Button {
+                                            followListInitialTab = .followers
+                                            showFollowersList = true
+                                        } label: {
+                                            VStack(spacing: 0) {
+                                                Text("\(followerCount)")
+                                                    .font(.lora(size: 16, weight: .bold))
+                                                    .foregroundColor(.primary)
+                                                Text("followers")
+                                                    .font(.lora(size: 12))
+                                                    .foregroundColor(.secondary)
                                             }
-                                            .frame(width: 100, height: 100)
                                         }
+                                        .buttonStyle(.plain)
+                                        .frame(maxWidth: .infinity)
+
+                                        // Following
+                                        Button {
+                                            followListInitialTab = .following
+                                            showFollowersList = true
+                                        } label: {
+                                            VStack(spacing: 0) {
+                                                Text("\(followingCount)")
+                                                    .font(.lora(size: 16, weight: .bold))
+                                                    .foregroundColor(.primary)
+                                                Text("following")
+                                                    .font(.lora(size: 12))
+                                                    .foregroundColor(.secondary)
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+                                        .frame(maxWidth: .infinity)
                                     }
                                 }
-                                .buttonStyle(.plain)
-                                .disabled(isUploadingPhoto)
-                                .overlay {
-                                    if isUploadingPhoto {
-                                        Circle()
-                                            .fill(Color.black.opacity(0.5))
-                                            .frame(width: 100, height: 100)
-                                        ProgressView()
-                                            .tint(.white)
-                                    }
-                                }
-
-                                // Streak badge overlapping the photo bottom (only when streak > 0)
-                                if user.dailySongStreak > 0 {
-                                    StreakBadge(streak: user.dailySongStreak, size: .medium)
-                                        .offset(y: -12)
-                                }
                             }
+                            .padding(.horizontal, 24)
 
-                            // Display Name with Platform Logo
-                            HStack(spacing: 8) {
-                                Text(user.displayName)
-                                    .font(.lora(size: 28, weight: .bold))
-
-                                if let platform = user.resolvedPlatformType {
-                                    Image(platform == .spotify ? "SpotifyLogo" : "AppleMusicLogo")
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(width: 20, height: 20)
-                                }
-                            }
-
-                            // Bio
+                            // Bio (below the row, full width)
                             if let bio = user.bio {
                                 Text(bio)
-                                    .font(.lora(size: 15))
-                                    .multilineTextAlignment(.center)
+                                    .font(.lora(size: 14))
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.leading)
                                     .padding(.horizontal, 24)
                             }
-
-                            // Followers/Following Stats Row
-                            HStack(spacing: 32) {
-                                Button {
-                                    followListInitialTab = .followers
-                                    showFollowersList = true
-                                } label: {
-                                    VStack(spacing: 2) {
-                                        Text("\(followerCount)")
-                                            .font(.lora(size: 18, weight: .bold))
-                                            .foregroundColor(.primary)
-                                        Text("followers")
-                                            .font(.lora(size: 13))
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                .buttonStyle(.plain)
-
-                                Button {
-                                    followListInitialTab = .following
-                                    showFollowersList = true
-                                } label: {
-                                    VStack(spacing: 2) {
-                                        Text("\(followingCount)")
-                                            .font(.lora(size: 18, weight: .bold))
-                                            .foregroundColor(.primary)
-                                        Text("following")
-                                            .font(.lora(size: 13))
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .padding(.top, 8)
 
                             // Edit Profile Button
                             Button {
@@ -197,15 +222,39 @@ struct ProfileView: View {
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "pencil")
-                                        .font(.lora(size: 11))
+                                        .font(.system(size: 10))
                                     Text("edit profile")
-                                        .font(.lora(size: 13))
+                                        .font(.lora(size: 12))
                                 }
                                 .foregroundColor(.secondary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
+                                .cornerRadius(16)
                             }
-                            .padding(.top, 4)
+                            .padding(.horizontal, 24)
+
+                            // Feedback button (only for @woon)
+                            if user.username == "woon" {
+                                Button {
+                                    showFeedbackDialog = true
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "bubble.left.and.bubble.right")
+                                            .font(.system(size: 12))
+                                        Text("reach out")
+                                            .font(.lora(size: 13, weight: .medium))
+                                    }
+                                    .foregroundColor(.primary)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(Color.gray.opacity(colorScheme == .dark ? 0.25 : 0.12))
+                                    .cornerRadius(20)
+                                }
+                                .padding(.horizontal, 24)
+                            }
                         }
-                        .padding(.top, 24)
+                        .padding(.top, 16)
                         
                         // Today's Pick
                         TodaysPickCard(
@@ -323,14 +372,20 @@ struct ProfileView: View {
             // Listen for scroll to top trigger (passed via environment or binding if we kept it, but we removed binding)
             // We'll need to re-add the binding if we want scroll to top to work, but for now focus on the gear icon.
         }
-        .navigationTitle("profile")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItem(placement: .navigationBarLeading) {
+                if let username = authState.currentUser?.username {
+                    Text("@\(username)")
+                        .font(.lora(size: 20, weight: .bold))
+                }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     showSettings = true
                 } label: {
                     Image(systemName: "gearshape")
+                        .font(.system(size: 18))
                         .foregroundColor(.primary)
                 }
             }
@@ -415,6 +470,26 @@ struct ProfileView: View {
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(image: $selectedProfileImage, imageData: $selectedProfileImageData)
         }
+        .confirmationDialog(
+            "How would you like to provide feedback?",
+            isPresented: $showFeedbackDialog,
+            titleVisibility: .visible
+        ) {
+            Button("anonymous form") {
+                if let url = URL(string: "https://docs.google.com/forms/d/e/1FAIpQLSfgipxfs0PlSAJ7L5niN7R7aH4kSE7GvPDqbQlyELwkU8PCrQ/viewform") {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("text me directly") {
+                let phoneNumber = "2016938577"
+                let message = "I have feedback for phlock!"
+                if let encodedMessage = message.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                   let url = URL(string: "sms:\(phoneNumber)&body=\(encodedMessage)") {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        }
         .onChange(of: selectedProfileImageData) { newImageData in
             // Upload the new profile photo when selected
             if let imageData = newImageData {
@@ -425,9 +500,16 @@ struct ProfileView: View {
         }
         .task(id: authState.currentUser?.id) {
             // Re-run whenever the current user changes (including from nil to a value)
-            // This handles both initial load and user changes - no need for separate onAppear
             if let user = authState.currentUser {
                 await loadData(for: user)
+            }
+        }
+        .onAppear {
+            // Refresh data every time the view appears (e.g., when navigating back from another profile)
+            Task {
+                if let user = authState.currentUser {
+                    await loadData(for: user)
+                }
             }
         }
     }

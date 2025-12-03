@@ -529,17 +529,18 @@ struct RecentlyPlayedGridView: View {
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 12, pinnedViews: []) {
-                ForEach(tracks, id: \.id) { track in
+            LazyVGrid(columns: columns, spacing: 16, pinnedViews: []) {
+                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                     RecentTrackCard(
                         track: track,
+                        allTracks: tracks,
+                        index: index,
                         onSelectDailySong: onSelectDailySong,
                         todaysDailySong: todaysDailySong,
                         selectedDailyTrackId: $selectedDailyTrackId
                     )
                     .environmentObject(playbackService)
                     .environmentObject(navigationState)
-                    .id(track.id) // Ensure stable view identity
                 }
             }
             .padding(.horizontal, 16)
@@ -551,6 +552,8 @@ struct RecentlyPlayedGridView: View {
 
 struct RecentTrackCard: View {
     let track: MusicItem
+    let allTracks: [MusicItem]
+    let index: Int
     let onSelectDailySong: ((MusicItem) -> Void)?
     let todaysDailySong: Share?
     @Binding var selectedDailyTrackId: String?
@@ -560,11 +563,15 @@ struct RecentTrackCard: View {
 
     init(
         track: MusicItem,
+        allTracks: [MusicItem] = [],
+        index: Int = 0,
         onSelectDailySong: ((MusicItem) -> Void)? = nil,
         todaysDailySong: Share? = nil,
         selectedDailyTrackId: Binding<String?> = .constant(nil)
     ) {
         self.track = track
+        self.allTracks = allTracks.isEmpty ? [track] : allTracks
+        self.index = index
         self.onSelectDailySong = onSelectDailySong
         self.todaysDailySong = todaysDailySong
         self._selectedDailyTrackId = selectedDailyTrackId
@@ -587,127 +594,103 @@ struct RecentTrackCard: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Album Art with Play Overlay and Send Button
-            ZStack {
-                if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        case .failure(_):
-                            Color.gray.opacity(0.2)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        case .empty:
-                            Color.gray.opacity(0.2)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        @unknown default:
-                            Color.gray.opacity(0.2)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                    }
-                    .aspectRatio(1.0, contentMode: .fit)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                } else {
-                    Color.gray.opacity(0.2)
-                        .aspectRatio(1.0, contentMode: .fit)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-
-                // Action buttons (top corners)
-                VStack {
-                    HStack {
-                        Spacer()
-
-                        // Top-right action: daily select button when in daily flow, otherwise share
-                        if let selectHandler = onSelectDailySong {
-                            Button {
-                                selectHandler(track)
-                            } label: {
-                                ZStack {
-                                    Circle()
-                                        .fill((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.white.opacity(0.65))
-                                        .overlay(
-                                            Circle()
-                                                .stroke((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.secondary, lineWidth: 2)
-                                        )
-                                        .frame(width: 26, height: 26)
-                                    if isCommittedAsDaily || isPendingSelection {
-                                        Image(systemName: "checkmark")
-                                            .font(.lora(size: 10))
-                                            .foregroundColor(.white)
-                                    }
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.trailing, 4)
-                            .padding(.top, 4)
-                        } else if onSelectDailySong == nil {
-                            Button {
-                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                    navigationState.shareTrack = track
-                                    navigationState.showShareSheet = true
-                                }
-                            } label: {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color.black.opacity(0.65))
-                                        .frame(width: 26, height: 26)
-
-                                    Image(systemName: "paperplane.fill")
-                                        .font(.lora(size: 10))
-                                        .foregroundColor(.white)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.trailing, 4)
-                            .padding(.top, 4)
-                        }
-                    }
-                    Spacer()
-                }
-
-                // Play button overlay (center)
-                Button {
-                    if isPlaying {
-                        playbackService.pause()
-                    } else {
-                        playbackService.play(track: track)
-                    }
-                } label: {
-                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.lora(size: 32, weight: .bold))
-                        .foregroundColor(.white)
-                        .shadow(color: Color.black.opacity(0.5), radius: 8, x: 0, y: 3)
-                        .padding(20)
-                }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
+        Button {
+            if isCurrentTrack {
+                playbackService.isPlaying ? playbackService.pause() : playbackService.resume()
+            } else {
+                let startIndex = allTracks.firstIndex(where: { $0.id == track.id }) ?? index
+                playbackService.startQueue(
+                    tracks: allTracks,
+                    startAt: startIndex,
+                    showMiniPlayer: true
+                )
             }
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                // Album Art with Play Overlay and Select Button
+                ZStack {
+                    if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            case .failure, .empty:
+                                Color.gray.opacity(0.2)
+                            @unknown default:
+                                Color.gray.opacity(0.2)
+                            }
+                        }
+                    } else {
+                        Color.gray.opacity(0.2)
+                    }
 
-            // Track Info
-            VStack(alignment: .leading, spacing: 4) {
+                    // Play icon overlay (center)
+                    Circle()
+                        .fill(Color.black.opacity(isPlaying ? 0.5 : 0.3))
+                        .frame(width: 36, height: 36)
+
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+
+                    // Top-right action: daily select button
+                    if let selectHandler = onSelectDailySong {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Button {
+                                    selectHandler(track)
+                                } label: {
+                                    ZStack {
+                                        Circle()
+                                            .fill((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.white.opacity(0.65))
+                                            .overlay(
+                                                Circle()
+                                                    .stroke((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.secondary, lineWidth: 2)
+                                            )
+                                            .frame(width: 26, height: 26)
+                                        if isCommittedAsDaily || isPendingSelection {
+                                            Image(systemName: "checkmark")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundColor(.white)
+                                        }
+                                    }
+                                    .frame(width: 36, height: 36)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            Spacer()
+                        }
+                        .padding(4)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .padding(2) // Make room for border
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(isCurrentTrack ? Color.primary : Color.clear, lineWidth: 2)
+                )
+
+                // Track name
                 Text(track.name)
-                    .font(.lora(size: 13))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                    .font(.lora(size: 12))
                     .foregroundColor(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .lineLimit(1)
 
+                // Artist name
                 if let artist = track.artistName {
                     Text(artist)
                         .font(.lora(size: 11))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
                         .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .lineLimit(1)
                 }
             }
-            .padding(.top, 6)
         }
+        .buttonStyle(.plain)
     }
 }

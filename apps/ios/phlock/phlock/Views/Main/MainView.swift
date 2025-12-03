@@ -10,13 +10,14 @@ struct MainView: View {
     @State private var recognitionTrackToShare: MusicItem? = nil
     @State private var showRecognitionQuickSend = false
 
-    // Hide mini player on Phlock tab (immersive view has its own playback UI)
-    private var shouldHideMiniPlayerOnPhlockTab: Bool {
-        navigationState.selectedTab == 0
+    // Show mini player on all tabs except Phlock tab (which has its own playback UI)
+    // We show the mini player whenever there's a track playing, regardless of how it was started
+    private var shouldShowMiniPlayer: Bool {
+        playbackService.currentTrack != nil && navigationState.selectedTab != 0
     }
 
     var body: some View {
-        let miniPlayerInset = playbackService.currentTrack != nil && playbackService.shouldShowMiniPlayer && !shouldHideMiniPlayerOnPhlockTab
+        let miniPlayerInset = shouldShowMiniPlayer
             ? MiniPlayerView.Layout.height
             : 0
 
@@ -74,9 +75,9 @@ struct MainView: View {
                     // Navigation state handles storage automatically via init()
                 }
 
-                // Mini Player sits above tab bar (only show if shouldShowMiniPlayer is true)
-                // Hide on Phlock tab (immersive view has its own playback UI)
-                if playbackService.currentTrack != nil && playbackService.shouldShowMiniPlayer && !playbackService.isShareOverlayPresented && !shouldHideMiniPlayerOnPhlockTab {
+                // Mini Player sits above tab bar
+                // Show on all tabs except Phlock tab (which has its own playback UI)
+                if shouldShowMiniPlayer && !playbackService.isShareOverlayPresented {
                     VStack(spacing: 0) {
                         Spacer()
                         MiniPlayerView(

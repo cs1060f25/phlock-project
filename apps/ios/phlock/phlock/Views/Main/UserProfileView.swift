@@ -32,6 +32,9 @@ struct UserProfileView: View {
     @State private var hasNudged = false
     @State private var isNudging = false
 
+    // Feedback dialog (only for @woon)
+    @State private var showFeedbackDialog = false
+
     // Computed property to check if we can see the profile content
     private var canViewProfile: Bool {
         // Can always view if not private
@@ -44,91 +47,113 @@ struct UserProfileView: View {
         ScrollView {
             VStack(spacing: 24) {
                 // Profile Header
-                VStack(spacing: 16) {
-                    // Profile Photo with Streak Badge
-                    VStack(spacing: 0) {
-                        if let photoUrl = user.profilePhotoUrl, let url = URL(string: photoUrl) {
-                            AsyncImage(url: url) { image in
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                            } placeholder: {
+                VStack(alignment: .leading, spacing: 12) {
+                    // Top row: Profile photo on left, name + stats on right
+                    HStack(alignment: .top, spacing: 16) {
+                        // Profile Photo with Streak Badge
+                        VStack(spacing: 0) {
+                            if let photoUrl = user.profilePhotoUrl, let url = URL(string: photoUrl) {
+                                AsyncImage(url: url) { image in
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                } placeholder: {
+                                    ProfilePhotoPlaceholder(displayName: user.displayName)
+                                }
+                                .frame(width: 90, height: 90)
+                                .clipShape(Circle())
+                            } else {
                                 ProfilePhotoPlaceholder(displayName: user.displayName)
+                                    .frame(width: 90, height: 90)
                             }
-                            .frame(width: 100, height: 100)
-                            .clipShape(Circle())
-                        } else {
-                            ProfilePhotoPlaceholder(displayName: user.displayName)
-                                .frame(width: 100, height: 100)
+
+                            // Streak badge overlapping the photo bottom
+                            if user.dailySongStreak > 0 {
+                                StreakBadge(streak: user.dailySongStreak, size: .medium)
+                                    .offset(y: -10)
+                            }
                         }
 
-                        // Streak badge overlapping the photo bottom
-                        if user.dailySongStreak > 0 {
-                            StreakBadge(streak: user.dailySongStreak, size: .medium)
-                                .offset(y: -12)
+                        // Right side: Display name at top, stats row below
+                        VStack(alignment: .leading, spacing: 8) {
+                            // Display Name with Platform Logo
+                            HStack(spacing: 6) {
+                                Text(user.displayName)
+                                    .font(.lora(size: 20, weight: .bold))
+
+                                if let platform = user.resolvedPlatformType {
+                                    Image(platform == .spotify ? "SpotifyLogo" : "AppleMusicLogo")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 16, height: 16)
+                                }
+                            }
+
+                            // Stats Row: picks | followers | following
+                            HStack(spacing: 0) {
+                                // Picks
+                                VStack(spacing: 0) {
+                                    Text("\(pastPicks.count + (todaysPick != nil ? 1 : 0))")
+                                        .font(.lora(size: 16, weight: .bold))
+                                        .foregroundColor(.primary)
+                                    Text("picks")
+                                        .font(.lora(size: 12))
+                                        .foregroundColor(.secondary)
+                                }
+                                .frame(maxWidth: .infinity)
+
+                                // Followers
+                                Button {
+                                    followListInitialTab = .followers
+                                    showFollowersList = true
+                                } label: {
+                                    VStack(spacing: 0) {
+                                        Text("\(followerCount)")
+                                            .font(.lora(size: 16, weight: .bold))
+                                            .foregroundColor(.primary)
+                                        Text("followers")
+                                            .font(.lora(size: 12))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .frame(maxWidth: .infinity)
+
+                                // Following
+                                Button {
+                                    followListInitialTab = .following
+                                    showFollowersList = true
+                                } label: {
+                                    VStack(spacing: 0) {
+                                        Text("\(followingCount)")
+                                            .font(.lora(size: 16, weight: .bold))
+                                            .foregroundColor(.primary)
+                                        Text("following")
+                                            .font(.lora(size: 12))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .frame(maxWidth: .infinity)
+                            }
                         }
                     }
+                    .padding(.horizontal, 24)
 
-                    // Display Name with Platform Logo
-                    HStack(spacing: 8) {
-                        Text(user.displayName)
-                            .font(.lora(size: 28, weight: .bold))
-
-                        if let platform = user.resolvedPlatformType {
-                            Image(platform == .spotify ? "SpotifyLogo" : "AppleMusicLogo")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 20, height: 20)
-                        }
-                    }
-
-                    // Bio
+                    // Bio (below the row, full width)
                     if let bio = user.bio {
                         Text(bio)
-                            .font(.lora(size: 15))
-                            .multilineTextAlignment(.center)
+                            .font(.lora(size: 14))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.leading)
                             .padding(.horizontal, 24)
                     }
-
-                    // Followers/Following Stats Row
-                    HStack(spacing: 32) {
-                        Button {
-                            followListInitialTab = .followers
-                            showFollowersList = true
-                        } label: {
-                            VStack(spacing: 2) {
-                                Text("\(followerCount)")
-                                    .font(.lora(size: 18, weight: .bold))
-                                    .foregroundColor(.primary)
-                                Text("followers")
-                                    .font(.lora(size: 13))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            followListInitialTab = .following
-                            showFollowersList = true
-                        } label: {
-                            VStack(spacing: 2) {
-                                Text("\(followingCount)")
-                                    .font(.lora(size: 18, weight: .bold))
-                                    .foregroundColor(.primary)
-                                Text("following")
-                                    .font(.lora(size: 13))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.top, 8)
 
                     // Follow Action Button
                     followActionButton
                         .padding(.horizontal, 24)
                 }
-                .padding(.top, 24)
+                .padding(.top, 16)
 
                 // Content (only if can view profile)
                 if canViewProfile {
@@ -205,12 +230,19 @@ struct UserProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.lora(size: 20, weight: .semiBold))
-                        .foregroundColor(.primary)
+                HStack(spacing: 12) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.primary)
+                    }
+
+                    if let username = user.username {
+                        Text("@\(username)")
+                            .font(.lora(size: 20, weight: .bold))
+                    }
                 }
             }
 
@@ -229,7 +261,7 @@ struct UserProfileView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.lora(size: 20, weight: .semiBold))
+                        .font(.system(size: 18))
                         .foregroundColor(.primary)
                 }
             }
@@ -240,6 +272,26 @@ struct UserProfileView: View {
             Button("OK") { }
         } message: {
             Text(errorMessage)
+        }
+        .confirmationDialog(
+            "How would you like to provide feedback?",
+            isPresented: $showFeedbackDialog,
+            titleVisibility: .visible
+        ) {
+            Button("anonymous form") {
+                if let url = URL(string: "https://docs.google.com/forms/d/e/1FAIpQLSfgipxfs0PlSAJ7L5niN7R7aH4kSE7GvPDqbQlyELwkU8PCrQ/viewform") {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("text me directly") {
+                let phoneNumber = "2016938577"
+                let message = "I have feedback for phlock!"
+                if let encodedMessage = message.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                   let url = URL(string: "sms:\(phoneNumber)&body=\(encodedMessage)") {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Cancel", role: .cancel) { }
         }
         .sheet(isPresented: $showFollowersList) {
             NavigationStack {
@@ -255,10 +307,15 @@ struct UserProfileView: View {
         }
         .task {
             // Load relationship status and profile data in parallel for faster loading
-            // .task already handles initial load - no separate onAppear needed
             async let relationshipTask: () = loadRelationshipStatus()
             async let profileTask: () = loadProfileData()
             _ = await (relationshipTask, profileTask)
+        }
+        .onAppear {
+            // Refresh data every time the view appears (e.g., when navigating back)
+            Task {
+                await loadProfileData()
+            }
         }
     }
 

@@ -449,8 +449,8 @@ struct DailySongSelectionBar: View {
     var body: some View {
         VStack(spacing: 0) {
             Divider()
-            
-            HStack(spacing: 12) {
+
+            HStack(alignment: .center, spacing: 14) {
                 // Album Art
                 if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
                     AsyncImage(url: url) { image in
@@ -460,30 +460,31 @@ struct DailySongSelectionBar: View {
                     } placeholder: {
                         Color.gray.opacity(0.2)
                     }
-                    .frame(width: 40, height: 40)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .frame(width: 56, height: 56)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
                 } else {
                     Color.gray.opacity(0.2)
-                        .frame(width: 40, height: 40)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .frame(width: 56, height: 56)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
 
                 // Track Info & Input
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(track.name)
-                        .font(.lora(size: 15, weight: .semiBold))
+                        .font(.lora(size: 17, weight: .semiBold))
                         .lineLimit(1)
-                    
+
                     Text(track.artistName ?? "Unknown Artist")
-                        .font(.lora(size: 12))
+                        .font(.lora(size: 14))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
-                    
+
                     TextField("add optional message...", text: $note)
-                        .font(.lora(size: 12))
+                        .font(.lora(size: 13))
                         .textFieldStyle(.plain)
                         .focused($isFocused)
                         .submitLabel(.send)
+                        .padding(.top, 4)
                         .onChange(of: note) { newValue in
                             // Limit to 80 characters for brief one-sentence messages
                             if newValue.count > 80 {
@@ -494,30 +495,31 @@ struct DailySongSelectionBar: View {
                             onSend()
                         }
                 }
-                
+
                 Spacer()
-                
+
                 // Close Button
                 Button(action: onCancel) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.system(size: 18, weight: .medium))
                         .foregroundColor(.secondary)
-                        .padding(10)
+                        .padding(12)
                         .background(Color.secondary.opacity(0.1))
                         .clipShape(Circle())
                 }
-                
+
                 // Send Button
                 Button(action: onSend) {
                     Image(systemName: "paperplane.fill")
-                        .font(.system(size: 20))
+                        .font(.system(size: 22))
                         .foregroundColor(.accentColor)
-                        .padding(8)
+                        .padding(10)
                         .background(Color.accentColor.opacity(0.1))
                         .clipShape(Circle())
                 }
             }
-            .padding(12)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
             .background(Color(uiColor: .systemBackground))
         }
         .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: -5)
@@ -558,18 +560,7 @@ struct DailySongStreakBanner: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Streak indicator
-            if user.dailySongStreak > 0 {
-                HStack(spacing: 4) {
-                    Text(user.streakEmoji)
-                        .font(.lora(size: 20, weight: .semiBold))
-                    Text("\(user.dailySongStreak)")
-                        .font(.lora(size: 10, weight: .medium))
-                        .foregroundColor(.primary)
-                }
-            }
-
-            // Status text
+            // Status text with inline streak
             VStack(alignment: .leading, spacing: 2) {
                 if let dailySong = todaysDailySong {
                     Text("Today's song:")
@@ -579,9 +570,16 @@ struct DailySongStreakBanner: View {
                         .font(.lora(size: 10))
                         .lineLimit(1)
                 } else {
-                    Text("Select your song for today")
-                        .font(.lora(size: 20))
-                        .foregroundColor(.primary)
+                    HStack(spacing: 6) {
+                        Text("select your song for today")
+                            .font(.lora(size: 20))
+                            .foregroundColor(.primary)
+                        if user.dailySongStreak > 0 {
+                            Text("\(user.streakEmoji) \(user.dailySongStreak)")
+                                .font(.lora(size: 20))
+                                .foregroundColor(.primary)
+                        }
+                    }
                 }
             }
 

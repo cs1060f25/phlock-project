@@ -368,6 +368,9 @@ struct PhlockCarouselView: View {
     let onAddMemberTapped: () -> Void
     let onChangeDailySong: () -> Void
     let onOpenFullPlayer: () -> Void
+    let onEditSwapTapped: (User) -> Void  // Edit mode: swap member
+    let onEditRemoveTapped: (User) -> Void  // Edit mode: remove member
+    let onEditAddTapped: () -> Void  // Edit mode: add member
 
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
@@ -377,6 +380,7 @@ struct PhlockCarouselView: View {
     @State private var hasInitialized: Bool = false // Track if we've done initial setup
     @State private var wasPlayingBeforeNonSongPage: Bool = false // Track play state when leaving song page for non-song page
     @State private var lastPageHadSong: Bool = true // Track if the last visited page had a song
+    @State private var isEditMode: Bool = false  // Edit mode state
     @Environment(\.colorScheme) var colorScheme
 
     // Persistent storage for carousel position
@@ -445,6 +449,7 @@ struct PhlockCarouselView: View {
                         isPlaying: isPlayingSlot(slot),
                         isSaved: isSavedSlot(slot),
                         isNudged: isNudgedSlot(slot),
+                        isEditMode: isEditMode,
                         playbackService: playbackService,
                         onPlayTapped: {
                             if let song = slot.song {
@@ -458,7 +463,10 @@ struct PhlockCarouselView: View {
                         onRemoveFromLibrary: { if let song = slot.song { onRemoveFromLibrary(song) } },
                         onProfileTapped: { if let member = slot.member { onProfileTapped(member) } },
                         onNudgeTapped: { if let member = slot.member { onNudgeTapped(member) } },
-                        onAddMemberTapped: onAddMemberTapped
+                        onAddMemberTapped: onAddMemberTapped,
+                        onEditSwapTapped: { if let member = slot.member { onEditSwapTapped(member) } },
+                        onEditRemoveTapped: { if let member = slot.member { onEditRemoveTapped(member) } },
+                        onEditAddTapped: onEditAddTapped
                     )
                     .tag(index)
                 }
@@ -497,13 +505,21 @@ struct PhlockCarouselView: View {
                 ProfileIndicatorBar(
                     slots: baseMembers,
                     currentIndex: realIndex,
+                    isEditMode: isEditMode,
                     onTap: { index in
                         // Convert real index to extended index (+1 for phantom page at start)
                         withAnimation(.easeInOut(duration: 0.3)) {
                             currentIndex = index + 1
                         }
                     },
-                    onProfileTapped: onProfileTapped
+                    onProfileTapped: onProfileTapped,
+                    onEditTapped: {
+                        let impact = UIImpactFeedbackGenerator(style: .medium)
+                        impact.impactOccurred()
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            isEditMode.toggle()
+                        }
+                    }
                 )
                 .padding(.bottom, 16) // Just above tab bar
             }
@@ -653,8 +669,18 @@ struct PhlockCarouselView: View {
                     savedCarouselIndex = matchingIndex
                     lastPageHadSong = true // We're on a song page
                 }
+            } else if hasInitialized && playbackService.currentTrack != nil && !isAlreadyPlayingPhlock {
+                // Returning to phlock tab with a non-phlock track playing
+                // Override with the phlock track at the current carousel position
+                let currentSlot = extendedMembers[safe: currentIndex]
+                if let song = currentSlot?.song {
+                    // Get saved position for this phlock track (may be nil if never played)
+                    let savedPosition = playbackService.getSavedPosition(for: song.trackId)
+                    // Resume the phlock track, starting playback immediately
+                    onPlayTapped(song, true, savedPosition)
+                }
             }
-            // If already initialized and not playing phlock, preserve current state
+            // If already initialized and no track playing, preserve current state
         }
     }
 
@@ -906,48 +932,81 @@ struct YourPickBar: View {
 struct ProfileIndicatorBar: View {
     let slots: [PhlockSlot]
     let currentIndex: Int
+    let isEditMode: Bool
     let onTap: (Int) -> Void
     let onProfileTapped: (User) -> Void
+    let onEditTapped: () -> Void
     @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(Array(slots.enumerated()), id: \.offset) { index, slot in
-                ProfileIndicatorCircle(
-                    slot: slot,
-                    isActive: index == currentIndex
-                )
-                .onTapGesture {
-                    if index == currentIndex, let member = slot.member {
-                        // Already on this user - navigate to their profile
-                        onProfileTapped(member)
-                    } else {
-                        // Switch to this user's card
-                        onTap(index)
+        HStack(spacing: 12) {
+            // Profile circles in capsule
+            HStack(spacing: 8) {
+                ForEach(Array(slots.enumerated()), id: \.offset) { index, slot in
+                    ProfileIndicatorCircle(
+                        slot: slot,
+                        isActive: index == currentIndex
+                    )
+                    .onTapGesture {
+                        if index == currentIndex, let member = slot.member {
+                            // Already on this user - navigate to their profile
+                            onProfileTapped(member)
+                        } else {
+                            // Switch to this user's card
+                            onTap(index)
+                        }
                     }
                 }
             }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background {
-            if #available(iOS 26.0, *) {
-                Capsule()
-                    .fill(.clear)
-                    .glassEffect(.regular.interactive())
-            } else {
-                Group {
-                    if colorScheme == .dark {
-                        Capsule()
-                            .fill(Color.black.opacity(0.3))
-                            .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
-                    } else {
-                        Capsule()
-                            .fill(.ultraThinMaterial)
-                            .shadow(color: Color.black.opacity(0.15), radius: 10, y: 4)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background {
+                if #available(iOS 26.0, *) {
+                    Capsule()
+                        .fill(.clear)
+                        .glassEffect(.regular.interactive())
+                } else {
+                    Group {
+                        if colorScheme == .dark {
+                            Capsule()
+                                .fill(Color.black.opacity(0.3))
+                                .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
+                        } else {
+                            Capsule()
+                                .fill(.ultraThinMaterial)
+                                .shadow(color: Color.black.opacity(0.15), radius: 10, y: 4)
+                        }
                     }
                 }
             }
+
+            // Edit/Done button
+            Button(action: onEditTapped) {
+                Image(systemName: isEditMode ? "checkmark" : "ellipsis")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(colorScheme == .dark ? .white : .black)
+                    .frame(width: 40, height: 40)
+                    .background {
+                        if #available(iOS 26.0, *) {
+                            Circle()
+                                .fill(.clear)
+                                .glassEffect(.regular.interactive())
+                        } else {
+                            Group {
+                                if colorScheme == .dark {
+                                    Circle()
+                                        .fill(Color.black.opacity(0.3))
+                                        .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
+                                } else {
+                                    Circle()
+                                        .fill(.ultraThinMaterial)
+                                        .shadow(color: Color.black.opacity(0.15), radius: 10, y: 4)
+                                }
+                            }
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
         }
     }
 }
@@ -1127,6 +1186,7 @@ struct PhlockCardView: View {
     let isPlaying: Bool
     let isSaved: Bool
     let isNudged: Bool
+    let isEditMode: Bool
     @ObservedObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
     @Environment(\.colorScheme) var colorScheme
@@ -1138,6 +1198,9 @@ struct PhlockCardView: View {
     let onProfileTapped: () -> Void
     let onNudgeTapped: () -> Void
     let onAddMemberTapped: () -> Void
+    let onEditSwapTapped: () -> Void
+    let onEditRemoveTapped: () -> Void
+    let onEditAddTapped: () -> Void
 
     @State private var showPlayPauseIndicator = false
     @State private var isDraggingSlider = false
@@ -1223,10 +1286,83 @@ struct PhlockCardView: View {
                 case .empty:
                     emptyCardContent()
                 }
+
+                // Edit mode overlay
+                if isEditMode {
+                    editModeOverlay
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
+            .animation(.easeInOut(duration: 0.25), value: isEditMode)
         }
         .ignoresSafeArea()
+    }
+
+    // MARK: - Edit Mode Overlay
+
+    @ViewBuilder
+    private var editModeOverlay: some View {
+        VStack {
+            Spacer()
+
+            switch slot.type {
+            case .song:
+                // Song card: swap button (effective tomorrow since they've picked)
+                Button(action: onEditSwapTapped) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.triangle.swap")
+                        Text("swap (effective tomorrow)")
+                    }
+                    .font(.lora(size: 14, weight: .medium))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial)
+                    .cornerRadius(20)
+                }
+
+            case .waiting:
+                // Waiting card: swap button (immediate) + remove button (subtle)
+                HStack(spacing: 16) {
+                    Button(action: onEditSwapTapped) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.triangle.swap")
+                            Text("swap")
+                        }
+                        .font(.lora(size: 14, weight: .medium))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(.ultraThinMaterial)
+                        .cornerRadius(20)
+                    }
+
+                    Button(action: onEditRemoveTapped) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                }
+
+            case .empty:
+                // Empty slot: add member button
+                Button(action: onEditAddTapped) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus.circle.fill")
+                        Text("add member")
+                    }
+                    .font(.lora(size: 16, weight: .semiBold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 14)
+                    .background(Color.accentColor)
+                    .cornerRadius(24)
+                }
+            }
+
+            Spacer().frame(height: 180) // Above profile bar + tab bar
+        }
     }
 
     // MARK: - Background
@@ -1753,6 +1889,9 @@ struct PhlockImmersiveLayout: View {
     let onSelectDailySong: () -> Void
     let onPlayMyPick: () -> Void
     let onOpenFullPlayer: () -> Void
+    let onEditSwapTapped: (User) -> Void
+    let onEditRemoveTapped: (User) -> Void
+    let onEditAddTapped: () -> Void
 
     var body: some View {
         // Check if user has picked their daily song
@@ -1776,8 +1915,158 @@ struct PhlockImmersiveLayout: View {
                 onNudgeTapped: onNudgeTapped,
                 onAddMemberTapped: onAddMemberTapped,
                 onChangeDailySong: onSelectDailySong,
-                onOpenFullPlayer: onOpenFullPlayer
+                onOpenFullPlayer: onOpenFullPlayer,
+                onEditSwapTapped: onEditSwapTapped,
+                onEditRemoveTapped: onEditRemoveTapped,
+                onEditAddTapped: onEditAddTapped
             )
         }
+    }
+}
+
+// MARK: - Friend Picker Panel
+
+struct FriendPickerPanel: View {
+    let availableFriends: [User]
+    let isSwapMode: Bool
+    let memberBeingReplaced: User?
+    let onFriendSelected: (User) -> Void
+    let onDismiss: () -> Void
+
+    @State private var searchText = ""
+    @Environment(\.colorScheme) var colorScheme
+
+    private var filteredFriends: [User] {
+        if searchText.isEmpty { return availableFriends }
+        return availableFriends.filter {
+            $0.displayName.localizedCaseInsensitiveContains(searchText) ||
+            ($0.username?.localizedCaseInsensitiveContains(searchText) ?? false)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            // Drag handle
+            Capsule()
+                .fill(Color.white.opacity(0.4))
+                .frame(width: 36, height: 5)
+                .padding(.top, 12)
+
+            // Header (shows who you're replacing when swapping)
+            if isSwapMode, let member = memberBeingReplaced {
+                Text("replace @\(member.username ?? member.displayName)")
+                    .font(.lora(size: 14))
+                    .foregroundColor(.white.opacity(0.7))
+            } else {
+                Text("add to your phlock")
+                    .font(.lora(size: 14))
+                    .foregroundColor(.white.opacity(0.7))
+            }
+
+            // Search bar
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.white.opacity(0.6))
+                TextField("search", text: $searchText)
+                    .font(.lora(size: 16))
+                    .foregroundColor(.white)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+
+                if !searchText.isEmpty {
+                    Button(action: { searchText = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.white.opacity(0.4))
+                    }
+                }
+            }
+            .padding(12)
+            .background(.ultraThinMaterial)
+            .cornerRadius(12)
+            .padding(.horizontal, 16)
+
+            // Horizontal scrollable friends
+            if filteredFriends.isEmpty {
+                VStack(spacing: 8) {
+                    if availableFriends.isEmpty {
+                        Text("no friends available")
+                            .font(.lora(size: 14, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
+                        Text("follow more people to add them")
+                            .font(.lora(size: 12))
+                            .foregroundColor(.white.opacity(0.5))
+                    } else {
+                        Text("no matches found")
+                            .font(.lora(size: 14, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                }
+                .frame(height: 100)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 20) {
+                        ForEach(filteredFriends) { friend in
+                            Button(action: {
+                                let impact = UIImpactFeedbackGenerator(style: .medium)
+                                impact.impactOccurred()
+                                onFriendSelected(friend)
+                            }) {
+                                VStack(spacing: 8) {
+                                    // Profile photo
+                                    if let urlString = friend.profilePhotoUrl,
+                                       let url = URL(string: urlString) {
+                                        AsyncImage(url: url) { image in
+                                            image
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                        } placeholder: {
+                                            Circle()
+                                                .fill(Color.gray.opacity(0.3))
+                                                .overlay(
+                                                    Text(String(friend.displayName.prefix(1)).uppercased())
+                                                        .font(.lora(size: 24, weight: .medium))
+                                                        .foregroundColor(.white)
+                                                )
+                                        }
+                                        .frame(width: 64, height: 64)
+                                        .clipShape(Circle())
+                                        .overlay(Circle().stroke(.white.opacity(0.3), lineWidth: 2))
+                                    } else {
+                                        Circle()
+                                            .fill(Color.gray.opacity(0.3))
+                                            .frame(width: 64, height: 64)
+                                            .overlay(
+                                                Text(String(friend.displayName.prefix(1)).uppercased())
+                                                    .font(.lora(size: 24, weight: .medium))
+                                                    .foregroundColor(.white)
+                                            )
+                                            .overlay(Circle().stroke(.white.opacity(0.3), lineWidth: 2))
+                                    }
+
+                                    // Name
+                                    Text(friend.displayName)
+                                        .font(.lora(size: 12))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
+                                        .frame(width: 70)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+                .frame(height: 100)
+            }
+
+            Spacer()
+        }
+        .frame(height: UIScreen.main.bounds.height * 0.32)
+        .background(
+            RoundedRectangle(cornerRadius: 28)
+                .fill(.ultraThinMaterial)
+                .shadow(color: .black.opacity(0.3), radius: 20, y: 0)
+        )
+        .padding(.horizontal, 16)
     }
 }
