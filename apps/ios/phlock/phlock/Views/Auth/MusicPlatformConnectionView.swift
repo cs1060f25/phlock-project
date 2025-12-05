@@ -76,40 +76,30 @@ struct MusicPlatformConnectionView: View {
         .navigationBarBackButtonHidden(true)
     }
 
-    // MARK: - Connect Spotify
+    // MARK: - Connect Spotify (Preference Only - No OAuth)
 
     private func connectSpotify() async {
         isConnecting = true
 
         do {
-            // Trigger Spotify OAuth
-            let spotifyAuth = try await SpotifyService.shared.authenticate()
-
-            // Store the connection
-            try await AuthServiceV3.shared.connectSpotify(
-                accessToken: spotifyAuth.accessToken,
-                refreshToken: spotifyAuth.refreshToken,
-                expiresIn: spotifyAuth.expiresIn,
-                scope: spotifyAuth.scope
-            )
+            // Store Spotify as preference without OAuth
+            // (Spotify API quota not available)
+            try await AuthServiceV3.shared.setMusicPlatformPreference("spotify")
 
             // Fetch updated user with music platform set
             let updatedUser = try await AuthServiceV3.shared.currentUser
 
             await MainActor.run {
                 authState.currentUser = updatedUser
-                print("✅ Spotify connected - user.musicPlatform: \(updatedUser?.musicPlatform ?? "nil")")
+                print("✅ Spotify set as preference - user.musicPlatform: \(updatedUser?.musicPlatform ?? "nil")")
                 completeOnboarding()
             }
 
         } catch {
             await MainActor.run {
-                // Include error type for debugging TestFlight issues
-                let errorType = String(describing: type(of: error))
-                let details = "\(error.localizedDescription)\n\n[Debug: \(errorType)]"
-                errorMessage = details
+                errorMessage = error.localizedDescription
                 showError = true
-                print("❌ Spotify connection failed: \(error)")
+                print("❌ Spotify preference setting failed: \(error)")
             }
         }
 

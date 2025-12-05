@@ -530,8 +530,8 @@ struct FullScreenPlayerView: View {
                 }
             )
 
-            // Add to library button (right side)
-            if playbackService.currentTrack != nil {
+            // Add to library button (right side) - only show if user can save to library
+            if playbackService.currentTrack != nil && (authState.currentUser?.canSaveToLibrary ?? false) {
                 Button {
                     if let track = playbackService.currentTrack {
                         Task {

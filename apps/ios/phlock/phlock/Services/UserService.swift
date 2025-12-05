@@ -360,6 +360,55 @@ class UserService {
             .insert(insert)
             .execute()
     }
+
+    // MARK: - Platform Data Management
+
+    /// Update user's platform data (topArtists and topTracks)
+    /// Used for manual selection of favorite artists and tracks
+    func updatePlatformData(userId: UUID, topArtists: [MusicItem]?, topTracks: [MusicItem]?) async throws {
+        // Fetch current platform data to preserve other fields
+        guard let user = try await getUser(userId: userId, bypassCache: true) else {
+            throw UserServiceError.userNotFound
+        }
+
+        // Create updated platform data, preserving existing fields
+        let existingData = user.platformData
+        let updatedData = PlatformUserData(
+            spotifyEmail: existingData?.spotifyEmail,
+            spotifyDisplayName: existingData?.spotifyDisplayName,
+            spotifyImageUrl: existingData?.spotifyImageUrl,
+            spotifyCountry: existingData?.spotifyCountry,
+            spotifyProduct: existingData?.spotifyProduct,
+            appleMusicUserId: existingData?.appleMusicUserId,
+            appleMusicStorefront: existingData?.appleMusicStorefront,
+            topArtists: topArtists ?? existingData?.topArtists,
+            topTracks: topTracks ?? existingData?.topTracks,
+            recentlyPlayed: existingData?.recentlyPlayed,
+            playlists: existingData?.playlists
+        )
+
+        // Encode platform data as JSON string
+        let platformDataJSON = String(data: try JSONEncoder().encode(updatedData), encoding: .utf8) ?? "{}"
+
+        struct UpdatePayload: Encodable {
+            let platform_data: String
+            let updated_at: String
+        }
+
+        try await supabase
+            .from("users")
+            .update(UpdatePayload(
+                platform_data: platformDataJSON,
+                updated_at: ISO8601DateFormatter().string(from: Date())
+            ))
+            .eq("id", value: userId.uuidString)
+            .execute()
+
+        // Clear cache so next fetch gets updated data
+        userCache.removeValue(forKey: userId)
+
+        print("✅ Platform data updated for user: \(userId)")
+    }
 }
 
 // MARK: - Helper Structures

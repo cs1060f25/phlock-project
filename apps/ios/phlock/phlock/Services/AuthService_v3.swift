@@ -721,6 +721,32 @@ class AuthServiceV3 {
         print("✅ Profile privacy set to: \(isPrivate ? "private" : "public")")
     }
 
+    /// Set music platform preference without OAuth connection
+    /// Used for Spotify users who select Spotify but don't complete OAuth
+    func setMusicPlatformPreference(_ platform: String) async throws {
+        guard let user = try await currentUser else {
+            throw AuthError.noUser
+        }
+
+        struct UpdatePayload: Encodable {
+            let music_platform: String
+            let platform_type: String
+            let updated_at: String
+        }
+
+        try await supabase
+            .from("users")
+            .update(UpdatePayload(
+                music_platform: platform,
+                platform_type: platform,
+                updated_at: ISO8601DateFormatter().string(from: Date())
+            ))
+            .eq("id", value: user.id.uuidString)
+            .execute()
+
+        print("✅ Music platform preference set to: \(platform)")
+    }
+
     // MARK: - Sign Out
 
     func signOut() async throws {

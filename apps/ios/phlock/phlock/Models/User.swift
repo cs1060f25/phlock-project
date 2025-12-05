@@ -233,6 +233,17 @@ extension User {
         }
         return nil
     }
+
+    /// Returns true if user has Spotify as preference but no OAuth connection
+    /// (i.e., they selected Spotify during onboarding but didn't complete OAuth)
+    var isSpotifyPreferenceOnly: Bool {
+        musicPlatform == "spotify" && (spotifyUserId == nil || spotifyUserId?.isEmpty == true)
+    }
+
+    /// Returns true if user can save tracks to their library (has OAuth connection)
+    var canSaveToLibrary: Bool {
+        !isSpotifyPreferenceOnly
+    }
 }
 
 /// Platform-specific user data stored as JSONB

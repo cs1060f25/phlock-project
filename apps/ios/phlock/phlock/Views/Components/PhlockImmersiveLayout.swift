@@ -1843,7 +1843,7 @@ struct PhlockCardView: View {
 
                 // Action buttons (keep hit testing for button taps)
                 HStack(spacing: 40) {
-                    // Open in Spotify
+                    // Open in streaming app
                     Button(action: { openInStreamingApp(song: song) }) {
                         VStack(spacing: 6) {
                             Image(systemName: "arrow.up.right.square")
@@ -1854,16 +1854,18 @@ struct PhlockCardView: View {
                         .foregroundColor(iconColor)
                     }
 
-                    // Save to library
-                    Button(action: { isSaved ? onRemoveFromLibrary() : onAddToLibrary() }) {
-                        VStack(spacing: 6) {
-                            Image(systemName: isSaved ? "heart.fill" : "heart")
-                                .font(.system(size: 24))
-                                .foregroundColor(isSaved ? .red : iconColor)
-                            Text(isSaved ? "Saved" : "Save")
-                                .font(.system(size: 11))
+                    // Save to library - only show if user can save to library
+                    if authState.currentUser?.canSaveToLibrary ?? false {
+                        Button(action: { isSaved ? onRemoveFromLibrary() : onAddToLibrary() }) {
+                            VStack(spacing: 6) {
+                                Image(systemName: isSaved ? "heart.fill" : "heart")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(isSaved ? .red : iconColor)
+                                Text(isSaved ? "Saved" : "Save")
+                                    .font(.system(size: 11))
+                            }
+                            .foregroundColor(iconColor)
                         }
-                        .foregroundColor(iconColor)
                     }
                 }
 

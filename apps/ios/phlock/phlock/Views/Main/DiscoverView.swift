@@ -76,19 +76,21 @@ struct DiscoverView: View {
     @State private var isSubmittingDailySong = false // Prevent double-tap
     @FocusState private var isNoteFieldFocused: Bool
 
-    // Check if user has a streaming platform connected
-    private var hasStreamingPlatform: Bool {
-        authState.currentUser?.musicPlatform != nil
+    // Check if user has a streaming platform with API access (not Spotify preference-only)
+    private var hasStreamingPlatformWithAPI: Bool {
+        guard let user = authState.currentUser else { return false }
+        // User has a platform set AND is not a Spotify preference-only user
+        return user.musicPlatform != nil && !user.isSpotifyPreferenceOnly
     }
 
-    // Available tabs based on whether streaming platform is connected
+    // Available tabs based on whether streaming platform with API access is connected
     private var availableTabs: [BrowseTab] {
-        hasStreamingPlatform ? [.recent, .viral, .new, .charts] : [.viral, .new, .charts]
+        hasStreamingPlatformWithAPI ? [.recent, .viral, .new, .charts] : [.viral, .new, .charts]
     }
 
     // Default tab based on streaming platform
     private var defaultTab: BrowseTab {
-        hasStreamingPlatform ? .recent : .viral
+        hasStreamingPlatformWithAPI ? .recent : .viral
     }
 
     var body: some View {

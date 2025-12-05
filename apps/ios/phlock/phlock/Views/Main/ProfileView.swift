@@ -48,6 +48,12 @@ struct ProfileView: View {
 
     // Actual phlock count fetched from follows table (more reliable than cached column)
     @State private var actualPhlockCount: Int = 0
+
+    // Favorite Artist/Track Picker
+    @State private var showFavoritePicker = false
+    @State private var favoritePickerType: FavoriteType = .artist
+    @State private var favoritePickerPosition: Int = 0
+    @State private var isSavingFavorite = false
     // Historical reach: unique users who have EVER had this user in their phlock
     @State private var historicalReachCount: Int = 0
 
@@ -293,32 +299,22 @@ struct ProfileView: View {
                             onPickSong: { showSongPickerSheet = true }
                         )
                         
-                        // Music Stats from Platform
-                        if let platformData = user.platformData {
-                            VStack(spacing: 24) {
-                                // Top Tracks (Grid Layout)
-                                if let topTracks = platformData.topTracks, !topTracks.isEmpty,
-                                   let platformType = getPlatformType(from: user) {
-                                    TracksGridView(
-                                        title: "what i'm listening to",
-                                        items: topTracks,
-                                        platformType: platformType
-                                    )
-                                    .environmentObject(playbackService)
-                                }
-
-                                // Top Artists (Grid Layout)
-                                if let topArtists = platformData.topArtists, !topArtists.isEmpty,
-                                   let platformType = getPlatformType(from: user) {
-                                    ArtistsGridView(
-                                        title: "who i'm listening to",
-                                        items: topArtists,
-                                        platformType: platformType
-                                    )
-                                }
+                        // Music Stats Section - Editable for current user's own profile
+                        EditableMusicStatsSection(
+                            user: refreshedUser ?? user,
+                            isCurrentUser: true,
+                            onSelectArtist: { position in
+                                favoritePickerType = .artist
+                                favoritePickerPosition = position
+                                showFavoritePicker = true
+                            },
+                            onSelectTrack: { position in
+                                favoritePickerType = .track
+                                favoritePickerPosition = position
+                                showFavoritePicker = true
                             }
-                            .padding(.top, 16)
-                        }
+                        )
+                        .environmentObject(playbackService)
 
 
 
@@ -481,6 +477,13 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(image: $selectedProfileImage, imageData: $selectedProfileImageData)
+        }
+        .sheet(isPresented: $showFavoritePicker) {
+            FavoritePickerSheet(favoriteType: favoritePickerType) { selectedItem in
+                Task {
+                    await saveFavoriteSelection(selectedItem, at: favoritePickerPosition)
+                }
+            }
         }
         .confirmationDialog(
             "How would you like to provide feedback?",
@@ -720,6 +723,73 @@ struct ProfileView: View {
             }
         } catch {
             print("❌ Failed to swap phlock members: \(error)")
+        }
+    }
+
+    private func saveFavoriteSelection(_ item: MusicItem, at position: Int) async {
+        guard let userId = authState.currentUser?.id else { return }
+
+        isSavingFavorite = true
+        defer { isSavingFavorite = false }
+
+        do {
+            // Get current platform data
+            let currentData = authState.currentUser?.platformData
+
+            if favoritePickerType == .artist {
+                // Update artists
+                var updatedArtists = currentData?.topArtists ?? []
+
+                // Ensure we have 6 slots
+                while updatedArtists.count < 6 {
+                    updatedArtists.append(MusicItem(id: "", name: ""))
+                }
+
+                // Replace at position (0-indexed)
+                if position < updatedArtists.count {
+                    updatedArtists[position] = item
+                }
+
+                // Filter out empty placeholders for storage
+                let filteredArtists = updatedArtists.filter { !$0.id.isEmpty }
+
+                try await UserService.shared.updatePlatformData(
+                    userId: userId,
+                    topArtists: filteredArtists,
+                    topTracks: nil
+                )
+            } else {
+                // Update tracks
+                var updatedTracks = currentData?.topTracks ?? []
+
+                // Ensure we have 6 slots
+                while updatedTracks.count < 6 {
+                    updatedTracks.append(MusicItem(id: "", name: ""))
+                }
+
+                // Replace at position (0-indexed)
+                if position < updatedTracks.count {
+                    updatedTracks[position] = item
+                }
+
+                // Filter out empty placeholders for storage
+                let filteredTracks = updatedTracks.filter { !$0.id.isEmpty }
+
+                try await UserService.shared.updatePlatformData(
+                    userId: userId,
+                    topArtists: nil,
+                    topTracks: filteredTracks
+                )
+            }
+
+            // Refresh user data to show update
+            if let updatedUser = try await UserService.shared.getUser(userId: userId, bypassCache: true) {
+                refreshedUser = updatedUser
+            }
+
+            print("✅ Saved \(favoritePickerType == .artist ? "artist" : "track"): \(item.name) at position \(position)")
+        } catch {
+            print("❌ Failed to save favorite: \(error)")
         }
     }
 }
@@ -1308,6 +1378,295 @@ struct GenreBreakdownCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.06))
         .cornerRadius(12)
+    }
+}
+
+// MARK: - Editable Music Stats Section
+
+struct EditableMusicStatsSection: View {
+    let user: User
+    let isCurrentUser: Bool
+    let onSelectArtist: (Int) -> Void
+    let onSelectTrack: (Int) -> Void
+
+    @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var playbackService: PlaybackService
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12)
+    ]
+
+    // Get current tracks, padded to 6 slots
+    private var tracksWithSlots: [(index: Int, item: MusicItem?)] {
+        let existing = user.platformData?.topTracks ?? []
+        return (0..<6).map { index in
+            (index: index, item: index < existing.count ? existing[index] : nil)
+        }
+    }
+
+    // Get current artists, padded to 6 slots
+    private var artistsWithSlots: [(index: Int, item: MusicItem?)] {
+        let existing = user.platformData?.topArtists ?? []
+        return (0..<6).map { index in
+            (index: index, item: index < existing.count ? existing[index] : nil)
+        }
+    }
+
+    // Check if user has any listening data
+    private var hasListeningData: Bool {
+        let tracks = user.platformData?.topTracks ?? []
+        let artists = user.platformData?.topArtists ?? []
+        return !tracks.isEmpty || !artists.isEmpty
+    }
+
+    var body: some View {
+        VStack(spacing: 24) {
+            // Tracks Section
+            VStack(alignment: .leading, spacing: 12) {
+                Text("what i'm listening to")
+                    .font(.lora(size: 17, weight: .medium))
+                    .padding(.horizontal, 24)
+
+                LazyVGrid(columns: columns, spacing: 16) {
+                    ForEach(tracksWithSlots, id: \.index) { slot in
+                        if let item = slot.item, !item.id.isEmpty {
+                            // Filled track slot
+                            EditableTrackCell(
+                                item: item,
+                                isEditable: isCurrentUser,
+                                onTap: { onSelectTrack(slot.index) }
+                            )
+                            .environmentObject(playbackService)
+                        } else if isCurrentUser {
+                            // Empty slot for current user - show placeholder
+                            EmptyFavoriteSlot(type: .track) {
+                                onSelectTrack(slot.index)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+            }
+
+            // Artists Section
+            VStack(alignment: .leading, spacing: 12) {
+                Text("who i'm listening to")
+                    .font(.lora(size: 17, weight: .medium))
+                    .padding(.horizontal, 24)
+
+                LazyVGrid(columns: columns, spacing: 16) {
+                    ForEach(artistsWithSlots, id: \.index) { slot in
+                        if let item = slot.item, !item.id.isEmpty {
+                            // Filled artist slot
+                            EditableArtistCell(
+                                item: item,
+                                isEditable: isCurrentUser,
+                                onTap: { onSelectArtist(slot.index) }
+                            )
+                        } else if isCurrentUser {
+                            // Empty slot for current user - show placeholder
+                            EmptyFavoriteSlot(type: .artist) {
+                                onSelectArtist(slot.index)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+            }
+        }
+        .padding(.top, 16)
+    }
+}
+
+// MARK: - Empty Favorite Slot
+
+struct EmptyFavoriteSlot: View {
+    let type: FavoriteType
+    let onTap: () -> Void
+
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 6) {
+                ZStack {
+                    if type == .artist {
+                        Circle()
+                            .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6]))
+                            .foregroundColor(.gray.opacity(0.4))
+                    } else {
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6]))
+                            .foregroundColor(.gray.opacity(0.4))
+                    }
+
+                    Image(systemName: "plus")
+                        .font(.system(size: 24))
+                        .foregroundColor(.gray.opacity(0.5))
+                }
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+
+                Text("add")
+                    .font(.lora(size: 12))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Editable Track Cell
+
+struct EditableTrackCell: View {
+    let item: MusicItem
+    let isEditable: Bool
+    let onTap: () -> Void
+
+    @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var playbackService: PlaybackService
+
+    private var isCurrentTrack: Bool {
+        playbackService.currentTrack?.id == item.id
+    }
+
+    private var isPlaying: Bool {
+        isCurrentTrack && playbackService.isPlaying
+    }
+
+    var body: some View {
+        Button {
+            if isEditable {
+                onTap()
+            } else {
+                // Play track
+                if isCurrentTrack {
+                    playbackService.isPlaying ? playbackService.pause() : playbackService.resume()
+                } else {
+                    playbackService.startQueue(tracks: [item], startAt: 0, showMiniPlayer: true)
+                }
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                ZStack {
+                    if let artworkUrl = item.albumArtUrl, let url = URL(string: artworkUrl) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            case .failure, .empty:
+                                Color.gray.opacity(0.2)
+                            @unknown default:
+                                Color.gray.opacity(0.2)
+                            }
+                        }
+                    } else {
+                        Color.gray.opacity(0.2)
+                    }
+
+                    // Edit/Play overlay
+                    if isEditable {
+                        // Edit indicator for editable mode
+                        Circle()
+                            .fill(Color.black.opacity(0.3))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "pencil")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                    } else {
+                        // Play indicator
+                        Circle()
+                            .fill(Color.black.opacity(isPlaying ? 0.5 : 0.3))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .padding(2)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(isCurrentTrack ? Color.primary : Color.clear, lineWidth: 2)
+                )
+
+                Text(item.name)
+                    .font(.lora(size: 12))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Editable Artist Cell
+
+struct EditableArtistCell: View {
+    let item: MusicItem
+    let isEditable: Bool
+    let onTap: () -> Void
+
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 8) {
+                ZStack {
+                    if let artworkUrl = item.albumArtUrl, let url = URL(string: artworkUrl) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            case .failure, .empty:
+                                artistPlaceholder
+                            @unknown default:
+                                artistPlaceholder
+                            }
+                        }
+                    } else {
+                        artistPlaceholder
+                    }
+
+                    // Edit overlay for editable mode
+                    if isEditable {
+                        Circle()
+                            .fill(Color.black.opacity(0.3))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "pencil")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+                .clipShape(Circle())
+
+                Text(item.name)
+                    .font(.lora(size: 12))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var artistPlaceholder: some View {
+        ZStack {
+            Color.gray.opacity(0.2)
+            Text(item.name.prefix(1).uppercased())
+                .font(.lora(size: 28, weight: .medium))
+                .foregroundColor(.gray.opacity(0.6))
+        }
     }
 }
 
