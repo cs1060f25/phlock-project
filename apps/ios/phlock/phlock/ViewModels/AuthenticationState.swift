@@ -27,64 +27,148 @@ class AuthenticationState: ObservableObject {
     // Profile photo cache busting
     @Published var profilePhotoVersion: Int = 0
 
+    // Session health tracking
+    @Published var sessionCorrupted = false
+    private var authCheckAttempts = 0
+    private let maxAuthCheckAttempts = 3
+
     init() {
         Task {
             await checkAuthStatus()
         }
     }
 
+    // MARK: - Session Recovery
+
+    /// Attempts to recover from a corrupted session
+    func attemptSessionRecovery() async {
+        print("🔧 Attempting session recovery...")
+        sessionCorrupted = false
+        authCheckAttempts = 0
+
+        // Clear any corrupted local state
+        await signOut()
+
+        // Reset error state
+        error = nil
+
+        print("✅ Session recovery complete - user can now sign in again")
+    }
+
+    /// Force clear all auth state (use when nothing else works)
+    func forceReset() async {
+        print("🚨 Force resetting all auth state...")
+
+        // Clear UserDefaults
+        UserDefaults.standard.removeObject(forKey: "isOnboardingComplete")
+
+        // Sign out from services (ignore errors)
+        try? await AuthServiceV3.shared.signOut()
+        try? await AuthServiceV2.shared.signOut()
+
+        // Reset all state
+        currentUser = nil
+        isAuthenticated = false
+        isOnboardingComplete = false
+        sessionCorrupted = false
+        authCheckAttempts = 0
+        error = nil
+        needsNameSetup = false
+        needsUsernameSetup = false
+        needsContactsPermission = false
+        needsAddFriends = false
+        needsInviteFriends = false
+        needsNotificationPermission = false
+        needsMusicPlatform = false
+        onboardingContactMatches = []
+        onboardingInvitableContacts = []
+
+        isLoading = false
+        print("✅ Force reset complete")
+    }
+
     // MARK: - Auth Status
 
     func checkAuthStatus() async {
-        print("🔍 checkAuthStatus() called")
+        print("🔍 checkAuthStatus() called (attempt \(authCheckAttempts + 1)/\(maxAuthCheckAttempts))")
         isLoading = true
+        authCheckAttempts += 1
 
         // Check onboarding status from UserDefaults
         isOnboardingComplete = UserDefaults.standard.bool(forKey: "isOnboardingComplete")
         print("   UserDefaults isOnboardingComplete: \(isOnboardingComplete)")
 
         do {
-            // Try V3 first (new auth), fall back to V2 for existing sessions
-            if let user = try await AuthServiceV3.shared.currentUser {
-                print("   Found V3 user: \(user.displayName), username: \(user.username ?? "nil"), musicPlatform: \(user.musicPlatform ?? "nil")")
-                currentUser = user
-                isAuthenticated = true
+            // Use timeout to prevent hanging on keychain/network issues
+            try await withTimeout(seconds: 10) { [self] in
+                // Try V3 first (new auth), fall back to V2 for existing sessions
+                if let user = try await AuthServiceV3.shared.currentUser {
+                    print("   Found V3 user: \(user.displayName), username: \(user.username ?? "nil"), musicPlatform: \(user.musicPlatform ?? "nil")")
+                    await MainActor.run {
+                        self.currentUser = user
+                        self.isAuthenticated = true
+                        self.sessionCorrupted = false
+                        self.authCheckAttempts = 0 // Reset on success
 
-                // Check if user needs to complete onboarding steps
-                if user.username == nil {
-                    needsUsernameSetup = true
-                    isOnboardingComplete = false
-                } else if user.musicPlatform == nil {
-                    needsMusicPlatform = true
-                    isOnboardingComplete = false
+                        // Check if user needs to complete onboarding steps
+                        if user.username == nil {
+                            self.needsUsernameSetup = true
+                            self.isOnboardingComplete = false
+                        } else if user.musicPlatform == nil {
+                            self.needsMusicPlatform = true
+                            self.isOnboardingComplete = false
+                        } else {
+                            // User has completed all required steps - mark onboarding as complete
+                            self.needsUsernameSetup = false
+                            self.needsMusicPlatform = false
+                            self.isOnboardingComplete = true
+                            UserDefaults.standard.set(true, forKey: "isOnboardingComplete")
+                        }
+                    }
+                    print("   After V3 check: username=\(user.username ?? "nil"), musicPlatform=\(user.musicPlatform ?? "nil")")
+                } else if let user = try await AuthServiceV2.shared.currentUser {
+                    // Legacy session - user already completed old flow
+                    print("   Found V2 user (legacy): \(user.displayName)")
+                    await MainActor.run {
+                        self.currentUser = user
+                        self.isAuthenticated = true
+                        self.needsUsernameSetup = false
+                        self.needsMusicPlatform = false
+                        self.sessionCorrupted = false
+                        self.authCheckAttempts = 0
+                    }
                 } else {
-                    // User has completed all required steps - mark onboarding as complete
-                    needsUsernameSetup = false
-                    needsMusicPlatform = false
-                    isOnboardingComplete = true
-                    UserDefaults.standard.set(true, forKey: "isOnboardingComplete")
+                    print("   No user found")
+                    await MainActor.run {
+                        self.isAuthenticated = false
+                        self.currentUser = nil
+                        self.authCheckAttempts = 0
+                    }
                 }
-                print("   After V3 check: needsUsernameSetup=\(needsUsernameSetup), needsMusicPlatform=\(needsMusicPlatform), isOnboardingComplete=\(isOnboardingComplete)")
-            } else if let user = try await AuthServiceV2.shared.currentUser {
-                // Legacy session - user already completed old flow
-                print("   Found V2 user (legacy): \(user.displayName)")
-                currentUser = user
-                isAuthenticated = true
-                needsUsernameSetup = false
-                needsMusicPlatform = false
-            } else {
-                print("   No user found")
-                isAuthenticated = false
-                currentUser = nil
             }
+        } catch is TimeoutError {
+            print("⚠️ Auth check timed out after 10 seconds")
+            handleAuthCheckFailure(error: AppError.timeout)
         } catch {
             print("   Error: \(error)")
-            self.error = error
-            isAuthenticated = false
-            currentUser = nil
+            handleAuthCheckFailure(error: error)
         }
 
         isLoading = false
+    }
+
+    private func handleAuthCheckFailure(error: Error) {
+        if authCheckAttempts >= maxAuthCheckAttempts {
+            // Multiple failures - likely corrupted session
+            print("🚨 Auth check failed \(authCheckAttempts) times - marking session as corrupted")
+            sessionCorrupted = true
+            self.error = AppError.sessionCorrupted
+        } else {
+            // First failure - set error but allow retry
+            self.error = error
+        }
+        isAuthenticated = false
+        currentUser = nil
     }
 
     func completeOnboarding() {
@@ -99,6 +183,17 @@ class AuthenticationState: ObservableObject {
         onboardingContactMatches = []
         onboardingInvitableContacts = []
         UserDefaults.standard.set(true, forKey: "isOnboardingComplete")
+
+        // Auto-follow @woon after onboarding completion
+        if let userId = currentUser?.id {
+            Task {
+                do {
+                    try await FollowService.shared.autoFollowWoon(currentUserId: userId)
+                } catch {
+                    print("⚠️ Failed to auto-follow @woon: \(error)")
+                }
+            }
+        }
     }
 
     // MARK: - Sign In (Legacy V2 - kept for backwards compatibility)

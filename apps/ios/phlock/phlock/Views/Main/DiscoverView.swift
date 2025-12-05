@@ -276,26 +276,49 @@ struct DiscoverView: View {
             isLoadingCuratedPlaylists = true
             curatedPlaylistsError = nil
 
-            // Load all playlist tracks in parallel (uses 1-hour cache unless forceRefresh)
-            do {
-                viralTracks = try await SearchService.shared.getViralTracks(forceRefresh: forceRefresh)
-            } catch {
-                print("❌ Failed to load viral tracks: \(error)")
-                viralTracks = []
-            }
+            // Load all playlist tracks in parallel with retry logic
+            async let viralResult: [MusicItem] = {
+                do {
+                    return try await withTimeoutAndRetry(timeoutSeconds: 10) {
+                        try await SearchService.shared.getViralTracks(forceRefresh: forceRefresh)
+                    }
+                } catch {
+                    print("❌ Failed to load viral tracks after retries: \(error)")
+                    return []
+                }
+            }()
 
-            do {
-                newReleaseTracks = try await SearchService.shared.getNewReleases(forceRefresh: forceRefresh)
-            } catch {
-                print("❌ Failed to load new releases: \(error)")
-                newReleaseTracks = []
-            }
+            async let newReleaseResult: [MusicItem] = {
+                do {
+                    return try await withTimeoutAndRetry(timeoutSeconds: 10) {
+                        try await SearchService.shared.getNewReleases(forceRefresh: forceRefresh)
+                    }
+                } catch {
+                    print("❌ Failed to load new releases after retries: \(error)")
+                    return []
+                }
+            }()
 
-            do {
-                chartsTracks = try await SearchService.shared.getChartsTracks(forceRefresh: forceRefresh)
-            } catch {
-                print("❌ Failed to load charts: \(error)")
-                chartsTracks = []
+            async let chartsResult: [MusicItem] = {
+                do {
+                    return try await withTimeoutAndRetry(timeoutSeconds: 10) {
+                        try await SearchService.shared.getChartsTracks(forceRefresh: forceRefresh)
+                    }
+                } catch {
+                    print("❌ Failed to load charts after retries: \(error)")
+                    return []
+                }
+            }()
+
+            // Await all results in parallel
+            let (viral, newReleases, charts) = await (viralResult, newReleaseResult, chartsResult)
+            viralTracks = viral
+            newReleaseTracks = newReleases
+            chartsTracks = charts
+
+            // Show error only if all failed
+            if viralTracks.isEmpty && newReleaseTracks.isEmpty && chartsTracks.isEmpty {
+                curatedPlaylistsError = "Unable to load music. Check your connection and try again."
             }
 
             isLoadingCuratedPlaylists = false
@@ -454,13 +477,25 @@ struct DiscoverView: View {
 
     @ViewBuilder
     private var browseContentSection: some View {
-        switch selectedBrowseTab {
+        TabView(selection: $selectedBrowseTab) {
+            ForEach(availableTabs, id: \.self) { tab in
+                browseContentForTab(tab)
+                    .tag(tab)
+            }
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .animation(.easeInOut(duration: 0.25), value: selectedBrowseTab)
+    }
+
+    @ViewBuilder
+    private func browseContentForTab(_ tab: BrowseTab) -> some View {
+        switch tab {
         case .recent:
             recentlyPlayedSection
         case .viral:
             curatedPlaylistSection(tracks: viralTracks, title: "viral hits", isLoading: isLoadingCuratedPlaylists)
         case .new:
-            curatedPlaylistSection(tracks: newReleaseTracks, title: "new music friday", isLoading: isLoadingCuratedPlaylists)
+            curatedPlaylistSection(tracks: newReleaseTracks, title: "what's new", isLoading: isLoadingCuratedPlaylists)
         case .charts:
             curatedPlaylistSection(tracks: chartsTracks, title: "today's top hits", isLoading: isLoadingCuratedPlaylists)
         }

@@ -328,6 +328,30 @@ class ShareService {
         }
     }
 
+    /// Mark a share as unsaved (clear saved_at timestamp)
+    /// - Parameters:
+    ///   - shareId: The share's ID
+    ///   - userId: The user who unsaved it
+    func markAsUnsaved(shareId: UUID, userId: UUID) async throws {
+        struct UnsaveUpdate: Encodable {
+            let status: String
+            let saved_at: String?
+        }
+
+        let update = UnsaveUpdate(
+            status: ShareStatus.played.rawValue,
+            saved_at: nil
+        )
+
+        try await supabase
+            .from("shares")
+            .update(update)
+            .eq("id", value: shareId.uuidString)
+            .execute()
+
+        print("✅ Cleared saved_at for share \(shareId)")
+    }
+
     /// Mark a share as dismissed and record the engagement
     /// - Parameters:
     ///   - shareId: The share's ID

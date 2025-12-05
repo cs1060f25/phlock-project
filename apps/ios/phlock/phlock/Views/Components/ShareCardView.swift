@@ -1,5 +1,32 @@
 import SwiftUI
 
+/// Card format for different sharing destinations
+enum ShareCardFormat: CaseIterable {
+    case story      // 9:16 - Stories, Reels, DMs (1080x1920)
+    case post       // 4:5 - Feed posts (1080x1350) - optimal for IG feed
+
+    var baseSize: CGSize {
+        switch self {
+        case .story: return CGSize(width: 360, height: 640)
+        case .post: return CGSize(width: 360, height: 450)  // 4:5 ratio
+        }
+    }
+
+    var exportSize: CGSize {
+        switch self {
+        case .story: return CGSize(width: 1080, height: 1920)
+        case .post: return CGSize(width: 1080, height: 1350)  // 4:5 ratio
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .story: return "Story"
+        case .post: return "Post"
+        }
+    }
+}
+
 /// Data structure for a song row in the share card
 struct ShareCardSong: Identifiable {
     let id: UUID
@@ -20,20 +47,23 @@ struct ShareCardSong: Identifiable {
 }
 
 /// A shareable card view showing the user's phlock playlist
-/// Designed for Instagram Stories (9:16 aspect ratio)
+/// Supports multiple formats for different Instagram destinations
 struct ShareCardView: View {
     let songs: [ShareCardSong]
     let gradientColors: [Color]
     let instagramHandle: String
+    let format: ShareCardFormat
 
     init(
         songs: [ShareCardSong],
         gradientColors: [Color],
-        instagramHandle: String = "@myphlock"
+        instagramHandle: String = "@myphlock",
+        format: ShareCardFormat = .story
     ) {
         self.songs = songs
         self.gradientColors = gradientColors.isEmpty ? [Color.gray] : gradientColors
         self.instagramHandle = instagramHandle
+        self.format = format
     }
 
     var body: some View {
@@ -44,35 +74,77 @@ struct ShareCardView: View {
             // Dark overlay for text legibility
             Color.black.opacity(0.55)
 
-            // Content
-            VStack(spacing: 0) {
-                Spacer()
-                    .frame(height: 60)
-
-                // Header
-                Text("my phlock today")
-                    .font(.lora(size: 28, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.bottom, 32)
-
-                // Song rows
-                VStack(spacing: 16) {
-                    ForEach(songs) { song in
-                        songRow(song)
-                    }
-                }
-                .padding(.horizontal, 32)
-
-                Spacer()
-
-                // Footer
-                Text(instagramHandle)
-                    .font(.lora(size: 18, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
-                    .padding(.bottom, 48)
+            // Content - different layouts per format
+            switch format {
+            case .story:
+                storyLayout
+            case .post:
+                postLayout
             }
         }
-        .frame(width: 360, height: 640)  // Base size, will be scaled 3x for export
+        .frame(width: format.baseSize.width, height: format.baseSize.height)
+    }
+
+    // MARK: - Story Layout (9:16)
+
+    private var storyLayout: some View {
+        VStack(spacing: 0) {
+            Spacer()
+                .frame(height: 48)
+
+            // Header
+            Text("my phlock today")
+                .font(.lora(size: 28, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.bottom, 24)
+
+            // Song rows
+            VStack(spacing: 12) {
+                ForEach(songs) { song in
+                    songRow(song, compact: false)
+                }
+            }
+            .padding(.horizontal, 32)
+
+            Spacer()
+
+            // Footer
+            Text(instagramHandle)
+                .font(.lora(size: 18, weight: .medium))
+                .foregroundColor(.white.opacity(0.6))
+                .padding(.bottom, 40)
+        }
+    }
+
+    // MARK: - Post Layout (4:5 ratio for Instagram feed)
+
+    private var postLayout: some View {
+        VStack(spacing: 0) {
+            Spacer()
+                .frame(height: 36)
+
+            // Header
+            Text("my phlock today")
+                .font(.lora(size: 26, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.bottom, 20)
+
+            // Song rows - same styling as story, fits well in 4:5
+            VStack(spacing: 10) {
+                ForEach(songs.prefix(6)) { song in
+                    songRow(song, compact: false)
+                }
+            }
+            .padding(.horizontal, 28)
+
+            Spacer()
+
+            // Footer
+            Text(instagramHandle)
+                .font(.lora(size: 16, weight: .medium))
+                .foregroundColor(.white.opacity(0.6))
+                .padding(.bottom, 32)
+        }
     }
 
     // MARK: - Background Gradient
@@ -87,18 +159,25 @@ struct ShareCardView: View {
 
     // MARK: - Song Row
 
-    private func songRow(_ song: ShareCardSong) -> some View {
-        HStack(spacing: 14) {
+    private func songRow(_ song: ShareCardSong, compact: Bool) -> some View {
+        let artSize: CGFloat = compact ? 44 : 56
+        let titleSize: CGFloat = compact ? 14 : 16
+        let subtitleSize: CGFloat = compact ? 11 : 13
+        let spacing: CGFloat = compact ? 10 : 12
+        let hPadding: CGFloat = compact ? 8 : 10
+        let vPadding: CGFloat = compact ? 6 : 8
+
+        return HStack(spacing: spacing) {
             // Album art
             if let image = song.image {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(width: 64, height: 64)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .frame(width: artSize, height: artSize)
+                    .clipShape(RoundedRectangle(cornerRadius: compact ? 6 : 8))
             } else {
                 // Fallback placeholder
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: compact ? 6 : 8)
                     .fill(
                         LinearGradient(
                             colors: [Color.purple.opacity(0.5), Color.blue.opacity(0.5)],
@@ -106,35 +185,35 @@ struct ShareCardView: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .frame(width: 64, height: 64)
+                    .frame(width: artSize, height: artSize)
                     .overlay(
                         Image(systemName: "music.note")
                             .foregroundColor(.white.opacity(0.7))
-                            .font(.system(size: 24))
+                            .font(.system(size: compact ? 16 : 22))
                     )
             }
 
             // Track info
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: compact ? 2 : 3) {
                 Text(song.trackName)
-                    .font(.lora(size: 17, weight: .semiBold))
+                    .font(.lora(size: titleSize, weight: .semiBold))
                     .foregroundColor(.white)
                     .lineLimit(1)
 
                 Text("\(song.artistName) • \(song.pickerLabel)")
-                    .font(.lora(size: 14, weight: .regular))
+                    .font(.lora(size: subtitleSize, weight: .regular))
                     .foregroundColor(.white.opacity(0.6))
                     .lineLimit(1)
             }
 
             Spacer()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, hPadding)
+        .padding(.vertical, vPadding)
         .background(
             // Highlight for "my pick" row
             song.isMyPick
-                ? RoundedRectangle(cornerRadius: 12)
+                ? RoundedRectangle(cornerRadius: compact ? 8 : 10)
                     .fill(Color.white.opacity(0.1))
                 : nil
         )
@@ -143,40 +222,52 @@ struct ShareCardView: View {
 
 // MARK: - Share Card Sheet
 
-/// Bottom sheet for sharing the generated card
+/// Bottom sheet for sharing the generated card with format selection
 struct ShareCardSheet: View {
-    let image: UIImage
-    let onShareToInstagram: () -> Void
-    let onShareGeneral: () -> Void
+    let images: [ShareCardFormat: UIImage]
+    let onShareToInstagram: (UIImage) -> Void
 
     @Environment(\.dismiss) var dismiss
     @Environment(\.colorScheme) var colorScheme
+    @State private var selectedFormat: ShareCardFormat = .story
     @State private var showActivitySheet = false
+
+    private var currentImage: UIImage? {
+        images[selectedFormat]
+    }
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
+            VStack(spacing: 20) {
+                // Format picker
+                formatPicker
+                    .padding(.top, 8)
+
                 // Card preview
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxHeight: 400)
-                    .cornerRadius(16)
-                    .shadow(color: Color.black.opacity(0.3), radius: 20, y: 10)
-                    .padding(.horizontal, 32)
-                    .padding(.top, 16)
+                if let image = currentImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxHeight: selectedFormat == .story ? 360 : 280)
+                        .cornerRadius(16)
+                        .shadow(color: Color.black.opacity(0.3), radius: 20, y: 10)
+                        .padding(.horizontal, 32)
+                        .animation(.easeInOut(duration: 0.2), value: selectedFormat)
+                }
 
                 Spacer()
 
                 // Share buttons
                 VStack(spacing: 12) {
-                    // Instagram Stories button
-                    if ShareCardGenerator.isInstagramInstalled {
-                        Button(action: onShareToInstagram) {
+                    // Instagram button with context-aware label
+                    if ShareCardGenerator.isInstagramInstalled, let image = currentImage {
+                        Button {
+                            onShareToInstagram(image)
+                        } label: {
                             HStack(spacing: 12) {
-                                Image(systemName: "camera.circle.fill")
+                                Image(systemName: instagramIcon)
                                     .font(.system(size: 22))
-                                Text("Share to Instagram Stories")
+                                Text(instagramButtonLabel)
                                     .font(.lora(size: 17, weight: .semiBold))
                             }
                             .foregroundColor(.white)
@@ -224,10 +315,80 @@ struct ShareCardSheet: View {
                 }
             }
             .sheet(isPresented: $showActivitySheet) {
-                ActivityViewController(activityItems: [image])
+                if let image = currentImage {
+                    ActivityViewController(activityItems: [image])
+                }
             }
         }
         .presentationDetents([.large])
+    }
+
+    // MARK: - Format Picker
+
+    private var formatPicker: some View {
+        HStack(spacing: 0) {
+            ForEach(ShareCardFormat.allCases, id: \.self) { format in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        selectedFormat = format
+                    }
+                } label: {
+                    VStack(spacing: 6) {
+                        Image(systemName: formatIcon(for: format))
+                            .font(.system(size: 20))
+                        Text(format.displayName)
+                            .font(.lora(size: 13, weight: .medium))
+                    }
+                    .foregroundColor(selectedFormat == format ? .white : .gray)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        selectedFormat == format
+                            ? RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.accentColor)
+                            : nil
+                    )
+                }
+            }
+        }
+        .padding(4)
+        .background(Color.gray.opacity(0.15))
+        .cornerRadius(12)
+        .padding(.horizontal, 24)
+    }
+
+    private func formatIcon(for format: ShareCardFormat) -> String {
+        switch format {
+        case .story: return "rectangle.portrait"
+        case .post: return "square"
+        }
+    }
+
+    private var instagramIcon: String {
+        switch selectedFormat {
+        case .story: return "camera.circle.fill"
+        case .post: return "square.grid.2x2.fill"
+        }
+    }
+
+    private var instagramButtonLabel: String {
+        switch selectedFormat {
+        case .story: return "Share to Stories"
+        case .post: return "Share to Feed"
+        }
+    }
+}
+
+/// Legacy single-image sheet for backward compatibility
+struct ShareCardSheetLegacy: View {
+    let image: UIImage
+    let onShareToInstagram: () -> Void
+
+    var body: some View {
+        ShareCardSheet(
+            images: [.story: image],
+            onShareToInstagram: { _ in onShareToInstagram() }
+        )
     }
 }
 

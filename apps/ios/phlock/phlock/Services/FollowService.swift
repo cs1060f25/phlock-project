@@ -128,6 +128,79 @@ class FollowService {
         }
     }
 
+    /// Auto-follow @woon on onboarding completion
+    /// This follows @woon and adds them to position 1 of the new user's phlock
+    /// Also triggers a notification for @woon
+    func autoFollowWoon(currentUserId: UUID) async throws {
+        let woonId = UUID(uuidString: "7d1ca118-b5b1-4a73-a6ed-850dd22575dc")!
+
+        // Don't self-follow if the user is woon
+        guard currentUserId != woonId else { return }
+
+        // Check if already following (in case user re-onboards)
+        let existing = try await getFollow(followerId: currentUserId, followingId: woonId)
+        if existing != nil {
+            print("ℹ️ User already follows @woon, skipping auto-follow")
+            return
+        }
+
+        // Create follow relationship with phlock position 1
+        struct FollowInsert: Encodable {
+            let follower_id: String
+            let following_id: String
+            let is_in_phlock: Bool
+            let phlock_position: Int
+            let phlock_added_at: String
+        }
+
+        let followData = FollowInsert(
+            follower_id: currentUserId.uuidString,
+            following_id: woonId.uuidString,
+            is_in_phlock: true,
+            phlock_position: 1,
+            phlock_added_at: ISO8601DateFormatter().string(from: Date())
+        )
+
+        try await supabase
+            .from("follows")
+            .insert(followData)
+            .execute()
+
+        // Add to phlock_history for reach tracking (ignore conflict if already exists)
+        struct PhlockHistoryInsert: Encodable {
+            let phlock_owner_id: String
+            let phlock_member_id: String
+            let first_added_at: String
+        }
+
+        let historyData = PhlockHistoryInsert(
+            phlock_owner_id: currentUserId.uuidString,
+            phlock_member_id: woonId.uuidString,
+            first_added_at: ISO8601DateFormatter().string(from: Date())
+        )
+
+        try? await supabase
+            .from("phlock_history")
+            .upsert(historyData, onConflict: "phlock_owner_id,phlock_member_id")
+            .execute()
+
+        // Clear caches
+        clearCache(for: currentUserId)
+
+        // Notify @woon that they have a new follower
+        Task {
+            do {
+                try await NotificationService.shared.createNewFollowerNotification(
+                    userId: woonId,
+                    followerId: currentUserId
+                )
+                print("✅ Auto-followed @woon and sent notification")
+            } catch {
+                print("⚠️ Failed to create new follower notification for @woon: \(error)")
+            }
+        }
+    }
+
     /// Unfollow a user
     func unfollow(userId: UUID, currentUserId: UUID) async throws {
         try await supabase
@@ -480,6 +553,84 @@ class FollowService {
             .execute()
 
         return false
+    }
+
+    /// Schedule a phlock member removal for midnight (when they've already picked today)
+    func scheduleRemoval(userId: UUID, currentUserId: UUID) async throws {
+        // Verify user is in phlock
+        let currentPhlock = try await getPhlockMembers(for: currentUserId)
+        guard currentPhlock.contains(where: { $0.user.id == userId }) else {
+            throw FollowServiceError.userNotInPhlock
+        }
+
+        // Calculate midnight tomorrow
+        let calendar = Calendar.current
+        let now = Date()
+        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: now),
+              let midnight = calendar.date(bySettingHour: 0, minute: 0, second: 0, of: tomorrow) else {
+            throw FollowServiceError.schedulingFailed
+        }
+
+        struct ScheduledRemovalInsert: Encodable {
+            let user_id: String
+            let old_member_id: String
+            let new_member_id: String?
+            let scheduled_for: String
+            let status: String
+        }
+
+        let insert = ScheduledRemovalInsert(
+            user_id: currentUserId.uuidString,
+            old_member_id: userId.uuidString,
+            new_member_id: nil, // NULL indicates pure removal, not swap
+            scheduled_for: ISO8601DateFormatter().string(from: midnight),
+            status: "pending"
+        )
+
+        try await supabase
+            .from("scheduled_swaps")
+            .insert(insert)
+            .execute()
+    }
+
+    /// Cancel a scheduled removal for a phlock member
+    func cancelScheduledRemoval(userId: UUID, currentUserId: UUID) async throws {
+        struct StatusUpdate: Encodable {
+            let status: String
+            let updated_at: String
+        }
+
+        let update = StatusUpdate(
+            status: "cancelled",
+            updated_at: ISO8601DateFormatter().string(from: Date())
+        )
+
+        try await supabase
+            .from("scheduled_swaps")
+            .update(update)
+            .eq("user_id", value: currentUserId.uuidString)
+            .eq("old_member_id", value: userId.uuidString)
+            .eq("status", value: "pending")
+            .is("new_member_id", value: nil) // Only cancel removals, not swaps
+            .execute()
+    }
+
+    /// Get all pending scheduled removals for a user (member IDs scheduled to be removed)
+    func getScheduledRemovals(for userId: UUID) async throws -> Set<UUID> {
+        struct ScheduledRemoval: Decodable {
+            let old_member_id: String
+        }
+
+        let removals: [ScheduledRemoval] = try await supabase
+            .from("scheduled_swaps")
+            .select("old_member_id")
+            .eq("user_id", value: userId.uuidString)
+            .eq("status", value: "pending")
+            .is("new_member_id", value: nil) // Only get removals, not swaps
+            .execute()
+            .value
+
+        return Set(removals.compactMap { UUID(uuidString: $0.old_member_id) })
     }
 
     /// Get all users who currently have the current user in their phlock

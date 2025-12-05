@@ -8,8 +8,42 @@ struct SplashScreenView: View {
     @State private var fadeOut = false // For fade transition when logged in
     @State private var moveToWelcomePosition = false // For moving logo to top
     @State private var isRotating = false
+    @State private var minimumDisplayTimePassed = false // Ensure logo displays for minimum time
+    @State private var hasTransitioned = false // Prevent double transitions
+    @State private var timeoutTask: Task<Void, Never>? // Track timeout task for cleanup
 
     var onComplete: (() -> Void)? = nil
+
+    // MARK: - Transition Logic
+
+    /// Safely trigger transition to next screen (prevents double-firing)
+    private func triggerTransition() {
+        guard !hasTransitioned else { return }
+        hasTransitioned = true
+
+        // Cancel timeout task since we're transitioning
+        timeoutTask?.cancel()
+
+        if authState.isAuthenticated {
+            print("🎨 User authenticated - fading to MainView")
+        } else {
+            print("🎨 User not authenticated - fading to WelcomeView")
+        }
+
+        withAnimation(.easeOut(duration: 0.5)) {
+            fadeOut = true
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            onComplete?()
+        }
+    }
+
+    /// Check if we're ready to transition (auth done AND minimum display time passed)
+    private func checkReadyToTransition() {
+        guard minimumDisplayTimePassed && !authState.isLoading && !hasTransitioned else { return }
+        triggerTransition()
+    }
 
     var body: some View {
         NavigationStack {
@@ -37,37 +71,12 @@ struct SplashScreenView: View {
                         .id("animated-logo")
                         .onAppear {
                             isRotating = true
-                            
-                            // Simulate animation delay
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.75) { // Reduced delay by 30% (2.5 -> 1.75)
-                                print("🎨 Logo display complete")
 
-                                // Check if user is authenticated
-                                if authState.isAuthenticated {
-                                    // Logged in: fade out to MainView
-                                    print("🎨 User authenticated - fading to MainView")
-                                    withAnimation(.easeOut(duration: 0.5)) {
-                                        fadeOut = true
-                                    }
-
-                                    // Notify parent to transition to MainView
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                        onComplete?()
-                                    }
-                                } else {
-                                    // Not logged in: fade out to WelcomeView
-                                    print("🎨 User not authenticated - fading to WelcomeView")
-
-                                    // Fade out
-                                    withAnimation(.easeOut(duration: 0.5)) {
-                                        fadeOut = true
-                                    }
-
-                                    // Notify parent to show WelcomeView
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                        onComplete?()
-                                    }
-                                }
+                            // Minimum display time for splash (1.75s)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.75) {
+                                print("🎨 Minimum display time passed")
+                                minimumDisplayTimePassed = true
+                                checkReadyToTransition()
                             }
                         }
                     
@@ -92,7 +101,37 @@ struct SplashScreenView: View {
             .onAppear {
                 guard !hasAppeared else { return }
                 hasAppeared = true
-                print("🎬 SplashScreenView appeared - starting fast 1.5s animation")
+                print("🎬 SplashScreenView appeared - starting splash animation")
+
+                // If auth is already complete when we appear, we just wait for minimum display time
+                if !authState.isLoading {
+                    print("🎬 Auth already complete on appear")
+                }
+
+                // Start timeout task - force transition after 5 seconds no matter what
+                timeoutTask = Task {
+                    do {
+                        try await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
+                        await MainActor.run {
+                            if !hasTransitioned {
+                                print("⚠️ Splash screen timeout - forcing transition")
+                                triggerTransition()
+                            }
+                        }
+                    } catch {
+                        // Task was cancelled - this is expected when we transition normally
+                    }
+                }
+            }
+            .onChange(of: authState.isLoading) { isLoading in
+                if !isLoading {
+                    print("🎬 Auth loading finished")
+                    checkReadyToTransition()
+                }
+            }
+            .onDisappear {
+                // Clean up timeout task when view disappears
+                timeoutTask?.cancel()
             }
         }
     }

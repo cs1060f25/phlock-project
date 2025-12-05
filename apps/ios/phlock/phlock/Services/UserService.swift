@@ -267,6 +267,21 @@ class UserService {
         try await followService.swapPhlockMember(oldUserId: oldMemberId, newUserId: newMemberId, currentUserId: userId)
     }
 
+    /// Schedule a phlock member removal for midnight (when they've already picked today)
+    func scheduleRemoval(memberId: UUID, for userId: UUID) async throws {
+        try await followService.scheduleRemoval(userId: memberId, currentUserId: userId)
+    }
+
+    /// Cancel a scheduled removal for a phlock member
+    func cancelScheduledRemoval(memberId: UUID, for userId: UUID) async throws {
+        try await followService.cancelScheduledRemoval(userId: memberId, currentUserId: userId)
+    }
+
+    /// Get all pending scheduled removals (member IDs scheduled to be removed at midnight)
+    func getScheduledRemovals(for userId: UUID) async throws -> Set<UUID> {
+        try await followService.getScheduledRemovals(for: userId)
+    }
+
     /// Get who has this user in their phlock
     func getWhoIncludesMe(userId: UUID) async throws -> (count: Int, users: [User]?) {
         try await followService.getWhoHasMeInPhlock(userId: userId)

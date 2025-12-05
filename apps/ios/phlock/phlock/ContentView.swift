@@ -15,10 +15,19 @@ struct ContentView: View {
     @State private var isInitialLaunch = true // Track if this is the first app launch
     @AppStorage("selectedTab") private var selectedTab = 0
 
+    // Global error handling
+    @State private var globalError: AppError?
+    @State private var showErrorBanner = false
+
     var body: some View {
         ZStack {
+            // Session corruption recovery view (highest priority)
+            if authState.sessionCorrupted {
+                RecoveryView(error: .sessionCorrupted)
+                    .environmentObject(authState)
+            }
             // Main content
-            if authState.isAuthenticated {
+            else if authState.isAuthenticated {
                 if authState.needsNameSetup {
                     // Step 1: Name entry
                     NavigationStack {
@@ -65,6 +74,30 @@ struct ContentView: View {
                 // While splash is showing, render background
                 Color.appBackground
                     .ignoresSafeArea()
+            }
+
+            // Global error banner overlay
+            if showErrorBanner, let error = globalError {
+                ErrorBanner(
+                    error: error,
+                    onRetry: {
+                        // Clear error and let the view retry
+                        globalError = nil
+                        showErrorBanner = false
+                    },
+                    onDismiss: {
+                        globalError = nil
+                        showErrorBanner = false
+                    },
+                    onSignOut: {
+                        Task {
+                            await authState.signOut()
+                        }
+                        globalError = nil
+                        showErrorBanner = false
+                    }
+                )
+                .zIndex(100) // Above everything
             }
 
             // Splash screen overlay - only shows on initial app launch
@@ -129,6 +162,20 @@ struct ContentView: View {
             }
         }
         .dismissKeyboardOnTouch()
+        // Listen for auth errors using onReceive since Error doesn't conform to Equatable
+        .onReceive(authState.$error) { error in
+            if let error = error {
+                globalError = AppError.from(error)
+                showErrorBanner = true
+                print("🚨 Auth error surfaced: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Show a global error banner (can be called from child views via environment)
+    func showError(_ error: AppError) {
+        globalError = error
+        showErrorBanner = true
     }
 }
 

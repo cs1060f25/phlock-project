@@ -9,40 +9,47 @@ class ShareCardGenerator {
 
     // MARK: - Public API
 
-    /// Generates a share card image from the user's phlock playlist
-    /// - Parameters:
-    ///   - myPick: The current user's daily song pick (optional)
-    ///   - phlockSongs: Daily songs from phlock members
-    ///   - members: Phlock members (for username lookup)
-    /// - Returns: A high-resolution UIImage suitable for Instagram Stories (1080x1920)
-    static func generateCard(
+    /// Pre-processed card data that can be rendered to multiple formats
+    struct CardData {
+        let songs: [ShareCardSong]
+        let gradientColors: [Color]
+    }
+
+    /// Prepares card data by loading images and extracting colors
+    /// Call this once, then use generateCard(from:format:) for each format
+    static func prepareCardData(
         myPick: Share?,
         phlockSongs: [Share],
         members: [FollowWithPosition]
-    ) async -> UIImage? {
-        // Collect all songs that need album art
-        var allShares: [Share] = []
-        if let myPick = myPick {
-            allShares.append(myPick)
-        }
-        allShares.append(contentsOf: phlockSongs)
+    ) async -> CardData? {
+        // Deduplicate phlockSongs: keep only one song per sender
+        let myPickSenderId = myPick?.senderId
+        var seenSenderIds = Set<UUID>()
+        var uniquePhlockSongs: [Share] = []
 
-        // Guard: Need at least one song
-        guard !allShares.isEmpty else {
-            return nil
+        for share in phlockSongs {
+            if let myId = myPickSenderId, share.senderId == myId { continue }
+            if seenSenderIds.contains(share.senderId) { continue }
+            seenSenderIds.insert(share.senderId)
+            uniquePhlockSongs.append(share)
         }
+
+        let limitedPhlockSongs = Array(uniquePhlockSongs.prefix(5))
+
+        var allShares: [Share] = []
+        if let myPick = myPick { allShares.append(myPick) }
+        allShares.append(contentsOf: limitedPhlockSongs)
+
+        guard !allShares.isEmpty else { return nil }
 
         // Pre-load all album art images
         let albumArtUrls = allShares.compactMap { $0.albumArtUrl }
         let images = await loadImages(from: albumArtUrls)
-
-        // Extract dominant colors from loaded images
         let colors = extractColors(from: Array(images.values))
 
         // Build ShareCardSong array
         var cardSongs: [ShareCardSong] = []
 
-        // Add "my pick" first
         if let myPick = myPick {
             let image = myPick.albumArtUrl.flatMap { images[$0] }
             cardSongs.append(ShareCardSong(
@@ -53,8 +60,7 @@ class ShareCardGenerator {
             ))
         }
 
-        // Add phlock members' songs
-        for share in phlockSongs {
+        for share in limitedPhlockSongs {
             let image = share.albumArtUrl.flatMap { images[$0] }
             let pickerLabel = findUsername(for: share.senderId, in: members)
             cardSongs.append(ShareCardSong(
@@ -64,14 +70,60 @@ class ShareCardGenerator {
             ))
         }
 
-        // Create the SwiftUI view
-        let cardView = ShareCardView(
-            songs: cardSongs,
-            gradientColors: colors
-        )
+        return CardData(songs: cardSongs, gradientColors: colors)
+    }
 
-        // Render to image at 3x scale for high quality
-        return renderToImage(view: cardView, scale: 3.0)
+    /// Generates a share card image in the specified format
+    static func generateCard(from data: CardData, format: ShareCardFormat) -> UIImage? {
+        let cardView = ShareCardView(
+            songs: data.songs,
+            gradientColors: data.gradientColors,
+            format: format
+        )
+        return renderToImage(view: cardView, format: format)
+    }
+
+    /// Generates a share card image from the user's phlock playlist
+    /// - Parameters:
+    ///   - myPick: The current user's daily song pick (optional)
+    ///   - phlockSongs: Daily songs from phlock members
+    ///   - members: Phlock members (for username lookup)
+    ///   - format: The card format (story or post)
+    /// - Returns: A high-resolution UIImage
+    static func generateCard(
+        myPick: Share?,
+        phlockSongs: [Share],
+        members: [FollowWithPosition],
+        format: ShareCardFormat = .story
+    ) async -> UIImage? {
+        guard let data = await prepareCardData(
+            myPick: myPick,
+            phlockSongs: phlockSongs,
+            members: members
+        ) else { return nil }
+
+        return generateCard(from: data, format: format)
+    }
+
+    /// Generates cards for all formats at once (more efficient for format picker)
+    static func generateAllFormats(
+        myPick: Share?,
+        phlockSongs: [Share],
+        members: [FollowWithPosition]
+    ) async -> [ShareCardFormat: UIImage] {
+        guard let data = await prepareCardData(
+            myPick: myPick,
+            phlockSongs: phlockSongs,
+            members: members
+        ) else { return [:] }
+
+        var results: [ShareCardFormat: UIImage] = [:]
+        for format in ShareCardFormat.allCases {
+            if let image = generateCard(from: data, format: format) {
+                results[format] = image
+            }
+        }
+        return results
     }
 
     // MARK: - Image Loading
@@ -202,12 +254,14 @@ class ShareCardGenerator {
 
     // MARK: - Image Rendering
 
-    /// Renders a SwiftUI view to a UIImage at the specified scale
-    private static func renderToImage<V: View>(view: V, scale: CGFloat) -> UIImage? {
+    /// Renders a SwiftUI view to a UIImage for the specified format
+    private static func renderToImage<V: View>(view: V, format: ShareCardFormat) -> UIImage? {
         let renderer = ImageRenderer(content: view)
-        renderer.scale = scale
-        renderer.proposedSize = ProposedViewSize(width: 360, height: 640)
-
+        renderer.scale = 3.0  // Always render at 3x for high quality
+        renderer.proposedSize = ProposedViewSize(
+            width: format.baseSize.width,
+            height: format.baseSize.height
+        )
         return renderer.uiImage
     }
 }

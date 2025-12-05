@@ -512,12 +512,16 @@ struct FriendsView: View {
         guard let currentUser = authState.currentUser else { return }
         isLoadingSuggestions = true
         do {
-            suggestedUsers = try await FollowService.shared.getRecommendedFriends(
-                for: currentUser.id,
-                contactMatches: contactMatches
-            )
+            // Use retry logic for network resilience
+            suggestedUsers = try await withTimeoutAndRetry(timeoutSeconds: 10) {
+                try await FollowService.shared.getRecommendedFriends(
+                    for: currentUser.id,
+                    contactMatches: self.contactMatches
+                )
+            }
         } catch {
-            print("Failed to load suggestions: \(error)")
+            print("⚠️ Failed to load suggestions after retries: \(error)")
+            // Don't show error to user - suggestions are non-critical
         }
         isLoadingSuggestions = false
     }

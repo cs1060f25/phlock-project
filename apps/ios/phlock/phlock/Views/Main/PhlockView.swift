@@ -124,8 +124,12 @@ struct PhlockView: View {
 
     // Share card state
     @State private var isGeneratingShareCard = false
-    @State private var generatedShareCardImage: UIImage?
+    @State private var generatedShareCardImages: [ShareCardFormat: UIImage] = [:]
     @State private var showShareSheet = false
+
+    // Profile sheet state
+    @State private var showProfileSheet = false
+    @State private var selectedProfileUser: User?
 
     // Helper struct to organize phlock items
     struct PhlockItem: Identifiable {
@@ -241,7 +245,8 @@ struct PhlockView: View {
                             removeFromLibrary(song)
                         },
                         onProfileTapped: { user in
-                            navigationPath.append(PhlockDestination.userProfile(user))
+                            selectedProfileUser = user
+                            showProfileSheet = true
                         },
                         onNudgeTapped: { member in
                             nudgeMember(member)
@@ -333,6 +338,12 @@ struct PhlockView: View {
                     onMemberRemoved: { user in
                         Task { await handleRemoveMember(user: user) }
                     },
+                    onScheduleRemoval: { user in
+                        Task { await handleScheduleRemoval(user: user) }
+                    },
+                    onCancelScheduledRemoval: { user in
+                        Task { await handleCancelScheduledRemoval(user: user) }
+                    },
                     title: "add to phlock"
                 )
                 .environmentObject(authState)
@@ -370,6 +381,12 @@ struct PhlockView: View {
                     },
                     onMemberRemoved: { user in
                         Task { await handleRemoveMember(user: user) }
+                    },
+                    onScheduleRemoval: { user in
+                        Task { await handleScheduleRemoval(user: user) }
+                    },
+                    onCancelScheduledRemoval: { user in
+                        Task { await handleCancelScheduledRemoval(user: user) }
                     },
                     title: "edit phlock"
                 )
@@ -434,9 +451,18 @@ struct PhlockView: View {
         }
         .toast(isPresented: $showToast, message: toastMessage, type: toastType)
         .sheet(isPresented: $showShareSheet) {
-            if let image = generatedShareCardImage {
+            if let image = generatedShareCardImages[.story] {
                 let message = "hey cutie, this is my phlock today - join me at https://phlock.app so i can add you too"
                 ActivityViewController(activityItems: [message, image])
+            }
+        }
+        .sheet(isPresented: $showProfileSheet) {
+            if let user = selectedProfileUser {
+                NavigationStack {
+                    UserProfileView(user: user)
+                        .environmentObject(authState)
+                        .environmentObject(playbackService)
+                }
             }
         }
         .task {
@@ -711,45 +737,77 @@ struct PhlockView: View {
         }
 
         do {
-            // Get phlock members
-            phlockMembers = try await UserService.shared.getPhlockMembers(for: userId)
-            nudgedUserIds = nudgedUserIds.intersection(Set(phlockMembers.map { $0.user.id }))
-            
-            if phlockMembers.isEmpty {
-                // No phlock members - show empty state (no demo data)
-                dailySongs = []
-                isLoading = false
-                hasLoadedPhlockOnce = true
-                return
+            // Use retry logic for network resilience
+            try await withTimeoutAndRetry(
+                timeoutSeconds: 15,
+                retryConfig: RetryConfiguration(
+                    maxAttempts: 3,
+                    baseDelay: 1.0,
+                    maxDelay: 5.0,
+                    shouldRetry: { error in
+                        // Retry on network errors, not on auth errors
+                        if let appError = error as? AppError {
+                            return appError.isRetryable
+                        }
+                        let nsError = error as NSError
+                        return nsError.domain == NSURLErrorDomain
+                    }
+                )
+            ) {
+                // Get phlock members
+                let members = try await UserService.shared.getPhlockMembers(for: userId)
+                await MainActor.run {
+                    self.phlockMembers = members
+                    self.nudgedUserIds = self.nudgedUserIds.intersection(Set(members.map { $0.user.id }))
+                }
+
+                if members.isEmpty {
+                    // No phlock members - show empty state (no demo data)
+                    await MainActor.run {
+                        self.dailySongs = []
+                        self.isLoading = false
+                        self.hasLoadedPhlockOnce = true
+                    }
+                    return
+                }
+
+                // Get their daily songs
+                let memberIds = members.map { $0.user.id }
+                var songs = try await ShareService.shared.getDailySongs(from: memberIds)
+
+                // Sort daily songs by time (earliest first)
+                songs.sort { $0.createdAt < $1.createdAt }
+
+                await MainActor.run {
+                    self.dailySongs = songs
+
+                    // Preserve existing saved state for tracks still in playlist
+                    // Only use database savedAt for tracks we don't already have state for
+                    let currentTrackIds = Set(songs.map { $0.trackId })
+                    let preservedSavedIds = self.playbackService.savedTrackIds.intersection(currentTrackIds)
+                    let newTrackIds = currentTrackIds.subtracting(self.playbackService.savedTrackIds)
+                    let newSavedFromDb = Set(songs.filter { newTrackIds.contains($0.trackId) && $0.savedAt != nil }.map { $0.trackId })
+                    self.playbackService.savedTrackIds = preservedSavedIds.union(newSavedFromDb)
+
+                    // If no songs today, just show waiting state (no demo data)
+                    if songs.isEmpty {
+                        print("ℹ️ No daily songs found for \(members.count) phlock members")
+                    }
+
+                    self.hasLoadedPhlockOnce = true
+                }
+                print("✅ Loaded \(songs.count) daily songs from \(members.count) phlock members")
             }
-
-            // Get their daily songs
-            let memberIds = phlockMembers.map { $0.user.id }
-            dailySongs = try await ShareService.shared.getDailySongs(from: memberIds) 
-            
-            // Sort daily songs by time (earliest first)
-            dailySongs.sort { $0.createdAt < $1.createdAt }
-
-            // Preserve existing saved state for tracks still in playlist
-            // Only use database savedAt for tracks we don't already have state for
-            let currentTrackIds = Set(dailySongs.map { $0.trackId })
-            let preservedSavedIds = playbackService.savedTrackIds.intersection(currentTrackIds)
-            let newTrackIds = currentTrackIds.subtracting(playbackService.savedTrackIds)
-            let newSavedFromDb = Set(dailySongs.filter { newTrackIds.contains($0.trackId) && $0.savedAt != nil }.map { $0.trackId })
-            playbackService.savedTrackIds = preservedSavedIds.union(newSavedFromDb)
-
-            // If no songs today, just show waiting state (no demo data)
-            if dailySongs.isEmpty {
-                print("ℹ️ No daily songs found for \(phlockMembers.count) phlock members")
-            }
-
-            hasLoadedPhlockOnce = true
-            print("✅ Loaded \(dailySongs.count) daily songs from \(phlockMembers.count) phlock members")
 
             // Check actual Spotify library status (async, doesn't block UI)
             await checkSpotifyLibraryStatus(for: dailySongs)
         } catch is CancellationError {
             print("ℹ️ Daily playlist load cancelled")
+        } catch is TimeoutError {
+            print("⚠️ Daily playlist load timed out")
+            errorMessage = "Loading took too long. Please check your connection and try again."
+            isLoading = false
+            return
         } catch {
             print("❌ Error loading daily playlist: \(error)")
             errorMessage = error.localizedDescription
@@ -762,11 +820,17 @@ struct PhlockView: View {
 
     private func loadMyDailySong() async {
         guard let userId = authState.currentUser?.id else { return }
-        myDailySong = try? await ShareService.shared.getTodaysDailySong(for: userId)
-        if let song = myDailySong {
-            print("🎵 PhlockView: Found my daily song: \(song.trackName)")
-        } else {
-            print("🎵 PhlockView: No daily song found for me")
+        do {
+            myDailySong = try await ShareService.shared.getTodaysDailySong(for: userId)
+            if let song = myDailySong {
+                print("🎵 PhlockView: Found my daily song: \(song.trackName)")
+            } else {
+                print("🎵 PhlockView: No daily song found for me")
+            }
+        } catch {
+            // Log the error but don't block the UI - user can still see their phlock
+            print("⚠️ PhlockView: Error loading my daily song: \(error.localizedDescription)")
+            myDailySong = nil
         }
     }
 
@@ -844,16 +908,20 @@ struct PhlockView: View {
                         trackId: spotifyId,
                         accessToken: accessToken
                     )
-                    _ = await MainActor.run {
-                        playbackService.savedTrackIds.remove(song.trackId)
-                    }
                 case .appleMusic:
                     toastMessage = "Open Apple Music to remove track"
                     toastType = .info
                     showToast = true
-                    _ = await MainActor.run {
-                        playbackService.savedTrackIds.remove(song.trackId)
-                    }
+                }
+
+                // Mark the share as unsaved (clear saved_at timestamp)
+                try await ShareService.shared.markAsUnsaved(
+                    shareId: song.id,
+                    userId: currentUser.id
+                )
+
+                _ = await MainActor.run {
+                    playbackService.savedTrackIds.remove(song.trackId)
                 }
             } catch {
                 let message = (error as? LocalizedError)?.errorDescription ?? "Failed to remove from library"
@@ -1141,6 +1209,26 @@ struct PhlockView: View {
         }
     }
 
+    private func handleScheduleRemoval(user: User) async {
+        do {
+            guard let userId = authState.currentUser?.id else { return }
+            try await UserService.shared.scheduleRemoval(memberId: user.id, for: userId)
+            // No toast - button state change is the feedback
+        } catch {
+            print("❌ Error scheduling removal: \(error)")
+        }
+    }
+
+    private func handleCancelScheduledRemoval(user: User) async {
+        do {
+            guard let userId = authState.currentUser?.id else { return }
+            try await UserService.shared.cancelScheduledRemoval(memberId: user.id, for: userId)
+            // No toast - button state change is the feedback
+        } catch {
+            print("❌ Error cancelling scheduled removal: \(error)")
+        }
+    }
+
     private func nudgeMember(_ member: User?) {
         guard let member = member else { return }
         guard let currentUser = authState.currentUser else {
@@ -1225,7 +1313,8 @@ struct PhlockView: View {
         isGeneratingShareCard = true
 
         Task {
-            let image = await ShareCardGenerator.generateCard(
+            // Generate all formats at once (more efficient - loads images once)
+            let images = await ShareCardGenerator.generateAllFormats(
                 myPick: myDailySong,
                 phlockSongs: dailySongs,
                 members: phlockMembers
@@ -1234,8 +1323,8 @@ struct PhlockView: View {
             await MainActor.run {
                 isGeneratingShareCard = false
 
-                if let image = image {
-                    generatedShareCardImage = image
+                if !images.isEmpty {
+                    generatedShareCardImages = images
                     showShareSheet = true
                 } else {
                     toastMessage = "Failed to create share card"
@@ -2188,8 +2277,13 @@ struct SwapMemberView: View {
             await withTaskGroup(of: (UUID, Bool).self) { group in
                 for friend in friends {
                     group.addTask {
-                        let hasSong = (try? await ShareService.shared.hasDailySongToday(for: friend.id)) ?? false
-                        return (friend.id, hasSong)
+                        do {
+                            let hasSong = try await ShareService.shared.hasDailySongToday(for: friend.id)
+                            return (friend.id, hasSong)
+                        } catch {
+                            print("⚠️ Failed to check daily song status for \(friend.id): \(error.localizedDescription)")
+                            return (friend.id, false) // Default to false on error
+                        }
                     }
                 }
 
@@ -2234,6 +2328,8 @@ struct UnifiedPhlockSheet: View {
     @Binding var currentPhlockMembers: [FriendWithPosition]
     let onMemberAdded: (User) -> Void
     let onMemberRemoved: (User) -> Void
+    let onScheduleRemoval: (User) -> Void
+    let onCancelScheduledRemoval: (User) -> Void
     let title: String  // "add to phlock" or "edit phlock"
 
     // Navigation
@@ -2258,6 +2354,9 @@ struct UnifiedPhlockSheet: View {
     // Daily song status tracking (userId -> hasSongToday)
     @State private var dailySongStatus: [UUID: Bool] = [:]
     @State private var isLoadingDailySongStatus = true
+
+    // Scheduled removals tracking (member IDs scheduled to be removed at midnight)
+    @State private var scheduledRemovals: Set<UUID> = []
 
     // Computed: users not in phlock
     private var availableUsers: [User] {
@@ -2429,17 +2528,43 @@ struct UnifiedPhlockSheet: View {
 
             Spacer()
 
-            // Daily pick status indicator (only show after status is loaded)
+            // Show status/action based on member state (only after status is loaded)
             if !isLoadingDailySongStatus {
-                if dailySongStatus[member.user.id] == true {
-                    HStack(spacing: 4) {
-                        Text("picked today")
-                            .font(.lora(size: 11))
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 12))
+                let hasPicked = dailySongStatus[member.user.id] == true
+                let isScheduledForRemoval = scheduledRemovals.contains(member.user.id)
+
+                if isScheduledForRemoval {
+                    // Member is scheduled for removal at midnight - show undo button
+                    Button {
+                        onCancelScheduledRemoval(member.user)
+                        scheduledRemovals.remove(member.user.id)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("undo")
+                                .font(.lora(size: 12, weight: .medium))
+                            Image(systemName: "arrow.uturn.backward.circle.fill")
+                                .font(.system(size: 22))
+                        }
+                        .foregroundColor(.gray)
                     }
-                    .foregroundColor(.green)
+                    .buttonStyle(.plain)
+                } else if hasPicked {
+                    // Member has picked today - show schedule removal button (grey)
+                    Button {
+                        onScheduleRemoval(member.user)
+                        scheduledRemovals.insert(member.user.id)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("remove for tomorrow")
+                                .font(.lora(size: 12, weight: .medium))
+                            Image(systemName: "minus.circle.fill")
+                                .font(.system(size: 22))
+                        }
+                        .foregroundColor(.gray)
+                    }
+                    .buttonStyle(.plain)
                 } else {
+                    // Member hasn't picked yet - show status indicator and immediate remove button
                     HStack(spacing: 4) {
                         Text("no pick yet today")
                             .font(.lora(size: 11))
@@ -2447,19 +2572,16 @@ struct UnifiedPhlockSheet: View {
                             .font(.system(size: 12))
                     }
                     .foregroundColor(.orange)
-                }
-            }
 
-            // Remove button - only show if member hasn't picked today (and status is loaded)
-            if !isLoadingDailySongStatus && dailySongStatus[member.user.id] != true {
-                Button {
-                    onMemberRemoved(member.user)
-                } label: {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundColor(.red)
+                    Button {
+                        onMemberRemoved(member.user)
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(.red)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 16)
@@ -2742,6 +2864,18 @@ struct UnifiedPhlockSheet: View {
             group.addTask { await self.loadSuggestions() }
             group.addTask { await self.loadContacts() }
             group.addTask { await self.loadDailySongStatus() }
+            group.addTask { await self.loadScheduledRemovals() }
+        }
+    }
+
+    private func loadScheduledRemovals() async {
+        do {
+            let removals = try await UserService.shared.getScheduledRemovals(for: currentUserId)
+            await MainActor.run {
+                scheduledRemovals = removals
+            }
+        } catch {
+            print("⚠️ Failed to load scheduled removals: \(error)")
         }
     }
 
@@ -2757,8 +2891,13 @@ struct UnifiedPhlockSheet: View {
         await withTaskGroup(of: (UUID, Bool).self) { group in
             for userId in userIds {
                 group.addTask {
-                    let hasSong = (try? await ShareService.shared.hasDailySongToday(for: userId)) ?? false
-                    return (userId, hasSong)
+                    do {
+                        let hasSong = try await ShareService.shared.hasDailySongToday(for: userId)
+                        return (userId, hasSong)
+                    } catch {
+                        print("⚠️ Failed to check daily song status for \(userId): \(error.localizedDescription)")
+                        return (userId, false) // Default to false on error
+                    }
                 }
             }
 

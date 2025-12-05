@@ -463,6 +463,16 @@ struct ProfileView: View {
                             await removeFromPhlock(user: removedUser)
                         }
                     },
+                    onScheduleRemoval: { selectedUser in
+                        Task {
+                            await scheduleRemoval(user: selectedUser)
+                        }
+                    },
+                    onCancelScheduledRemoval: { selectedUser in
+                        Task {
+                            await cancelScheduledRemoval(user: selectedUser)
+                        }
+                    },
                     title: "edit phlock"
                 )
                 .environmentObject(authState)
@@ -665,6 +675,28 @@ struct ProfileView: View {
             print("✅ Removed \(user.displayName) from phlock")
         } catch {
             print("❌ Failed to remove from phlock: \(error)")
+        }
+    }
+
+    private func scheduleRemoval(user: User) async {
+        guard let currentUserId = authState.currentUser?.id else { return }
+
+        do {
+            try await UserService.shared.scheduleRemoval(memberId: user.id, for: currentUserId)
+            // No toast - button state change is the feedback
+        } catch {
+            print("❌ Failed to schedule removal: \(error)")
+        }
+    }
+
+    private func cancelScheduledRemoval(user: User) async {
+        guard let currentUserId = authState.currentUser?.id else { return }
+
+        do {
+            try await UserService.shared.cancelScheduledRemoval(memberId: user.id, for: currentUserId)
+            // No toast - button state change is the feedback
+        } catch {
+            print("❌ Failed to cancel scheduled removal: \(error)")
         }
     }
 

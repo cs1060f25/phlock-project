@@ -121,7 +121,14 @@ serve(async (req) => {
       const data = await response.json();
 
       tracks = data.items
-        ?.filter((item: any) => item.track && item.track.album?.images?.length > 0)
+        ?.filter((item: any) => {
+          if (!item.track || !item.track.album?.images?.length) return false;
+          // For new-music-friday, exclude tracks from "All Songs Considered" album
+          if (playlist === "new-music-friday" && item.track.album?.name === "All Songs Considered") {
+            return false;
+          }
+          return true;
+        })
         .slice(0, limit)
         .map((item: any) => ({
           id: item.track.id,

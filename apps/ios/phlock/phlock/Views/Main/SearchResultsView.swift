@@ -206,7 +206,7 @@ struct SearchResultsList: View {
                 }
             }
             .listStyle(.plain)
-            .scrollDismissesKeyboard(.interactively)
+            .scrollDismissesKeyboard(.immediately)
             .pullToRefreshWithSpinner(
                 isRefreshing: $isRefreshing,
                 pullProgress: $pullProgress,
@@ -552,6 +552,7 @@ struct RecentlyPlayedGridView: View {
             .padding(.vertical, 12)
         }
         .scrollIndicators(.visible)
+        .scrollDismissesKeyboard(.immediately)
     }
 }
 

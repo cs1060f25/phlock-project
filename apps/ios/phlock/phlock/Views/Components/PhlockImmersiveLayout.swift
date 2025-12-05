@@ -2,6 +2,83 @@ import SwiftUI
 import AVFoundation
 import UIKit
 
+// MARK: - Image Brightness Cache
+
+/// Singleton cache for image brightness analysis results
+/// Prevents redundant analysis when scrolling through carousel
+final class ImageBrightnessCache: @unchecked Sendable {
+    static let shared = ImageBrightnessCache()
+    private init() {}
+
+    private var cache: [String: Bool] = [:]  // URL string -> isBright
+    private let lock = NSLock()
+
+    func get(_ urlString: String) -> Bool? {
+        lock.lock()
+        defer { lock.unlock() }
+        return cache[urlString]
+    }
+
+    func set(_ urlString: String, isBright: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        cache[urlString] = isBright
+    }
+}
+
+// MARK: - Image Brightness Analysis
+
+extension UIImage {
+    /// Fast brightness calculation using a tiny sample (8x8 = 64 pixels)
+    /// Optimized for speed over precision - sufficient for text color decisions
+    /// Thread-safe: performs pure computation on image data
+    nonisolated func fastBrightness() -> CGFloat {
+        guard let cgImage = self.cgImage else { return 0.5 }
+
+        // Use tiny 8x8 sample for maximum speed
+        let sampleSize = 8
+        let bytesPerPixel = 4
+        let bytesPerRow = bytesPerPixel * sampleSize
+        var pixelData = [UInt8](repeating: 0, count: sampleSize * sampleSize * bytesPerPixel)
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: &pixelData,
+            width: sampleSize,
+            height: sampleSize,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return 0.5 }
+
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: sampleSize, height: sampleSize))
+
+        // Fast sum without per-pixel division
+        var totalR: Int = 0, totalG: Int = 0, totalB: Int = 0
+        let pixelCount = sampleSize * sampleSize
+
+        for i in 0..<pixelCount {
+            let offset = i * bytesPerPixel
+            totalR += Int(pixelData[offset])
+            totalG += Int(pixelData[offset + 1])
+            totalB += Int(pixelData[offset + 2])
+        }
+
+        // Luminance formula applied to averages
+        let avgR = CGFloat(totalR) / CGFloat(pixelCount * 255)
+        let avgG = CGFloat(totalG) / CGFloat(pixelCount * 255)
+        let avgB = CGFloat(totalB) / CGFloat(pixelCount * 255)
+
+        return 0.2126 * avgR + 0.7152 * avgG + 0.0722 * avgB
+    }
+
+    /// Determines if the image should use dark text for readability
+    nonisolated func shouldUseDarkText(threshold: CGFloat = 0.55) -> Bool {
+        return fastBrightness() > threshold
+    }
+}
+
 // MARK: - Progress Scrubber (UIKit-based for reliable gesture handling inside TabView)
 
 /// A UIKit-based progress scrubber that properly handles gestures inside SwiftUI TabView
@@ -390,9 +467,6 @@ struct PhlockCarouselView: View {
     // Persistent storage for carousel position
     @AppStorage("phlockCarouselIndex") private var savedCarouselIndex: Int = 0
 
-    // Track content hash to detect when items change (member added/removed)
-    @State private var lastContentHash: Int = 0
-
     // Base phlock members (always 5 slots)
     private var baseMembers: [PhlockSlot] {
         var slots: [PhlockSlot] = []
@@ -450,17 +524,6 @@ struct PhlockCarouselView: View {
         }
     }
 
-    // Hash of items content - changes when members are added/removed
-    // Used to force TabView rebuild while preserving carousel position
-    private var itemsContentHash: Int {
-        var hasher = Hasher()
-        for item in items {
-            hasher.combine(item.member?.id)
-            hasher.combine(item.type == .empty ? "empty" : (item.type == .waiting ? "waiting" : "song"))
-        }
-        return hasher.finalize()
-    }
-
     var body: some View {
         ZStack {
             // Horizontal carousel with extended pages for infinite scroll
@@ -495,9 +558,9 @@ struct PhlockCarouselView: View {
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .ignoresSafeArea()
-            // Force TabView to rebuild when content changes (member added/removed)
-            // This ensures empty slots become member slots immediately
-            .id(itemsContentHash)
+            // NOTE: Removed .id(itemsContentHash) - it was causing carousel position
+            // to reset during user navigation. The TabView updates naturally when
+            // items change without needing a forced rebuild.
 
             // MARK: - Commented out: Your pick bar at top (may re-implement later)
             // VStack {
@@ -534,13 +597,24 @@ struct PhlockCarouselView: View {
                     onTap: { index in
                         // Mark as user-driven to prevent queue index listener from interfering
                         isUserDrivenChange = true
+                        isHandlingCardChange = true
+
                         // Convert real index to extended index (+1 for phantom page at start)
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            currentIndex = index + 1
+                        let targetIndex = index + 1
+
+                        // Use transaction to ensure atomic index update without interference
+                        var transaction = Transaction(animation: .easeInOut(duration: 0.3))
+                        withTransaction(transaction) {
+                            currentIndex = targetIndex
                         }
-                        // Reset flag after animation completes
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+
+                        // Also update saved position immediately
+                        savedCarouselIndex = index
+
+                        // Reset flags after animation + playback settle (longer window)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                             isUserDrivenChange = false
+                            isHandlingCardChange = false
                         }
                     },
                     onProfileTapped: onProfileTapped,
@@ -749,37 +823,6 @@ struct PhlockCarouselView: View {
             }
             // If already initialized and no track playing, preserve current state
 
-            // Initialize content hash tracking
-            lastContentHash = itemsContentHash
-        }
-        .onChange(of: itemsContentHash) { newHash in
-            // Content changed (member added/removed) - restore saved position
-            // This handles the case where .id(itemsContentHash) causes TabView to rebuild
-            // which resets @State currentIndex, but we want to preserve position
-            guard lastContentHash != 0 && newHash != lastContentHash else {
-                lastContentHash = newHash
-                return
-            }
-
-            print("📦 Content hash changed: \(lastContentHash) -> \(newHash), restoring position \(savedCarouselIndex)")
-            lastContentHash = newHash
-
-            // Restore the saved carousel position after a brief delay
-            // to allow the TabView to finish rebuilding
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                let restoredIndex = min(savedCarouselIndex, max(0, baseMembers.count - 1))
-                if baseMembers.count > 1 {
-                    // Use transaction to avoid animation during position restoration
-                    var transaction = Transaction()
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) {
-                        currentIndex = restoredIndex + 1 // +1 for phantom page offset
-                    }
-                } else {
-                    currentIndex = max(0, restoredIndex)
-                }
-                print("📦 Restored carousel to index \(currentIndex)")
-            }
         }
     }
 
@@ -1354,12 +1397,19 @@ struct PhlockCardView: View {
     @State private var sliderValue: Double = 0
     @State private var isSeeking = false
     @State private var backgroundImageLoaded = false
+    @State private var backgroundImageIsBright = false  // Track if the loaded image is bright (needs dark text)
 
-    // Dynamic colors based on whether background image loaded
-    // When image loads: use white text (image provides dark/colorful background)
-    // When image fails: use dark text on light background (light mode) or white text on dark background (dark mode)
+    // Dynamic colors based on background image brightness
+    // When image loads: analyze brightness to determine if dark text is needed
+    // Bright images (like white album covers) need dark text for legibility
+    // When image fails: adapt to light/dark mode
     private var useDarkText: Bool {
-        !backgroundImageLoaded && colorScheme == .light
+        if backgroundImageLoaded {
+            // Image loaded - use brightness analysis result
+            return backgroundImageIsBright
+        }
+        // No image loaded - fall back to color scheme
+        return colorScheme == .light
     }
 
     private var primaryTextColor: Color {
@@ -1519,6 +1569,7 @@ struct PhlockCardView: View {
         switch slot.type {
         case .song:
             if let song = slot.song, let url = highQualityAlbumArtUrl(song.albumArtUrl) {
+                // Use standard AsyncImage for fast cached loading
                 AsyncImage(url: url, transaction: Transaction(animation: nil)) { phase in
                     switch phase {
                     case .success(let image):
@@ -1529,20 +1580,33 @@ struct PhlockCardView: View {
                             .blur(radius: 50)
                             .onAppear {
                                 backgroundImageLoaded = true
+                                // Check cache first for instant result
+                                if let cached = ImageBrightnessCache.shared.get(url.absoluteString) {
+                                    backgroundImageIsBright = cached
+                                } else {
+                                    // Analyze in background using thumbnail URL for speed
+                                    analyzeBrightness(for: song.albumArtUrl)
+                                }
                             }
                     case .failure:
                         gradientBackground
                             .onAppear {
                                 backgroundImageLoaded = false
+                                backgroundImageIsBright = false
                             }
                     case .empty:
-                        // Use a dark color during loading to prevent flash
-                        // (matches the typical blurred album art appearance)
+                        // Check cache immediately - if we have a result, apply it
                         Color(white: 0.1)
+                            .onAppear {
+                                if let cached = ImageBrightnessCache.shared.get(url.absoluteString) {
+                                    backgroundImageIsBright = cached
+                                }
+                            }
                     @unknown default:
                         gradientBackground
                             .onAppear {
                                 backgroundImageLoaded = false
+                                backgroundImageIsBright = false
                             }
                     }
                 }
@@ -1550,6 +1614,7 @@ struct PhlockCardView: View {
                 gradientBackground
                     .onAppear {
                         backgroundImageLoaded = false
+                        backgroundImageIsBright = false
                     }
             }
 
@@ -1591,6 +1656,53 @@ struct PhlockCardView: View {
             startPoint: .top,
             endPoint: .bottom
         )
+    }
+
+    /// Analyzes image brightness using a small thumbnail for speed
+    /// Downloads the smallest available image size (64px for Spotify) for fast analysis
+    private func analyzeBrightness(for albumArtUrl: String?) {
+        guard let urlString = albumArtUrl else { return }
+
+        // Get both high-quality URL (for cache key) and thumbnail URL (for fast download)
+        guard let highQualityUrl = highQualityAlbumArtUrl(urlString) else { return }
+        let cacheKey = highQualityUrl.absoluteString
+
+        // Already cached? Skip
+        if ImageBrightnessCache.shared.get(cacheKey) != nil { return }
+
+        // Use smallest Spotify thumbnail (64px) for fastest download
+        let thumbnailUrlString: String
+        if urlString.contains("i.scdn.co/image/ab67616d") {
+            // Spotify: use 64px version
+            thumbnailUrlString = urlString
+                .replacingOccurrences(of: "ab67616d0000b273", with: "ab67616d00004851")
+                .replacingOccurrences(of: "ab67616d00001e02", with: "ab67616d00004851")
+        } else {
+            thumbnailUrlString = urlString
+        }
+
+        guard let thumbnailUrl = URL(string: thumbnailUrlString) else { return }
+
+        Task.detached(priority: .utility) {
+            do {
+                let (data, _) = try await URLSession.shared.data(from: thumbnailUrl)
+                guard let image = UIImage(data: data) else { return }
+
+                // Brightness calculation is thread-safe (pure computation on image data)
+                let brightness = image.fastBrightness()
+                let isBright = brightness > 0.55
+
+                // Cache the result
+                ImageBrightnessCache.shared.set(cacheKey, isBright: isBright)
+
+                // Update UI on main actor
+                await MainActor.run { [isBright] in
+                    self.backgroundImageIsBright = isBright
+                }
+            } catch {
+                // Silently fail - we'll just use default white text
+            }
+        }
     }
 
     // MARK: - Song Card Content

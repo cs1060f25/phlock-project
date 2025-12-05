@@ -2,7 +2,7 @@ import Foundation
 
 /// Represents a user in the Phlock app
 /// Maps to the 'users' table in Supabase
-struct User: Codable, Identifiable, Hashable {
+struct User: Codable, Identifiable, Hashable, Sendable {
     let id: UUID
     let displayName: String
     let profilePhotoUrl: String?
@@ -236,7 +236,7 @@ extension User {
 }
 
 /// Platform-specific user data stored as JSONB
-struct PlatformUserData: Codable, Hashable {
+struct PlatformUserData: Codable, Hashable, Sendable {
     // Spotify-specific fields
     let spotifyEmail: String?
     let spotifyDisplayName: String?
@@ -297,7 +297,7 @@ struct PlatformUserData: Codable, Hashable {
 }
 
 /// Represents a music track or artist with ID for deep linking
-struct MusicItem: Codable, Hashable {
+struct MusicItem: Codable, Hashable, Sendable {
     let id: String // Primary ID (platform-specific)
     let name: String
     var artistName: String?
@@ -330,7 +330,7 @@ struct MusicItem: Codable, Hashable {
 }
 
 /// Simplified playlist info for storage
-struct PlaylistInfo: Codable, Hashable {
+struct PlaylistInfo: Codable, Hashable, Sendable {
     let id: String
     let name: String
     let imageUrl: String?

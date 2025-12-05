@@ -30,14 +30,27 @@ class FriendRankingEngine {
         print("🧮 Ranking \(friends.count) friends for quick-send (track: \(track?.name ?? "nil"))")
 
         // OPTIMIZATION: Batch-fetch all sharing data ONCE instead of N queries
-        let recentRecipients = (try? await ShareService.shared.getRecentRecipients(
-            userId: currentUser.id,
-            limit: 50
-        )) ?? []
+        var recentRecipients: [UUID] = []
+        var allShares: [Share] = []
 
-        let allShares = (try? await ShareService.shared.getAllSharesForSender(
-            senderId: currentUser.id
-        )) ?? []
+        do {
+            recentRecipients = try await ShareService.shared.getRecentRecipients(
+                userId: currentUser.id,
+                limit: 50
+            )
+        } catch {
+            print("⚠️ Failed to fetch recent recipients for ranking: \(error.localizedDescription)")
+            // Continue with empty list - ranking will still work based on other factors
+        }
+
+        do {
+            allShares = try await ShareService.shared.getAllSharesForSender(
+                senderId: currentUser.id
+            )
+        } catch {
+            print("⚠️ Failed to fetch shares for ranking: \(error.localizedDescription)")
+            // Continue with empty list - ranking will still work based on other factors
+        }
 
         // Calculate scores for each friend
         var friendScores: [(userId: UUID, score: Double)] = []
