@@ -19,13 +19,38 @@ struct ContentView: View {
         ZStack {
             // Main content
             if authState.isAuthenticated {
-                if authState.needsUsernameSetup {
-                    // Step 1: Username selection
+                if authState.needsNameSetup {
+                    // Step 1: Name entry
                     NavigationStack {
-                        UsernameSelectionView()
+                        OnboardingNameView()
+                    }
+                } else if authState.needsUsernameSetup {
+                    // Step 2: Username selection
+                    NavigationStack {
+                        OnboardingUsernameView()
+                    }
+                } else if authState.needsContactsPermission {
+                    // Step 3: Contacts permission
+                    NavigationStack {
+                        OnboardingContactsPermissionView()
+                    }
+                } else if authState.needsAddFriends {
+                    // Step 4: Add friends from contacts (if any found)
+                    NavigationStack {
+                        OnboardingAddFriendsView()
+                    }
+                } else if authState.needsInviteFriends {
+                    // Step 5: Invite friends not on app
+                    NavigationStack {
+                        OnboardingInviteFriendsView()
+                    }
+                } else if authState.needsNotificationPermission {
+                    // Step 6: Notification permission
+                    NavigationStack {
+                        OnboardingNotificationsView()
                     }
                 } else if authState.needsMusicPlatform {
-                    // Step 2: Music platform connection
+                    // Step 7: Music platform connection
                     NavigationStack {
                         MusicPlatformConnectionView()
                     }

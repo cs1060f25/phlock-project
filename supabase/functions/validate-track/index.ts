@@ -22,7 +22,7 @@ interface SpotifyToken {
 interface SpotifyTrack {
   id: string;
   name: string;
-  artists: Array<{ name: string }>;
+  artists: Array<{ id: string; name: string }>;
   album: {
     images: Array<{ url: string; height: number; width: number }>;
   };
@@ -447,6 +447,7 @@ serve(async (req) => {
             id: validatedTrack.id,
             name: validatedTrack.name,
             artistName: validatedTrack.artists[0].name,
+            artistId: validatedTrack.artists[0].id,  // Primary artist Spotify ID for direct profile linking
             artists: validatedTrack.artists.map(a => a.name),
             albumArtUrl: albumArt,
             previewUrl: previewUrl,

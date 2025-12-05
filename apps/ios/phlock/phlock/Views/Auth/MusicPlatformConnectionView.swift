@@ -53,11 +53,15 @@ struct MusicPlatformConnectionView: View {
 
             Spacer()
 
-            // Required notice
-            Text("A music service is required to use Phlock")
-                .font(.lora(size: 13))
-                .foregroundColor(.secondary)
-                .padding(.bottom, 32)
+            // Skip button
+            Button {
+                completeOnboarding()
+            } label: {
+                Text("Skip for now")
+                    .font(.lora(size: 15))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.bottom, 32)
         }
         .overlay {
             if isConnecting {
@@ -100,8 +104,12 @@ struct MusicPlatformConnectionView: View {
 
         } catch {
             await MainActor.run {
-                errorMessage = error.localizedDescription
+                // Include error type for debugging TestFlight issues
+                let errorType = String(describing: type(of: error))
+                let details = "\(error.localizedDescription)\n\n[Debug: \(errorType)]"
+                errorMessage = details
                 showError = true
+                print("❌ Spotify connection failed: \(error)")
             }
         }
 

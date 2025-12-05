@@ -146,8 +146,8 @@ class AuthServiceV3 {
             let displayName = metadata["full_name"]?.stringValue
                 ?? metadata["name"]?.stringValue
                 ?? "Phlock User"
-            let profilePhotoUrl = metadata["avatar_url"]?.stringValue
-                ?? metadata["picture"]?.stringValue
+            // Don't use Google's default avatar - let ProfilePhotoPlaceholder handle it
+            let profilePhotoUrl: String? = nil
 
             try await createUserRecord(
                 authUserId: session.user.id,
@@ -362,8 +362,16 @@ class AuthServiceV3 {
             throw AuthError.noUser
         }
 
-        // Get Spotify user profile and music data
-        let profile = try await SpotifyService.shared.getUserProfile(accessToken: accessToken)
+        // Get Spotify user profile - this is required
+        let profile: SpotifyUserProfile
+        do {
+            profile = try await SpotifyService.shared.getUserProfile(accessToken: accessToken)
+        } catch {
+            print("❌ Failed to get Spotify profile: \(error)")
+            throw error
+        }
+
+        // Get music data
         let recentlyPlayed = try await SpotifyService.shared.getRecentlyPlayed(accessToken: accessToken)
         let topArtistsResponse = try await SpotifyService.shared.getTopArtists(accessToken: accessToken)
 
@@ -371,13 +379,17 @@ class AuthServiceV3 {
         let isoFormatter = ISO8601DateFormatter()
         isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
-        let topTracks = recentlyPlayed.items.prefix(20).map { item in
-            MusicItem(
+        // Filter out tracks missing album art (local files, podcasts, etc.)
+        let topTracks = recentlyPlayed.items.prefix(20).compactMap { item -> MusicItem? in
+            guard let albumArtUrl = item.track.album?.images?.first?.url else {
+                return nil
+            }
+            return MusicItem(
                 id: item.track.id,
                 name: item.track.name,
-                artistName: item.track.artists.first?.name,
+                artistName: item.track.artists?.first?.name,
                 previewUrl: item.track.previewUrl,
-                albumArtUrl: item.track.album.images.first?.url,
+                albumArtUrl: albumArtUrl,
                 isrc: item.track.externalIds?.isrc,
                 playedAt: isoFormatter.date(from: item.playedAt),
                 spotifyId: item.track.id,
@@ -386,14 +398,17 @@ class AuthServiceV3 {
             )
         }
 
-        // Convert top artists to MusicItem array
-        let topArtists = topArtistsResponse.items.prefix(10).map { artist in
-            MusicItem(
+        // Convert top artists to MusicItem array (filter out those without images)
+        let topArtists = topArtistsResponse.items.prefix(10).compactMap { artist -> MusicItem? in
+            guard let albumArtUrl = artist.images?.first?.url else {
+                return nil
+            }
+            return MusicItem(
                 id: artist.id,
                 name: artist.name,
                 artistName: nil,
                 previewUrl: nil,
-                albumArtUrl: artist.images?.first?.url,
+                albumArtUrl: albumArtUrl,
                 isrc: nil,
                 playedAt: nil,
                 spotifyId: artist.id,
@@ -417,8 +432,14 @@ class AuthServiceV3 {
             topTracks: Array(topTracks)
         )
 
-        // Encode platform data as JSON string
-        let platformDataJSON = String(data: try JSONEncoder().encode(platformData), encoding: .utf8) ?? "{}"
+        // Encode platform data as JSON string - use empty object if encoding fails
+        var platformDataJSON = "{}"
+        do {
+            if let jsonData = try? JSONEncoder().encode(platformData),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                platformDataJSON = jsonString
+            }
+        }
 
         // Update user with Spotify info and platform data
         struct UpdatePayload: Encodable {
@@ -429,27 +450,37 @@ class AuthServiceV3 {
             let updated_at: String
         }
 
-        try await supabase
-            .from("users")
-            .update(UpdatePayload(
-                spotify_user_id: profile.id,
-                music_platform: "spotify",
-                platform_type: "spotify",
-                platform_data: platformDataJSON,
-                updated_at: ISO8601DateFormatter().string(from: Date())
-            ))
-            .eq("id", value: user.id.uuidString)
-            .execute()
+        do {
+            try await supabase
+                .from("users")
+                .update(UpdatePayload(
+                    spotify_user_id: profile.id,
+                    music_platform: "spotify",
+                    platform_type: "spotify",
+                    platform_data: platformDataJSON,
+                    updated_at: ISO8601DateFormatter().string(from: Date())
+                ))
+                .eq("id", value: user.id.uuidString)
+                .execute()
+        } catch {
+            print("❌ Failed to update user with Spotify info: \(error)")
+            throw error
+        }
 
         // Store platform token
-        try await storePlatformToken(
-            userId: user.id,
-            platformType: .spotify,
-            accessToken: accessToken,
-            refreshToken: refreshToken,
-            expiresIn: expiresIn,
-            scope: scope
-        )
+        do {
+            try await storePlatformToken(
+                userId: user.id,
+                platformType: .spotify,
+                accessToken: accessToken,
+                refreshToken: refreshToken,
+                expiresIn: expiresIn,
+                scope: scope
+            )
+        } catch {
+            print("❌ Failed to store platform token: \(error)")
+            throw error
+        }
 
         print("✅ Spotify connected for user: \(user.id)")
     }
@@ -480,18 +511,34 @@ class AuthServiceV3 {
             )
         }
 
-        // Convert top artists to MusicItem array
-        let topArtists = topArtistsResult.map { artist in
+        // Fetch artwork for top artists in parallel
+        let topArtistsWithArtwork = await withTaskGroup(of: (String, String, String?).self) { group in
+            for artist in topArtistsResult {
+                group.addTask {
+                    let artwork = try? await AppleMusicService.shared.fetchArtistArtwork(artistName: artist.name)
+                    return (artist.id, artist.name, artwork)
+                }
+            }
+
+            var results: [(String, String, String?)] = []
+            for await result in group {
+                results.append(result)
+            }
+            return results
+        }
+
+        // Convert top artists to MusicItem array with artwork
+        let topArtists = topArtistsWithArtwork.map { (id, name, artwork) in
             MusicItem(
-                id: artist.id,
-                name: artist.name,
+                id: id,
+                name: name,
                 artistName: nil,
                 previewUrl: nil,
-                albumArtUrl: nil,
+                albumArtUrl: artwork,
                 isrc: nil,
                 playedAt: nil,
                 spotifyId: nil,
-                appleMusicId: artist.id,
+                appleMusicId: id,
                 popularity: nil,
                 followerCount: nil,
                 genres: nil

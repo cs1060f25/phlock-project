@@ -210,9 +210,9 @@ class AuthServiceV2 {
                 return MusicItem(
                     id: $0.track.id,
                     name: $0.track.name,
-                    artistName: $0.track.artists.first?.name,
+                    artistName: $0.track.artists?.first?.name,
                     previewUrl: $0.track.previewUrl,
-                    albumArtUrl: $0.track.album.images.first?.url,
+                    albumArtUrl: $0.track.album?.images?.first?.url,
                     isrc: $0.track.externalIds?.isrc,
                     playedAt: playedDate
                 )
@@ -224,9 +224,9 @@ class AuthServiceV2 {
                 return MusicItem(
                     id: $0.track.id,
                     name: $0.track.name,
-                    artistName: $0.track.artists.first?.name,
+                    artistName: $0.track.artists?.first?.name,
                     previewUrl: $0.track.previewUrl,
-                    albumArtUrl: $0.track.album.images.first?.url,
+                    albumArtUrl: $0.track.album?.images?.first?.url,
                     isrc: $0.track.externalIds?.isrc,
                     playedAt: playedDate
                 )
@@ -561,9 +561,9 @@ class AuthServiceV2 {
             return MusicItem(
                 id: $0.track.id,
                 name: $0.track.name,
-                artistName: $0.track.artists.first?.name,
+                artistName: $0.track.artists?.first?.name,
                 previewUrl: $0.track.previewUrl,
-                albumArtUrl: $0.track.album.images.first?.url,
+                albumArtUrl: $0.track.album?.images?.first?.url,
                 isrc: $0.track.externalIds?.isrc,
                 playedAt: playedDate
             )

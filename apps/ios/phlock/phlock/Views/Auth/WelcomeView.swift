@@ -148,24 +148,31 @@ struct WelcomeView: View {
                         print("   user.username: \(user?.username ?? "nil")")
                         print("   user.musicPlatform: \(user?.musicPlatform ?? "nil")")
 
-                        // Check what onboarding steps are needed
-                        let needsName = user?.displayName.isEmpty == true
-                        let needsUsername = user?.username == nil
-                        let needsMusic = user?.musicPlatform == nil
-
-                        // Set onboarding flags in order
-                        authState.needsNameSetup = needsName
-                        authState.needsUsernameSetup = !needsName && needsUsername
-                        authState.needsContactsPermission = false // Will be set after username
-                        authState.needsMusicPlatform = false // Will be set after contacts
-                        authState.isOnboardingComplete = !needsName && !needsUsername && !needsMusic
-
-                        // Also update UserDefaults to match
-                        if !authState.isOnboardingComplete {
+                        if isNewUser {
+                            // New user - start onboarding flow
+                            authState.needsNameSetup = true
+                            authState.needsUsernameSetup = false // Will be set after name
+                            authState.needsContactsPermission = false // Will be set after username
+                            authState.needsAddFriends = false
+                            authState.needsInviteFriends = false
+                            authState.needsNotificationPermission = false
+                            authState.needsMusicPlatform = false // Will be set after contacts
+                            authState.isOnboardingComplete = false
                             UserDefaults.standard.set(false, forKey: "isOnboardingComplete")
+                            print("   🆕 New user - starting onboarding")
+                        } else {
+                            // Returning user - skip onboarding, go straight to main app
+                            authState.needsNameSetup = false
+                            authState.needsUsernameSetup = false
+                            authState.needsContactsPermission = false
+                            authState.needsAddFriends = false
+                            authState.needsInviteFriends = false
+                            authState.needsNotificationPermission = false
+                            authState.needsMusicPlatform = false
+                            authState.isOnboardingComplete = true
+                            UserDefaults.standard.set(true, forKey: "isOnboardingComplete")
+                            print("   ✅ Returning user - skipping onboarding")
                         }
-
-                        print("   Setting: needsNameSetup=\(authState.needsNameSetup), needsUsernameSetup=\(authState.needsUsernameSetup), isOnboardingComplete=\(authState.isOnboardingComplete)")
 
                         authState.isAuthenticated = true
                     }
@@ -249,24 +256,31 @@ struct WelcomeView: View {
                 print("   user.username: \(user?.username ?? "nil")")
                 print("   user.musicPlatform: \(user?.musicPlatform ?? "nil")")
 
-                // Check what onboarding steps are needed
-                let needsName = user?.displayName.isEmpty == true
-                let needsUsername = user?.username == nil
-                let needsMusic = user?.musicPlatform == nil
-
-                // Set onboarding flags in order
-                authState.needsNameSetup = needsName
-                authState.needsUsernameSetup = !needsName && needsUsername
-                authState.needsContactsPermission = false // Will be set after username
-                authState.needsMusicPlatform = false // Will be set after contacts
-                authState.isOnboardingComplete = !needsName && !needsUsername && !needsMusic
-
-                // Also update UserDefaults to match
-                if !authState.isOnboardingComplete {
+                if isNewUser {
+                    // New user - start onboarding flow
+                    authState.needsNameSetup = true
+                    authState.needsUsernameSetup = false // Will be set after name
+                    authState.needsContactsPermission = false // Will be set after username
+                    authState.needsAddFriends = false
+                    authState.needsInviteFriends = false
+                    authState.needsNotificationPermission = false
+                    authState.needsMusicPlatform = false // Will be set after contacts
+                    authState.isOnboardingComplete = false
                     UserDefaults.standard.set(false, forKey: "isOnboardingComplete")
+                    print("   🆕 New user - starting onboarding")
+                } else {
+                    // Returning user - skip onboarding, go straight to main app
+                    authState.needsNameSetup = false
+                    authState.needsUsernameSetup = false
+                    authState.needsContactsPermission = false
+                    authState.needsAddFriends = false
+                    authState.needsInviteFriends = false
+                    authState.needsNotificationPermission = false
+                    authState.needsMusicPlatform = false
+                    authState.isOnboardingComplete = true
+                    UserDefaults.standard.set(true, forKey: "isOnboardingComplete")
+                    print("   ✅ Returning user - skipping onboarding")
                 }
-
-                print("   Setting: needsNameSetup=\(authState.needsNameSetup), needsUsernameSetup=\(authState.needsUsernameSetup), isOnboardingComplete=\(authState.isOnboardingComplete)")
 
                 authState.isAuthenticated = true
             }

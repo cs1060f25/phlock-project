@@ -257,12 +257,15 @@ struct OnboardingContactsPermissionView: View {
                     return ContactsService.normalizePhone(phone)
                 })
 
-                // Fetch all contacts for invite screen (excluding matches)
-                let allContacts = try await ContactsService.shared.fetchAllContacts(excludingPhones: matchedPhones)
+                // Sync contacts to server (for "X friends on phlock" feature)
+                try? await ContactsService.shared.syncContactsToServer()
+
+                // Fetch contacts with friend counts (excluding matches) - same logic as Discover tab
+                let invitableContacts = try await ContactsService.shared.fetchContactsWithFriendCounts(excludingPhones: matchedPhones)
 
                 await MainActor.run {
                     authState.onboardingContactMatches = matches
-                    authState.onboardingAllContacts = allContacts
+                    authState.onboardingInvitableContacts = invitableContacts
 
                     // Mark contacts step as completed
                     UserDefaults.standard.set(true, forKey: "hasCompletedContactsStep")
@@ -277,7 +280,7 @@ struct OnboardingContactsPermissionView: View {
                         authState.needsInviteFriends = true
                     }
 
-                    print("✅ Contacts access granted - found \(matches.count) matches, \(allContacts.count) contacts to invite")
+                    print("✅ Contacts access granted - found \(matches.count) matches, \(invitableContacts.count) contacts to invite")
                 }
             } else {
                 // User denied during the prompt - show settings alert

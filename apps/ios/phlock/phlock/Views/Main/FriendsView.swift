@@ -97,6 +97,8 @@ struct FriendsView: View {
             .navigationBarTitleDisplayMode(.large)
             .navigationDestination(for: User.self) { user in
                 UserProfileView(user: user)
+                    .environmentObject(authState)
+                    .environmentObject(PlaybackService.shared)
             }
             .alert("Error", isPresented: $showError) {
                 Button("OK") { }

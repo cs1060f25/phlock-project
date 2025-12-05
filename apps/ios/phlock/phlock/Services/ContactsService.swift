@@ -261,7 +261,7 @@ final class ContactsService {
     }
 
     /// Fetch contacts with friend counts (how many Phlock users have each contact in their contacts)
-    /// Excludes contacts already on Phlock
+    /// Excludes contacts already on Phlock (by both raw phone match and phone hash match)
     func fetchContactsWithFriendCounts(excludingPhones matchedPhones: Set<String> = []) async throws -> [InvitableContact] {
         let granted = try await requestAccessIfNeeded()
         guard granted else { throw ContactsServiceError.accessDenied }
@@ -289,12 +289,22 @@ final class ContactsService {
 
         guard !uniqueContacts.isEmpty else { return [] }
 
-        // Get friend counts from server
+        // Get friend counts and existing Phlock users from server in parallel
         let phoneHashes = uniqueContacts.map { $0.phoneHash }
-        let friendCounts = try await getFriendCounts(phoneHashes: phoneHashes)
+
+        async let friendCountsTask = getFriendCounts(phoneHashes: phoneHashes)
+        async let phlockUserHashesTask = getPhlockUserPhoneHashes(phoneHashes: phoneHashes)
+
+        let friendCounts = try await friendCountsTask
+        let phlockUserHashes = try await phlockUserHashesTask
+
+        // Filter out contacts who are already Phlock users (by phone hash)
+        let filteredContacts = uniqueContacts.filter { contact in
+            !phlockUserHashes.contains(contact.phoneHash)
+        }
 
         // Build result with friend counts, sorted by: friend count > closeness score > has photo > name
-        let result = uniqueContacts.map { contact in
+        let result = filteredContacts.map { contact in
             InvitableContact(
                 id: contact.phone,
                 name: contact.name,
@@ -340,5 +350,29 @@ final class ContactsService {
             .value
 
         return Dictionary(uniqueKeysWithValues: response.map { ($0.phone_hash, $0.friend_count) })
+    }
+
+    /// Get phone hashes that belong to existing Phlock users
+    /// This is used to filter out contacts who are already on Phlock from the invite list
+    func getPhlockUserPhoneHashes(phoneHashes: [String]) async throws -> Set<String> {
+        guard !phoneHashes.isEmpty else { return [] }
+
+        struct PhoneHashResult: Decodable {
+            let phone_hash: String
+        }
+
+        do {
+            let response: [PhoneHashResult] = try await supabase
+                .rpc("get_phlock_user_phone_hashes", params: ["phone_hashes": phoneHashes])
+                .execute()
+                .value
+
+            return Set(response.map { $0.phone_hash })
+        } catch {
+            // If the RPC doesn't exist yet (migration not applied), return empty set
+            // This ensures backward compatibility during deployment
+            print("⚠️ get_phlock_user_phone_hashes RPC not available: \(error)")
+            return []
+        }
     }
 }

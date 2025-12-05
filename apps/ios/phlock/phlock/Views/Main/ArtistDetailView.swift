@@ -97,105 +97,19 @@ struct ArtistDetailView: View {
 
                             if displayedTracks.isEmpty {
                                 Text(searchText.isEmpty ? "No tracks available" : "No tracks found")
-                                    .font(.lora(size: 10))
+                                    .font(.lora(size: 14))
                                     .foregroundColor(.secondary)
                                     .padding()
                             } else {
                                 ForEach(Array(displayedTracks.enumerated()), id: \.element.id) { index, track in
-                                    let isCurrentTrack = playbackService.currentTrack?.id == track.id
-                                    let isPlaying = isCurrentTrack && playbackService.isPlaying
-
-                                    VStack(spacing: 0) {
-                                        HStack(spacing: 12) {
-                                        // Playing indicator bar
-                                        if isCurrentTrack {
-                                            RoundedRectangle(cornerRadius: 2)
-                                                .fill(Color.primary)
-                                                .frame(width: 4, height: 40)
-                                        }
-
-                                        // Track Number
-                                        Text("\(index + 1)")
-                                            .font(.lora(size: 10))
-                                            .foregroundColor(.secondary)
-                                            .frame(width: 30)
-
-                                        // Album Art
-                                        if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
-                                            AsyncImage(url: url) { image in
-                                                image
-                                                    .resizable()
-                                                    .scaledToFill()
-                                            } placeholder: {
-                                                Color.gray.opacity(0.2)
-                                            }
-                                            .frame(width: 50, height: 50)
-                                            .cornerRadius(4)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 4)
-                                                    .stroke(isCurrentTrack ? Color.primary : Color.clear, lineWidth: 2.5)
-                                            )
-                                        } else {
-                                            Color.gray.opacity(0.2)
-                                                .frame(width: 50, height: 50)
-                                                .cornerRadius(4)
-                                        }
-
-                                        // Track Info
-                                        Text(track.name)
-                                            .font(.lora(size: 16))
-                                            .lineLimit(1)
-                                            .foregroundColor(.primary)
-
-                                        Spacer()
-
-                                        // Daily Song Selection Button
-                                        Button {
-                                            selectDailySong(track)
-                                        } label: {
-                                            ZStack {
-                                                Circle()
-                                                    .fill((isCommittedAsDaily(track) || isPendingSelection(track)) ? Color.accentColor : Color.white.opacity(0.65))
-                                                    .overlay(
-                                                        Circle()
-                                                            .stroke((isCommittedAsDaily(track) || isPendingSelection(track)) ? Color.accentColor : Color.secondary, lineWidth: 2)
-                                                    )
-                                                    .frame(width: 24, height: 24)
-                                                if isCommittedAsDaily(track) || isPendingSelection(track) {
-                                                    Image(systemName: "checkmark")
-                                                        .font(.lora(size: 10))
-                                                        .foregroundColor(.white)
-                                                }
-                                            }
-                                            .frame(width: 44, height: 44)
-                                            .contentShape(Rectangle())
-                                        }
-                                        .buttonStyle(.borderless)
-
-                                        // Play Button
-                                        Button {
-                                            if isPlaying {
-                                                playbackService.pause()
-                                            } else {
-                                                playbackService.play(track: track)
-                                            }
-                                        } label: {
-                                            Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                                                .font(.lora(size: 20, weight: .bold))
-                                                .foregroundColor(isCurrentTrack ? .primary : .secondary)
-                                        }
-                                        .buttonStyle(.borderless)
-                                    }
-                                    .padding(.horizontal, isCurrentTrack ? 12 : 16)
-                                    .padding(.vertical, 8)
-                                    .background(
-                                        isCurrentTrack
-                                            ? Color.primary.opacity(colorScheme == .dark ? 0.2 : 0.06)
-                                            : Color.clear
+                                    ArtistTrackRow(
+                                        track: track,
+                                        index: index,
+                                        isCommittedAsDaily: isCommittedAsDaily(track),
+                                        isPendingSelection: isPendingSelection(track),
+                                        onSelect: { selectDailySong(track) }
                                     )
-                                    .cornerRadius(8)
-
-                                    }
+                                    .environmentObject(playbackService)
                                 }
                             }
                         }
@@ -217,14 +131,14 @@ struct ArtistDetailView: View {
 
                         if isSearchBarExpanded {
                             // Expanded Search Bar
-                            HStack(spacing: 8) {
+                            HStack(spacing: 10) {
                                 Image(systemName: "magnifyingglass")
-                                    .font(.lora(size: 10))
+                                    .font(.system(size: 16))
                                     .foregroundColor(.gray)
 
                                 TextField("search \(artist.name) tracks...", text: $searchText)
                                     .textFieldStyle(.plain)
-                                    .font(.lora(size: 10))
+                                    .font(.lora(size: 15))
                                     .autocorrectionDisabled()
                                     .focused($isSearchFieldFocused)
                                     .onChange(of: searchText) { newValue in
@@ -237,14 +151,14 @@ struct ArtistDetailView: View {
                                         searchResults = []
                                     } label: {
                                         Image(systemName: "xmark.circle.fill")
-                                            .font(.lora(size: 10))
+                                            .font(.system(size: 18))
                                             .foregroundColor(.gray)
                                     }
                                 }
 
                                 if isSearching {
                                     ProgressView()
-                                        .scaleEffect(0.8)
+                                        .scaleEffect(0.9)
                                 }
 
                                 Button {
@@ -255,22 +169,22 @@ struct ArtistDetailView: View {
                                     }
                                 } label: {
                                     Image(systemName: "xmark")
-                                        .font(.lora(size: 10))
+                                        .font(.system(size: 16, weight: .medium))
                                         .foregroundColor(.gray)
                                 }
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 14)
                             .background(Color(UIColor.systemBackground))
-                            .cornerRadius(25)
+                            .cornerRadius(28)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 25)
+                                RoundedRectangle(cornerRadius: 28)
                                     .stroke(Color.gray.opacity(0.3), lineWidth: 1)
                             )
                             .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                         } else {
-                            // Collapsed FAB
+                            // Collapsed FAB - larger text and pill
                             Button {
                                 withAnimation(.spring(response: 0.3)) {
                                     isSearchBarExpanded = true
@@ -280,20 +194,20 @@ struct ArtistDetailView: View {
                                     isSearchFieldFocused = true
                                 }
                             } label: {
-                                HStack(spacing: 8) {
+                                HStack(spacing: 10) {
                                     Image(systemName: "magnifyingglass")
-                                        .font(.lora(size: 10))
+                                        .font(.system(size: 15, weight: .medium))
                                     Text(artist.name)
-                                        .font(.lora(size: 10))
+                                        .font(.lora(size: 15))
                                         .lineLimit(1)
                                 }
                                 .foregroundColor(.white)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 14)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 16)
                                 .background(Color.black)
-                                .cornerRadius(25)
+                                .cornerRadius(28)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 25)
+                                    RoundedRectangle(cornerRadius: 28)
                                         .stroke(Color.white.opacity(0.5), lineWidth: 1)
                                 )
                                 .shadow(color: Color.black.opacity(0.3), radius: 10, x: 0, y: 5)
@@ -530,6 +444,119 @@ struct ArtistDetailView: View {
                 dailySongToastMessage = "❌ \(error.localizedDescription)"
                 showDailySongToast = true
             }
+        }
+    }
+}
+
+// MARK: - Artist Track Row Component
+
+struct ArtistTrackRow: View {
+    let track: MusicItem
+    let index: Int
+    let isCommittedAsDaily: Bool
+    let isPendingSelection: Bool
+    let onSelect: () -> Void
+
+    @EnvironmentObject var playbackService: PlaybackService
+    @Environment(\.colorScheme) var colorScheme
+
+    var isCurrentTrack: Bool {
+        playbackService.currentTrack?.id == track.id
+    }
+
+    var isPlaying: Bool {
+        isCurrentTrack && playbackService.isPlaying
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Playing indicator bar
+            if isCurrentTrack {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.primary)
+                    .frame(width: 4, height: 40)
+            }
+
+            // Track Number
+            Text("\(index + 1)")
+                .font(.lora(size: 14))
+                .foregroundColor(.secondary)
+                .frame(width: 30)
+
+            // Album Art
+            if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
+                AsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    Color.gray.opacity(0.2)
+                }
+                .frame(width: 50, height: 50)
+                .cornerRadius(4)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(isCurrentTrack ? Color.primary : (isCommittedAsDaily ? Color.green : Color.clear), lineWidth: 2.5)
+                )
+            } else {
+                Color.gray.opacity(0.2)
+                    .frame(width: 50, height: 50)
+                    .cornerRadius(4)
+            }
+
+            // Track Info
+            Text(track.name)
+                .font(.lora(size: 16))
+                .lineLimit(1)
+                .foregroundColor(.primary)
+
+            Spacer()
+
+            // Selection indicator (visual only, whole row is tappable)
+            ZStack {
+                Circle()
+                    .fill((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.white.opacity(0.65))
+                    .overlay(
+                        Circle()
+                            .stroke((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.secondary, lineWidth: 2)
+                    )
+                    .frame(width: 24, height: 24)
+                if isCommittedAsDaily || isPendingSelection {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                }
+            }
+            .padding(.trailing, 4)
+
+            // Play Button - isolated tap target
+            Button {
+                if isPlaying {
+                    playbackService.pause()
+                } else {
+                    playbackService.play(track: track)
+                }
+            } label: {
+                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(isCurrentTrack ? .primary : .secondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, isCurrentTrack ? 12 : 16)
+        .padding(.vertical, 8)
+        .background(
+            isCurrentTrack
+                ? Color.primary.opacity(colorScheme == .dark ? 0.2 : 0.06)
+                : Color.clear
+        )
+        .cornerRadius(8)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            // Tapping anywhere on the row (except play button) selects the track
+            onSelect()
         }
     }
 }

@@ -11,6 +11,7 @@ struct OnboardingUsernameView: View {
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var isButtonPressed = false
+    @State private var checkTask: Task<Void, Never>?
 
     @FocusState private var isUsernameFocused: Bool
 
@@ -215,26 +216,44 @@ struct OnboardingUsernameView: View {
 
     @MainActor
     private func checkAvailability() {
+        // Cancel any existing check task
+        checkTask?.cancel()
+
         guard isValidFormat else {
             isAvailable = nil
+            isChecking = false
             return
         }
 
         isChecking = true
+        let usernameToCheck = username
 
-        Task {
+        checkTask = Task {
             // Debounce
             try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
 
+            // Check if task was cancelled during debounce
+            guard !Task.isCancelled else { return }
+
             do {
-                let available = try await AuthServiceV3.shared.isUsernameAvailable(username)
+                let available = try await AuthServiceV3.shared.isUsernameAvailable(usernameToCheck)
+
+                // Check if task was cancelled or username changed
+                guard !Task.isCancelled else { return }
+
                 await MainActor.run {
-                    isAvailable = available
-                    isChecking = false
+                    // Only update if this is still the current username
+                    if self.username == usernameToCheck {
+                        isAvailable = available
+                        isChecking = false
+                    }
                 }
             } catch {
+                guard !Task.isCancelled else { return }
                 await MainActor.run {
-                    isChecking = false
+                    if self.username == usernameToCheck {
+                        isChecking = false
+                    }
                 }
             }
         }

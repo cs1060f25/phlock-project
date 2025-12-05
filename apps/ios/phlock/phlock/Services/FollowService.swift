@@ -765,9 +765,10 @@ class FollowService {
     /// Get "you may know" recommendations based on popularity or recent activity
     private func getYouMayKnowRecommendations(for userId: UUID, excluding: Set<UUID>) async throws -> [RecommendedFriend] {
         // Get popular users (high phlock_count) that we're not following
-        let excludeIds = Array(excluding).map { $0.uuidString }
+        // Note: excludeIds would be used for direct filtering, but Supabase Swift SDK
+        // doesn't easily support array exclusion, so we filter after fetching
 
-        var query = supabase
+        let query = supabase
             .from("users")
             .select("*")
             .neq("id", value: userId.uuidString)
@@ -775,8 +776,7 @@ class FollowService {
             .order("phlock_count", ascending: false)
             .limit(30)
 
-        // Note: Can't directly exclude array in Supabase Swift SDK easily,
-        // so we'll filter after fetching
+        // Filter out excluded users after fetching
         let users: [User] = try await query.execute().value
 
         return users

@@ -56,9 +56,17 @@ struct SearchResultsList: View {
         filter == .tracks ? [] : results.artists
     }
 
+    // Stable ID for combined results to avoid re-renders
+    private struct RankedResult: Identifiable {
+        let id: String
+        let item: MusicItem
+        let type: String
+    }
+
     // For "All" tab, rank results using Spotify's API position + popularity + name matching
     // Respects Spotify's search relevance while boosting exact/close name matches
-    var allResults: [(item: MusicItem, type: String)] {
+    // Returns stable identifiable results to avoid re-renders
+    private var allResults: [RankedResult] {
         // Helper to calculate name match score
         func nameMatchScore(itemName: String, query: String) -> Double {
             let itemLower = itemName.lowercased().trimmingCharacters(in: .whitespaces)
@@ -128,8 +136,8 @@ struct SearchResultsList: View {
             return $0.score > $1.score
         }
 
-    // Return without scores
-        return scoredItems.map { ($0.item, $0.type) }
+        // Return with stable IDs
+        return scoredItems.map { RankedResult(id: "\($0.type)_\($0.item.id)", item: $0.item, type: $0.type) }
     }
 
     var body: some View {
@@ -142,26 +150,25 @@ struct SearchResultsList: View {
                     .id("discoverTop")
 
                 if filter == .all {
-                    // All tab - show combined results
-                    ForEach(Array(allResults.enumerated()), id: \.offset) { index, result in
+                    // All tab - show combined results with stable IDs
+                    ForEach(allResults) { result in
                         if result.type == "Track" {
-                                TrackResultRow(
-                                    track: result.item,
-                                    platformType: platformType,
-                                    showType: true,
-                                    onSelectDailySong: onSelectDailySong,
-                                    todaysDailySong: todaysDailySong,
-                                    selectedDailyTrackId: $selectedDailyTrackId
-                                )
+                            TrackResultRow(
+                                track: result.item,
+                                platformType: platformType,
+                                showType: true,
+                                onSelectDailySong: onSelectDailySong,
+                                todaysDailySong: todaysDailySong,
+                                selectedDailyTrackId: $selectedDailyTrackId
+                            )
                             .environmentObject(authState)
                             .environmentObject(navigationState)
                         } else {
-                            Button {
-                                navigationPath.append(DiscoverDestination.artist(result.item, platformType))
-                            } label: {
-                                ArtistResultRow(artist: result.item, showType: true)
-                            }
-                            .buttonStyle(.plain)
+                            ArtistResultRow(artist: result.item, showType: true)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    navigationPath.append(DiscoverDestination.artist(result.item, platformType))
+                                }
                         }
                     }
                 } else {
@@ -184,12 +191,11 @@ struct SearchResultsList: View {
                     // Artists Section
                     if !displayedArtists.isEmpty {
                         ForEach(displayedArtists, id: \.id) { artist in
-                            Button {
-                                navigationPath.append(DiscoverDestination.artist(artist, platformType))
-                            } label: {
-                                ArtistResultRow(artist: artist, showType: false)
-                            }
-                            .buttonStyle(.plain)
+                            ArtistResultRow(artist: artist, showType: false)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    navigationPath.append(DiscoverDestination.artist(artist, platformType))
+                                }
                         }
                     }
                 }
@@ -275,57 +281,54 @@ struct TrackResultRow: View {
 
     var body: some View {
         VStack(spacing: 0) {
-        HStack(spacing: 12) {
-            // Playing indicator bar
-            if isCurrentTrack {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(Color.primary)
-                    .frame(width: 4, height: 40)
-            }
-
-            // Album Art
-            if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
-                AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                } placeholder: {
-                    Color.gray.opacity(0.2)
+            HStack(spacing: 12) {
+                // Playing indicator bar
+                if isCurrentTrack {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.primary)
+                        .frame(width: 4, height: 40)
                 }
-                .frame(width: 50, height: 50)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(isCurrentTrack ? Color.primary : (isCommittedAsDaily ? Color.green : Color.clear), lineWidth: 2.5)
-                )
-            } else {
-                Color.gray.opacity(0.2)
+
+                // Album Art
+                if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
+                    AsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } placeholder: {
+                        Color.gray.opacity(0.2)
+                    }
                     .frame(width: 50, height: 50)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
-            }
-
-            // Track Info
-            VStack(alignment: .leading, spacing: 4) {
-                Text(track.name)
-                    .font(.lora(size: 15))
-                    .lineLimit(1)
-                    .foregroundColor(.primary)
-
-                if let artist = track.artistName {
-                    Text(artist)
-                        .font(.lora(size: 13))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(isCurrentTrack ? Color.primary : (isCommittedAsDaily ? Color.green : Color.clear), lineWidth: 2.5)
+                    )
+                } else {
+                    Color.gray.opacity(0.2)
+                        .frame(width: 50, height: 50)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
                 }
-            }
 
-            Spacer()
+                // Track Info
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(track.name)
+                        .font(.lora(size: 15))
+                        .lineLimit(1)
+                        .foregroundColor(.primary)
 
-            // Daily Song Button (only show if handler provided)
-            if let selectHandler = onSelectDailySong {
-                Button {
-                    selectHandler(track)
-                } label: {
+                    if let artist = track.artistName {
+                        Text(artist)
+                            .font(.lora(size: 13))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer()
+
+                // Selection indicator (visual only, whole row is tappable)
+                if onSelectDailySong != nil {
                     ZStack {
                         Circle()
                             .fill((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.white.opacity(0.65))
@@ -340,36 +343,38 @@ struct TrackResultRow: View {
                                 .foregroundColor(.white)
                         }
                     }
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+                    .padding(.trailing, 4)
+                }
+
+                // Play Button - isolated tap target
+                Button {
+                    if isPlaying {
+                        playbackService.pause()
+                    } else {
+                        playbackService.play(track: track)
+                    }
+                } label: {
+                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.lora(size: 24, weight: .bold))
+                        .foregroundColor(isCurrentTrack ? .primary : .secondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
             }
-
-
-
-            // Play Button
-            Button {
-                if isPlaying {
-                    playbackService.pause()
-                } else {
-                    playbackService.play(track: track)
-                }
-            } label: {
-                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.lora(size: 24, weight: .bold))
-                    .foregroundColor(isCurrentTrack ? .primary : .secondary)
-            }
-            .buttonStyle(.plain)
+            .padding(.vertical, 8)
+            .padding(.horizontal, isCurrentTrack ? 8 : 12)
+            .background(
+                isCurrentTrack
+                    ? Color.primary.opacity(colorScheme == .dark ? 0.2 : 0.06)
+                    : Color.clear
+            )
+            .cornerRadius(8)
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, isCurrentTrack ? 8 : 12)
-        .background(
-            isCurrentTrack
-                ? Color.primary.opacity(colorScheme == .dark ? 0.2 : 0.06)
-                : Color.clear
-        )
-        .cornerRadius(8)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            // Tapping anywhere on the row (except play button) selects the track
+            onSelectDailySong?(track)
         }
         .toast(isPresented: $showToast, message: toastMessage, type: .success, duration: 3.0)
     }
@@ -561,6 +566,9 @@ struct RecentTrackCard: View {
     @EnvironmentObject var navigationState: NavigationState
     @Environment(\.colorScheme) var colorScheme
 
+    // Track if user is scrolling to prevent accidental taps
+    @GestureState private var isDragging = false
+
     init(
         track: MusicItem,
         allTracks: [MusicItem] = [],
@@ -593,20 +601,21 @@ struct RecentTrackCard: View {
         selectedDailyTrackId == track.id
     }
 
+    private func handleTap() {
+        if isCurrentTrack {
+            playbackService.isPlaying ? playbackService.pause() : playbackService.resume()
+        } else {
+            let startIndex = allTracks.firstIndex(where: { $0.id == track.id }) ?? index
+            playbackService.startQueue(
+                tracks: allTracks,
+                startAt: startIndex,
+                showMiniPlayer: true
+            )
+        }
+    }
+
     var body: some View {
-        Button {
-            if isCurrentTrack {
-                playbackService.isPlaying ? playbackService.pause() : playbackService.resume()
-            } else {
-                let startIndex = allTracks.firstIndex(where: { $0.id == track.id }) ?? index
-                playbackService.startQueue(
-                    tracks: allTracks,
-                    startAt: startIndex,
-                    showMiniPlayer: true
-                )
-            }
-        } label: {
-            VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
                 // Album Art with Play Overlay and Select Button
                 ZStack {
                     if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
@@ -690,7 +699,16 @@ struct RecentTrackCard: View {
                         .lineLimit(1)
                 }
             }
+        .contentShape(Rectangle())
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 5)
+                .updating($isDragging) { _, state, _ in
+                    state = true
+                }
+        )
+        .onTapGesture {
+            guard !isDragging else { return }
+            handleTap()
         }
-        .buttonStyle(.plain)
     }
 }

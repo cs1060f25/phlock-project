@@ -55,6 +55,8 @@ struct NotificationsView: View {
                 switch destination {
                 case .userProfile(let user):
                     UserProfileView(user: user)
+                        .environmentObject(authState)
+                        .environmentObject(PlaybackService.shared)
                 }
             }
         }

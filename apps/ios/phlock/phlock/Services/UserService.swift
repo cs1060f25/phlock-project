@@ -91,9 +91,12 @@ class UserService {
     }
 
     /// Get a specific user by ID (with caching)
-    func getUser(userId: UUID) async throws -> User? {
-        // Check cache first
-        if let cachedUser = userCache[userId] {
+    /// - Parameters:
+    ///   - userId: The user's ID
+    ///   - bypassCache: If true, fetches fresh data from the database (useful for getting up-to-date lastDailySongDate)
+    func getUser(userId: UUID, bypassCache: Bool = false) async throws -> User? {
+        // Check cache first (unless bypassing)
+        if !bypassCache, let cachedUser = userCache[userId] {
             return cachedUser
         }
 

@@ -32,8 +32,21 @@ struct UserProfileView: View {
     @State private var hasNudged = false
     @State private var isNudging = false
 
+    // Phlock membership state
+    @State private var isInMyPhlock = false
+    @State private var isAddingToPhlock = false
+    @State private var phlockAddError: String?
+
+    // Track if user has selected a song today (fetched fresh from DB)
+    @State private var userHasSelectedToday = false
+
     // Feedback dialog (only for @woon)
     @State private var showFeedbackDialog = false
+
+    // Mini player state (for when presented as sheet)
+    @State private var showFullPlayer = false
+    @State private var showMiniPlayerShareSheet = false
+    @State private var miniPlayerTrackToShare: MusicItem? = nil
 
     // Computed property to check if we can see the profile content
     private var canViewProfile: Bool {
@@ -44,10 +57,11 @@ struct UserProfileView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // Profile Header
-                VStack(alignment: .leading, spacing: 12) {
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Profile Header
+                    VStack(alignment: .leading, spacing: 12) {
                     // Top row: Profile photo on left, name + stats on right
                     HStack(alignment: .top, spacing: 16) {
                         // Profile Photo with Streak Badge
@@ -92,7 +106,7 @@ struct UserProfileView: View {
                             // Stats Row: picks | followers | following
                             HStack(spacing: 0) {
                                 // Picks
-                                VStack(spacing: 0) {
+                                VStack(alignment: .leading, spacing: 0) {
                                     Text("\(pastPicks.count + (todaysPick != nil ? 1 : 0))")
                                         .font(.lora(size: 16, weight: .bold))
                                         .foregroundColor(.primary)
@@ -100,14 +114,14 @@ struct UserProfileView: View {
                                         .font(.lora(size: 12))
                                         .foregroundColor(.secondary)
                                 }
-                                .frame(maxWidth: .infinity)
+                                .frame(maxWidth: .infinity, alignment: .leading)
 
                                 // Followers
                                 Button {
                                     followListInitialTab = .followers
                                     showFollowersList = true
                                 } label: {
-                                    VStack(spacing: 0) {
+                                    VStack(alignment: .leading, spacing: 0) {
                                         Text("\(followerCount)")
                                             .font(.lora(size: 16, weight: .bold))
                                             .foregroundColor(.primary)
@@ -117,14 +131,14 @@ struct UserProfileView: View {
                                     }
                                 }
                                 .buttonStyle(.plain)
-                                .frame(maxWidth: .infinity)
+                                .frame(maxWidth: .infinity, alignment: .leading)
 
                                 // Following
                                 Button {
                                     followListInitialTab = .following
                                     showFollowersList = true
                                 } label: {
-                                    VStack(spacing: 0) {
+                                    VStack(alignment: .leading, spacing: 0) {
                                         Text("\(followingCount)")
                                             .font(.lora(size: 16, weight: .bold))
                                             .foregroundColor(.primary)
@@ -134,7 +148,7 @@ struct UserProfileView: View {
                                     }
                                 }
                                 .buttonStyle(.plain)
-                                .frame(maxWidth: .infinity)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
                     }
@@ -149,6 +163,26 @@ struct UserProfileView: View {
                             .padding(.horizontal, 24)
                     }
 
+                    // Feedback button (only for @woon) - above follow button
+                    if user.username == "woon" {
+                        Button {
+                            showFeedbackDialog = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "bubble.left.and.bubble.right")
+                                    .font(.system(size: 14))
+                                Text("reach out")
+                                    .font(.lora(size: 17))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.black)
+                            .cornerRadius(12)
+                        }
+                        .padding(.horizontal, 24)
+                    }
+
                     // Follow Action Button
                     followActionButton
                         .padding(.horizontal, 24)
@@ -157,17 +191,26 @@ struct UserProfileView: View {
 
                 // Content (only if can view profile)
                 if canViewProfile {
-                    // Today's Pick
-                    TodaysPickCard(
-                        share: todaysPick,
-                        isCurrentUser: false,
-                        onPickSong: { },
-                        userId: user.id,
-                        onNudge: hasNudged ? nil : {
-                            Task { await sendNudge() }
-                        },
-                        streak: user.dailySongStreak
-                    )
+                    // Today's Pick - show locked state if they have a pick but aren't in my phlock
+                    if userHasSelectedToday && !isInMyPhlock {
+                        LockedPickCard(
+                            isLoading: isAddingToPhlock,
+                            onAddToPhlock: {
+                                Task { await addUserToMyPhlock() }
+                            }
+                        )
+                    } else {
+                        TodaysPickCard(
+                            share: todaysPick,
+                            isCurrentUser: false,
+                            onPickSong: { },
+                            userId: user.id,
+                            onNudge: hasNudged ? nil : {
+                                Task { await sendNudge() }
+                            },
+                            streak: user.dailySongStreak
+                        )
+                    }
 
                     // Profile Insights
                     ProfileInsightsSection(
@@ -225,8 +268,38 @@ struct UserProfileView: View {
                 }
 
                 Spacer(minLength: 40)
+
+                // Extra padding for mini player when playing
+                if playbackService.currentTrack != nil {
+                    Spacer(minLength: MiniPlayerView.Layout.height + 20)
+                }
             }
         }
+
+            // Mini Player overlay
+            if playbackService.currentTrack != nil {
+                MiniPlayerView(
+                    playbackService: playbackService,
+                    showFullPlayer: $showFullPlayer,
+                    showShareSheet: $showMiniPlayerShareSheet,
+                    trackToShare: $miniPlayerTrackToShare
+                )
+                .environmentObject(authState)
+                .padding(.bottom, 8)
+            }
+        }
+        .overlay {
+            // Full Screen Player Overlay
+            if showFullPlayer {
+                FullScreenPlayerView(
+                    playbackService: playbackService,
+                    isPresented: $showFullPlayer
+                )
+                .environmentObject(authState)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.88), value: showFullPlayer)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
@@ -322,6 +395,8 @@ struct UserProfileView: View {
     // MARK: - Load Profile Data
 
     private func loadProfileData() async {
+        guard let currentUserId = authState.currentUser?.id else { return }
+
         // Clear cache to ensure fresh data
         FollowService.shared.clearCache(for: user.id)
 
@@ -336,14 +411,19 @@ struct UserProfileView: View {
             async let historicalReachTask = FollowService.shared.getHistoricalReach(userId: user.id)
             async let todaysPickTask = ShareService.shared.getTodaysDailySong(for: user.id)
             async let pastPicksTask = ShareService.shared.getDailySongHistory(for: user.id)
+            async let myPhlockTask = FollowService.shared.getPhlockMembers(for: currentUserId)
+            // Check if user has a daily song today using RPC function (bypasses RLS)
+            async let hasDailySongTask = ShareService.shared.hasDailySongToday(for: user.id)
 
-            let (followers, following, whoHasMe, reach, today, past) = try await (
+            let (followers, following, whoHasMe, reach, today, past, myPhlock, hasDailySong) = try await (
                 followersTask,
                 followingTask,
                 whoHasMeTask,
                 historicalReachTask,
                 todaysPickTask,
-                pastPicksTask
+                pastPicksTask,
+                myPhlockTask,
+                hasDailySongTask
             )
 
             await MainActor.run {
@@ -353,8 +433,19 @@ struct UserProfileView: View {
                 self.historicalReachCount = reach
                 self.todaysPick = today
                 self.pastPicks = past
+                // Check if this user is in my phlock
+                self.isInMyPhlock = myPhlock.contains { $0.user.id == user.id }
+                // Use RPC function result to determine if they selected a song today (bypasses RLS)
+                self.userHasSelectedToday = hasDailySong
+
+                // Debug logging
+                print("🔍 DEBUG UserProfileView - user.id: \(user.id)")
+                print("🔍 DEBUG UserProfileView - hasDailySong (from RPC): \(hasDailySong)")
+                print("🔍 DEBUG UserProfileView - final userHasSelectedToday: \(self.userHasSelectedToday)")
+                print("🔍 DEBUG UserProfileView - isInMyPhlock: \(self.isInMyPhlock)")
+                print("🔍 DEBUG UserProfileView - todaysPick: \(today != nil ? "exists" : "nil")")
             }
-            print("✅ Loaded user profile data: followers=\(followers.count), following=\(following.count), phlockCount=\(whoHasMe.count), reach=\(reach)")
+            print("✅ Loaded user profile data: followers=\(followers.count), following=\(following.count), phlockCount=\(whoHasMe.count), reach=\(reach), isInMyPhlock=\(isInMyPhlock), userHasSelectedToday=\(userHasSelectedToday)")
         } catch {
             print("❌ Failed to load profile data: \(error)")
         }
@@ -556,6 +647,52 @@ struct UserProfileView: View {
         }
 
         isNudging = false
+    }
+
+    private func addUserToMyPhlock() async {
+        guard let currentUserId = authState.currentUser?.id else { return }
+        guard !isAddingToPhlock else { return }
+
+        isAddingToPhlock = true
+
+        do {
+            // Get current phlock members to find an empty slot
+            let currentMembers = try await FollowService.shared.getPhlockMembers(for: currentUserId)
+
+            // Find the first empty position (1-5)
+            let occupiedPositions = Set(currentMembers.map { $0.position })
+            guard let emptyPosition = (1...5).first(where: { !occupiedPositions.contains($0) }) else {
+                // Phlock is full
+                await MainActor.run {
+                    errorMessage = "Your phlock is full! Remove someone first to add \(user.displayName)."
+                    showError = true
+                    isAddingToPhlock = false
+                }
+                return
+            }
+
+            // Add user to the empty slot
+            try await FollowService.shared.addToPhlock(
+                userId: user.id,
+                position: emptyPosition,
+                currentUserId: currentUserId
+            )
+
+            // Reload profile data to update UI
+            await loadProfileData()
+
+            print("✅ Added \(user.displayName) to phlock at position \(emptyPosition)")
+        } catch {
+            print("❌ Failed to add to phlock: \(error)")
+            await MainActor.run {
+                errorMessage = "Failed to add to phlock"
+                showError = true
+            }
+        }
+
+        await MainActor.run {
+            isAddingToPhlock = false
+        }
     }
 }
 

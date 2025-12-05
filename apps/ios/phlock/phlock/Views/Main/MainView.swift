@@ -65,7 +65,7 @@ struct MainView: View {
                     ),
                     profileView: AnyView(
                         NavigationStack(path: $navigationState.profileNavigationPath) {
-                            ProfileView()
+                            ProfileView(scrollToTopTrigger: $navigationState.scrollProfileToTopTrigger)
                         }
                         .environmentObject(authState)
                         .environmentObject(playbackService)

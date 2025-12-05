@@ -371,6 +371,8 @@ struct PhlockCarouselView: View {
     let onEditSwapTapped: (User) -> Void  // Edit mode: swap member
     let onEditRemoveTapped: (User) -> Void  // Edit mode: remove member
     let onEditAddTapped: () -> Void  // Edit mode: add member
+    let onMenuTapped: () -> Void  // Open phlock manager sheet
+    let onShareTapped: () -> Void  // Share phlock card
 
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
@@ -378,6 +380,8 @@ struct PhlockCarouselView: View {
     @State private var lastQueueIndex: Int? = nil // Track previous queue index for wrap detection
     @State private var isAnimatingWrap: Bool = false // Prevent conflicts during wrap animation
     @State private var hasInitialized: Bool = false // Track if we've done initial setup
+    @State private var isUserDrivenChange: Bool = false // Prevent queue index listener from interfering with user-initiated changes
+    @State private var isHandlingCardChange: Bool = false // Prevent queue listener from interfering during card change processing
     @State private var wasPlayingBeforeNonSongPage: Bool = false // Track play state when leaving song page for non-song page
     @State private var lastPageHadSong: Bool = true // Track if the last visited page had a song
     @State private var isEditMode: Bool = false  // Edit mode state
@@ -386,20 +390,27 @@ struct PhlockCarouselView: View {
     // Persistent storage for carousel position
     @AppStorage("phlockCarouselIndex") private var savedCarouselIndex: Int = 0
 
+    // Track content hash to detect when items change (member added/removed)
+    @State private var lastContentHash: Int = 0
+
     // Base phlock members (always 5 slots)
     private var baseMembers: [PhlockSlot] {
         var slots: [PhlockSlot] = []
 
-        // First: members with songs (sorted by pick time)
-        let membersWithSongs = items.filter { $0.type == .song }
+        // First: members with songs (sorted by streak count, highest first)
+        let membersWithSongs = items
+            .filter { $0.type == .song }
+            .sorted { ($0.member?.dailySongStreak ?? 0) > ($1.member?.dailySongStreak ?? 0) }
         for item in membersWithSongs {
             if let member = item.member, let song = item.song {
                 slots.append(PhlockSlot(member: member, song: song, type: .song))
             }
         }
 
-        // Second: members without songs
-        let membersWaiting = items.filter { $0.type == .waiting }
+        // Second: members without songs (sorted by streak count, highest first)
+        let membersWaiting = items
+            .filter { $0.type == .waiting }
+            .sorted { ($0.member?.dailySongStreak ?? 0) > ($1.member?.dailySongStreak ?? 0) }
         for item in membersWaiting {
             if let member = item.member {
                 slots.append(PhlockSlot(member: member, song: nil, type: .waiting))
@@ -439,6 +450,17 @@ struct PhlockCarouselView: View {
         }
     }
 
+    // Hash of items content - changes when members are added/removed
+    // Used to force TabView rebuild while preserving carousel position
+    private var itemsContentHash: Int {
+        var hasher = Hasher()
+        for item in items {
+            hasher.combine(item.member?.id)
+            hasher.combine(item.type == .empty ? "empty" : (item.type == .waiting ? "waiting" : "song"))
+        }
+        return hasher.finalize()
+    }
+
     var body: some View {
         ZStack {
             // Horizontal carousel with extended pages for infinite scroll
@@ -473,6 +495,9 @@ struct PhlockCarouselView: View {
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .ignoresSafeArea()
+            // Force TabView to rebuild when content changes (member added/removed)
+            // This ensures empty slots become member slots immediately
+            .id(itemsContentHash)
 
             // MARK: - Commented out: Your pick bar at top (may re-implement later)
             // VStack {
@@ -507,9 +532,15 @@ struct PhlockCarouselView: View {
                     currentIndex: realIndex,
                     isEditMode: isEditMode,
                     onTap: { index in
+                        // Mark as user-driven to prevent queue index listener from interfering
+                        isUserDrivenChange = true
                         // Convert real index to extended index (+1 for phantom page at start)
                         withAnimation(.easeInOut(duration: 0.3)) {
                             currentIndex = index + 1
+                        }
+                        // Reset flag after animation completes
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            isUserDrivenChange = false
                         }
                     },
                     onProfileTapped: onProfileTapped,
@@ -519,13 +550,18 @@ struct PhlockCarouselView: View {
                         withAnimation(.easeInOut(duration: 0.25)) {
                             isEditMode.toggle()
                         }
-                    }
+                    },
+                    onMenuTapped: onMenuTapped,
+                    onShareTapped: onShareTapped
                 )
                 .padding(.bottom, 16) // Just above tab bar
             }
             .animation(.easeInOut(duration: 0.25), value: currentIndex)
         }
         .onChange(of: currentIndex) { newIndex in
+            // DEBUG: Track all currentIndex changes
+            print("📍 currentIndex changed to \(newIndex) (isUserDrivenChange=\(isUserDrivenChange), isAnimatingWrap=\(isAnimatingWrap))")
+
             // Skip handleCardChange during wrap animation to avoid interfering with playback
             if !isAnimatingWrap {
                 handleCardChange(newIndex)
@@ -576,6 +612,15 @@ struct PhlockCarouselView: View {
                 return
             }
 
+            // Skip if user is actively changing the carousel position or if we're
+            // in the middle of handling a card change (which triggers its own queue update)
+            // This prevents interfering with user-initiated navigation
+            if isUserDrivenChange || isHandlingCardChange {
+                print("🔇 Queue change ignored (isUserDrivenChange=\(isUserDrivenChange), isHandlingCardChange=\(isHandlingCardChange))")
+                lastQueueIndex = queueIndex
+                return
+            }
+
             // IMPORTANT: Only sync carousel if the current track is from OUR phlock
             // This prevents responding to queue changes from ProfileView or other views
             let phlockTrackIds = baseMembers.compactMap { $0.song?.trackId }
@@ -595,7 +640,21 @@ struct PhlockCarouselView: View {
                 return
             }
 
-            let targetRealIndex = songSlots[queueIndex].offset
+            // CRITICAL FIX: When handleCardChange loads a single track via onPlayTapped,
+            // the queue becomes a single-item queue with index 0. This would incorrectly
+            // map to songSlots[0] even if we loaded a different song.
+            // To prevent this, verify the current track matches the target slot.
+            let targetSlot = songSlots[queueIndex]
+            guard targetSlot.element.song?.trackId == currentTrackId else {
+                // The queue index doesn't match the actual track being played.
+                // This happens when handleCardChange loads a single song into a new queue.
+                // The carousel is already at the correct position from user interaction,
+                // so we should NOT override it here.
+                lastQueueIndex = queueIndex
+                return
+            }
+
+            let targetRealIndex = targetSlot.offset
             let targetExtendedIndex = targetRealIndex + 1 // +1 for phantom page at start
 
             // Detect wrap-around: going from last song to first song
@@ -627,6 +686,9 @@ struct PhlockCarouselView: View {
             }
         }
         .onAppear {
+            // DEBUG: Track when onAppear is called
+            print("🔄 PhlockCarouselView.onAppear called - hasInitialized=\(hasInitialized) currentIndex=\(currentIndex)")
+
             // Initialize lastQueueIndex to current queue position for reliable wrap detection
             lastQueueIndex = playbackService.currentQueueIndex
 
@@ -646,6 +708,7 @@ struct PhlockCarouselView: View {
                 } else {
                     currentIndex = max(0, restoredIndex)
                 }
+                print("🔄 Fresh start - restored to index \(currentIndex)")
                 // Initialize lastPageHadSong based on restored position
                 lastPageHadSong = extendedMembers[safe: currentIndex]?.song != nil
 
@@ -668,6 +731,7 @@ struct PhlockCarouselView: View {
                     }
                     savedCarouselIndex = matchingIndex
                     lastPageHadSong = true // We're on a song page
+                    print("🔄 Returning to phlock tab - synced to playing track at index \(currentIndex)")
                 }
             } else if hasInitialized && playbackService.currentTrack != nil && !isAlreadyPlayingPhlock {
                 // Returning to phlock tab with a non-phlock track playing
@@ -678,9 +742,44 @@ struct PhlockCarouselView: View {
                     let savedPosition = playbackService.getSavedPosition(for: song.trackId)
                     // Resume the phlock track, starting playback immediately
                     onPlayTapped(song, true, savedPosition)
+                    print("🔄 Returning from other view - resuming phlock track")
                 }
+            } else {
+                print("🔄 Already initialized, preserving current state at index \(currentIndex)")
             }
             // If already initialized and no track playing, preserve current state
+
+            // Initialize content hash tracking
+            lastContentHash = itemsContentHash
+        }
+        .onChange(of: itemsContentHash) { newHash in
+            // Content changed (member added/removed) - restore saved position
+            // This handles the case where .id(itemsContentHash) causes TabView to rebuild
+            // which resets @State currentIndex, but we want to preserve position
+            guard lastContentHash != 0 && newHash != lastContentHash else {
+                lastContentHash = newHash
+                return
+            }
+
+            print("📦 Content hash changed: \(lastContentHash) -> \(newHash), restoring position \(savedCarouselIndex)")
+            lastContentHash = newHash
+
+            // Restore the saved carousel position after a brief delay
+            // to allow the TabView to finish rebuilding
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                let restoredIndex = min(savedCarouselIndex, max(0, baseMembers.count - 1))
+                if baseMembers.count > 1 {
+                    // Use transaction to avoid animation during position restoration
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        currentIndex = restoredIndex + 1 // +1 for phantom page offset
+                    }
+                } else {
+                    currentIndex = max(0, restoredIndex)
+                }
+                print("📦 Restored carousel to index \(currentIndex)")
+            }
         }
     }
 
@@ -797,6 +896,10 @@ struct PhlockCarouselView: View {
             }
         }
 
+        // Mark that we're handling a card change to prevent queue listener from interfering
+        isHandlingCardChange = true
+        print("🔒 isHandlingCardChange = true")
+
         // Perform non-blocking operations asynchronously
         Task { @MainActor in
             // Pause current playback (position already saved above)
@@ -815,6 +918,11 @@ struct PhlockCarouselView: View {
 
             // Haptic feedback
             impact.impactOccurred()
+
+            // Reset flag after a delay to allow queue changes to settle
+            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms delay
+            isHandlingCardChange = false
+            print("🔓 isHandlingCardChange = false")
         }
     }
 }
@@ -936,54 +1044,60 @@ struct ProfileIndicatorBar: View {
     let onTap: (Int) -> Void
     let onProfileTapped: (User) -> Void
     let onEditTapped: () -> Void
+    let onMenuTapped: () -> Void
+    let onShareTapped: () -> Void
     @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Profile circles in capsule
-            HStack(spacing: 8) {
-                ForEach(Array(slots.enumerated()), id: \.offset) { index, slot in
-                    ProfileIndicatorCircle(
-                        slot: slot,
-                        isActive: index == currentIndex
-                    )
-                    .onTapGesture {
-                        if index == currentIndex, let member = slot.member {
-                            // Already on this user - navigate to their profile
-                            onProfileTapped(member)
-                        } else {
-                            // Switch to this user's card
-                            onTap(index)
-                        }
+        // Use overlay to position menu button without affecting pill centering
+        HStack(spacing: 8) {
+            ForEach(Array(slots.enumerated()), id: \.offset) { index, slot in
+                ProfileIndicatorCircle(
+                    slot: slot,
+                    isActive: index == currentIndex
+                )
+                .onTapGesture {
+                    if index == currentIndex, let member = slot.member {
+                        // Already on this user - navigate to their profile
+                        onProfileTapped(member)
+                    } else {
+                        // Switch to this user's card
+                        onTap(index)
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background {
-                if #available(iOS 26.0, *) {
-                    Capsule()
-                        .fill(.clear)
-                        .glassEffect(.regular.interactive())
-                } else {
-                    Group {
-                        if colorScheme == .dark {
-                            Capsule()
-                                .fill(Color.black.opacity(0.3))
-                                .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
-                        } else {
-                            Capsule()
-                                .fill(.ultraThinMaterial)
-                                .shadow(color: Color.black.opacity(0.15), radius: 10, y: 4)
-                        }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background {
+            if #available(iOS 26.0, *) {
+                Capsule()
+                    .fill(.clear)
+                    .glassEffect(.regular.interactive())
+            } else {
+                Group {
+                    if colorScheme == .dark {
+                        Capsule()
+                            .fill(Color.black.opacity(0.3))
+                            .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
+                    } else {
+                        Capsule()
+                            .fill(.ultraThinMaterial)
+                            .shadow(color: Color.black.opacity(0.15), radius: 10, y: 4)
                     }
                 }
             }
-
-            // Edit/Done button
-            Button(action: onEditTapped) {
-                Image(systemName: isEditMode ? "checkmark" : "ellipsis")
-                    .font(.system(size: 16, weight: .medium))
+        }
+        .overlay(alignment: .leading) {
+            // Three-dot menu button positioned to the left of the pill
+            Button(action: {
+                let impact = UIImpactFeedbackGenerator(style: .medium)
+                impact.impactOccurred()
+                onMenuTapped()
+            }) {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .semibold))
+                    .rotationEffect(.degrees(90))
                     .foregroundColor(colorScheme == .dark ? .white : .black)
                     .frame(width: 40, height: 40)
                     .background {
@@ -1006,7 +1120,40 @@ struct ProfileIndicatorBar: View {
                         }
                     }
             }
-            .buttonStyle(.plain)
+            .offset(x: -52) // Position to the left of the pill with 12pt gap
+        }
+        .overlay(alignment: .trailing) {
+            // Share button positioned to the right of the pill
+            Button(action: {
+                let impact = UIImpactFeedbackGenerator(style: .medium)
+                impact.impactOccurred()
+                onShareTapped()
+            }) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(colorScheme == .dark ? .white : .black)
+                    .frame(width: 40, height: 40)
+                    .background {
+                        if #available(iOS 26.0, *) {
+                            Circle()
+                                .fill(.clear)
+                                .glassEffect(.regular.interactive())
+                        } else {
+                            Group {
+                                if colorScheme == .dark {
+                                    Circle()
+                                        .fill(Color.black.opacity(0.3))
+                                        .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
+                                } else {
+                                    Circle()
+                                        .fill(.ultraThinMaterial)
+                                        .shadow(color: Color.black.opacity(0.15), radius: 10, y: 4)
+                                }
+                            }
+                        }
+                    }
+            }
+            .offset(x: 52) // Position to the right of the pill with 12pt gap
         }
     }
 }
@@ -1372,7 +1519,7 @@ struct PhlockCardView: View {
         switch slot.type {
         case .song:
             if let song = slot.song, let url = highQualityAlbumArtUrl(song.albumArtUrl) {
-                AsyncImage(url: url) { phase in
+                AsyncImage(url: url, transaction: Transaction(animation: nil)) { phase in
                     switch phase {
                     case .success(let image):
                         image
@@ -1389,7 +1536,9 @@ struct PhlockCardView: View {
                                 backgroundImageLoaded = false
                             }
                     case .empty:
-                        gradientBackground
+                        // Use a dark color during loading to prevent flash
+                        // (matches the typical blurred album art appearance)
+                        Color(white: 0.1)
                     @unknown default:
                         gradientBackground
                             .onAppear {
@@ -1406,7 +1555,7 @@ struct PhlockCardView: View {
 
         case .waiting:
             if let member = slot.member, let urlString = member.profilePhotoUrl, let url = URL(string: urlString) {
-                AsyncImage(url: url) { phase in
+                AsyncImage(url: url, transaction: Transaction(animation: nil)) { phase in
                     switch phase {
                     case .success(let image):
                         image
@@ -1417,7 +1566,8 @@ struct PhlockCardView: View {
                     case .failure:
                         gradientBackground
                     case .empty:
-                        gradientBackground
+                        // Use a dark color during loading to prevent flash
+                        Color(white: 0.1)
                     @unknown default:
                         gradientBackground
                     }
@@ -1892,6 +2042,8 @@ struct PhlockImmersiveLayout: View {
     let onEditSwapTapped: (User) -> Void
     let onEditRemoveTapped: (User) -> Void
     let onEditAddTapped: () -> Void
+    let onMenuTapped: () -> Void
+    let onShareTapped: () -> Void
 
     var body: some View {
         // Check if user has picked their daily song
@@ -1918,7 +2070,9 @@ struct PhlockImmersiveLayout: View {
                 onOpenFullPlayer: onOpenFullPlayer,
                 onEditSwapTapped: onEditSwapTapped,
                 onEditRemoveTapped: onEditRemoveTapped,
-                onEditAddTapped: onEditAddTapped
+                onEditAddTapped: onEditAddTapped,
+                onMenuTapped: onMenuTapped,
+                onShareTapped: onShareTapped
             )
         }
     }

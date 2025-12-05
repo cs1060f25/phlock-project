@@ -7,6 +7,7 @@ struct ProfileView: View {
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var playbackService: PlaybackService
     @Environment(\.colorScheme) var colorScheme
+    @Binding var scrollToTopTrigger: Int
     @State private var showEditProfile = false
     @State private var showSettings = false
     @State private var isRefreshing = false
@@ -159,7 +160,7 @@ struct ProfileView: View {
                                     // Stats Row: picks | followers | following
                                     HStack(spacing: 0) {
                                         // Picks
-                                        VStack(spacing: 0) {
+                                        VStack(alignment: .leading, spacing: 0) {
                                             Text("\(pastPicks.count + (todaysPick != nil ? 1 : 0))")
                                                 .font(.lora(size: 16, weight: .bold))
                                                 .foregroundColor(.primary)
@@ -167,14 +168,14 @@ struct ProfileView: View {
                                                 .font(.lora(size: 12))
                                                 .foregroundColor(.secondary)
                                         }
-                                        .frame(maxWidth: .infinity)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
 
                                         // Followers
                                         Button {
                                             followListInitialTab = .followers
                                             showFollowersList = true
                                         } label: {
-                                            VStack(spacing: 0) {
+                                            VStack(alignment: .leading, spacing: 0) {
                                                 Text("\(followerCount)")
                                                     .font(.lora(size: 16, weight: .bold))
                                                     .foregroundColor(.primary)
@@ -184,14 +185,14 @@ struct ProfileView: View {
                                             }
                                         }
                                         .buttonStyle(.plain)
-                                        .frame(maxWidth: .infinity)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
 
                                         // Following
                                         Button {
                                             followListInitialTab = .following
                                             showFollowersList = true
                                         } label: {
-                                            VStack(spacing: 0) {
+                                            VStack(alignment: .leading, spacing: 0) {
                                                 Text("\(followingCount)")
                                                     .font(.lora(size: 16, weight: .bold))
                                                     .foregroundColor(.primary)
@@ -201,7 +202,7 @@ struct ProfileView: View {
                                             }
                                         }
                                         .buttonStyle(.plain)
-                                        .frame(maxWidth: .infinity)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                     }
                                 }
                             }
@@ -214,6 +215,26 @@ struct ProfileView: View {
                                     .foregroundColor(.secondary)
                                     .multilineTextAlignment(.leading)
                                     .padding(.horizontal, 24)
+                            }
+
+                            // Feedback button (only for @woon) - above edit profile
+                            if user.username == "woon" {
+                                Button {
+                                    showFeedbackDialog = true
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "bubble.left.and.bubble.right")
+                                            .font(.system(size: 14))
+                                        Text("reach out")
+                                            .font(.lora(size: 17))
+                                    }
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color.black)
+                                    .cornerRadius(12)
+                                }
+                                .padding(.horizontal, 24)
                             }
 
                             // Edit Profile Button
@@ -233,26 +254,6 @@ struct ProfileView: View {
                                 .cornerRadius(16)
                             }
                             .padding(.horizontal, 24)
-
-                            // Feedback button (only for @woon)
-                            if user.username == "woon" {
-                                Button {
-                                    showFeedbackDialog = true
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "bubble.left.and.bubble.right")
-                                            .font(.system(size: 12))
-                                        Text("reach out")
-                                            .font(.lora(size: 13, weight: .medium))
-                                    }
-                                    .foregroundColor(.primary)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(Color.gray.opacity(colorScheme == .dark ? 0.25 : 0.12))
-                                    .cornerRadius(20)
-                                }
-                                .padding(.horizontal, 24)
-                            }
                         }
                         .padding(.top, 16)
                         
@@ -369,8 +370,11 @@ struct ProfileView: View {
                     }
                 }
             }
-            // Listen for scroll to top trigger (passed via environment or binding if we kept it, but we removed binding)
-            // We'll need to re-add the binding if we want scroll to top to work, but for now focus on the gear icon.
+            .onChange(of: scrollToTopTrigger) { _ in
+                withAnimation(.easeOut(duration: 0.25)) {
+                    scrollProxy.scrollTo("profileTop", anchor: .top)
+                }
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -427,6 +431,7 @@ struct ProfileView: View {
             NavigationStack {
                 UserProfileView(user: user)
                     .environmentObject(authState)
+                    .environmentObject(PlaybackService.shared)
             }
         }
         .sheet(isPresented: $showFollowersList) {
@@ -445,7 +450,7 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showPhlockManagerSheet) {
             if let user = authState.currentUser {
-                PhlockManagerSheet(
+                UnifiedPhlockSheet(
                     currentUserId: user.id,
                     currentPhlockMembers: $phlockMembers,
                     onMemberAdded: { selectedUser in
@@ -458,12 +463,9 @@ struct ProfileView: View {
                             await removeFromPhlock(user: removedUser)
                         }
                     },
-                    onMemberSwapped: { oldUser, newUser in
-                        Task {
-                            await swapPhlockMember(oldUser: oldUser, newUser: newUser)
-                        }
-                    }
+                    title: "edit phlock"
                 )
+                .environmentObject(authState)
                 .presentationDragIndicator(.visible)
             }
         }
@@ -710,6 +712,7 @@ struct ProfilePhotoPlaceholder: View {
 struct ArtistSendStat: Identifiable, Hashable {
     let name: String
     let count: Int
+    let spotifyId: String?  // Spotify artist ID for direct profile linking
     var id: String { name }
 }
 
@@ -812,17 +815,23 @@ enum ProfileInsightsCalculator {
     }
 
     private static func topArtists(from shares: [Share], limit: Int) -> [ArtistSendStat] {
-        var counts: [String: Int] = [:]
+        // Track both count and most recent artist ID for each artist name
+        var artistData: [String: (count: Int, spotifyId: String?)] = [:]
+
         for share in shares {
             let name = share.artistName.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { continue }
-            counts[name, default: 0] += 1
+
+            let existing = artistData[name]
+            // Use artist ID from most recent share (shares are sorted by date desc)
+            let spotifyId = existing?.spotifyId ?? share.artistId
+            artistData[name] = (count: (existing?.count ?? 0) + 1, spotifyId: spotifyId)
         }
 
-        return counts
-            .sorted { $0.value > $1.value }
+        return artistData
+            .sorted { $0.value.count > $1.value.count }
             .prefix(limit)
-            .map { ArtistSendStat(name: $0.key, count: $0.value) }
+            .map { ArtistSendStat(name: $0.key, count: $0.value.count, spotifyId: $0.value.spotifyId) }
     }
 
     private static func topGenres(from shares: [Share], knownArtists: [MusicItem]) -> [GenreSendStat] {
@@ -944,7 +953,7 @@ struct ProfileStatsRow: View {
             StatPill(
                 title: "phlocks",
                 value: "\(phlockCount)",
-                subtitle: isCurrentUser ? "i'm in" : "they're in",
+                subtitle: "i'm in",
                 systemImage: nil,
                 customIcon: AnyView(
                     MiniPhlockGlyph()
@@ -1121,25 +1130,62 @@ struct TopArtistsSentCard: View {
         ) {
             if let artist = artistToOpen {
                 Button("Spotify") {
-                    openArtistInSpotifySearch(name: artist.name)
+                    openArtistInSpotify(artist: artist)
                 }
                 Button("Apple Music") {
-                    openArtistInAppleMusicSearch(name: artist.name)
+                    openArtistInAppleMusic(name: artist.name)
                 }
             }
             Button("Cancel", role: .cancel) { artistToOpen = nil }
         }
     }
 
-    private func openArtistInSpotifySearch(name: String) {
-        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
-        if let url = URL(string: "https://open.spotify.com/search/\(encoded)") {
+    /// Extract the primary artist name (first artist before any featuring/collaboration markers)
+    private func primaryArtistName(from fullName: String) -> String {
+        // Split on common collaboration delimiters and take the first artist
+        let delimiters = CharacterSet(charactersIn: ",&")
+        let patterns = ["ft.", "ft ", "feat.", "feat ", "featuring ", " x ", " X "]
+
+        var name = fullName
+
+        // First check for "ft.", "feat.", etc. patterns
+        for pattern in patterns {
+            if let range = name.lowercased().range(of: pattern) {
+                name = String(name[..<range.lowerBound])
+                break
+            }
+        }
+
+        // Then split on comma or ampersand and take first
+        if let firstPart = name.components(separatedBy: delimiters).first {
+            name = firstPart
+        }
+
+        return name.trimmingCharacters(in: .whitespaces)
+    }
+
+    private func openArtistInSpotify(artist: ArtistSendStat) {
+        // Use direct profile link if we have the Spotify artist ID
+        if let spotifyId = artist.spotifyId, !spotifyId.isEmpty {
+            if let url = URL(string: "https://open.spotify.com/artist/\(spotifyId)") {
+                UIApplication.shared.open(url)
+                return
+            }
+        }
+
+        // Fall back to search if no ID available
+        let artistName = primaryArtistName(from: artist.name)
+        let encoded = artistName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? artistName
+        if let url = URL(string: "https://open.spotify.com/search/artist%3A\(encoded)") {
             UIApplication.shared.open(url)
         }
     }
 
-    private func openArtistInAppleMusicSearch(name: String) {
-        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
+    private func openArtistInAppleMusic(name: String) {
+        // Note: Apple Music requires their own artist ID for direct links
+        // Since we only store Spotify artist IDs, we fall back to search
+        let artistName = primaryArtistName(from: name)
+        let encoded = artistName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? artistName
         if let url = URL(string: "https://music.apple.com/us/search?term=\(encoded)") {
             UIApplication.shared.open(url)
         }
@@ -1183,7 +1229,7 @@ struct GenreBreakdownCard: View {
                     }
                     .buttonStyle(.plain)
                 } else {
-                    Text(isCurrentUser ? "keep picking to reveal your taste profile" : "no picks yet")
+                    Text(isCurrentUser ? "keep picking to reveal your taste profile" : "their taste profile is waiting to be discovered")
                         .font(.lora(size: 14))
                         .foregroundColor(.secondary)
                 }
@@ -1659,7 +1705,7 @@ struct ArtistGridItem: View {
 }
 
 #Preview {
-    ProfileView()
+    ProfileView(scrollToTopTrigger: .constant(0))
         .environmentObject(AuthenticationState())
 }
 
@@ -1670,6 +1716,8 @@ struct TodaysPickCard: View {
     var userId: UUID? = nil  // User ID for nudge functionality (when viewing other profiles)
     var onNudge: (() -> Void)? = nil  // Callback when nudge button is tapped
     var streak: Int = 0  // User's current daily song streak
+    var isInMyPhlock: Bool = true  // Whether this user is in my phlock (for showing locked state)
+    var onAddToPhlock: (() -> Void)? = nil  // Callback when add to phlock button is tapped
     @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject var playbackService: PlaybackService
 
@@ -1809,7 +1857,7 @@ struct TodaysPickCard: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                // Empty state for other users
+                // Empty state for other users - either hasn't picked or not in my phlock
                 HStack {
                     Text("i haven't chosen a song today yet")
                         .font(.lora(size: 14))
@@ -1850,6 +1898,53 @@ struct TodaysPickCard: View {
                 }
                 .padding(.horizontal, 24)
             }
+        }
+    }
+}
+
+// Separate view for "add to phlock to see pick" state
+struct LockedPickCard: View {
+    var isLoading: Bool = false
+    let onAddToPhlock: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("today's pick")
+                .font(.lora(size: 17, weight: .medium))
+                .padding(.horizontal, 24)
+
+            HStack {
+                Text("add me to your phlock to see my pick")
+                    .font(.lora(size: 14))
+                    .foregroundColor(.secondary)
+
+                Spacer()
+
+                Button(action: onAddToPhlock) {
+                    if isLoading {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                    } else {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 12, weight: .medium))
+                            Text("add")
+                                .font(.lora(size: 13, weight: .medium))
+                        }
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.gray.opacity(colorScheme == .dark ? 0.3 : 0.15))
+                        .cornerRadius(16)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(isLoading)
+            }
+            .padding(.horizontal, 24)
         }
     }
 }
@@ -2182,324 +2277,4 @@ struct PhlockMembersRow: View {
     }
 }
 
-// MARK: - Unified Phlock Manager Sheet
-
-struct PhlockManagerSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) var colorScheme
-
-    let currentUserId: UUID
-    @Binding var currentPhlockMembers: [FriendWithPosition]
-    let onMemberAdded: (User) -> Void
-    let onMemberRemoved: (User) -> Void
-    let onMemberSwapped: (User, User) -> Void
-
-    @State private var followingList: [User] = []
-    @State private var isLoading = true
-    @State private var searchText = ""
-    @State private var memberToReplace: User?
-
-    // Filter out users already in phlock
-    private var availableUsers: [User] {
-        let phlockMemberIds = Set(currentPhlockMembers.map { $0.user.id })
-        return followingList.filter { !phlockMemberIds.contains($0.id) }
-    }
-
-    // Filter by search text
-    private var filteredUsers: [User] {
-        if searchText.isEmpty {
-            return availableUsers
-        }
-        return availableUsers.filter {
-            $0.displayName.localizedCaseInsensitiveContains(searchText)
-        }
-    }
-
-    // Get sorted slots (filled and empty)
-    private var sortedSlots: [(position: Int, member: FriendWithPosition?)] {
-        (1...5).map { position in
-            let member = currentPhlockMembers.first { $0.position == position }
-            return (position, member)
-        }
-    }
-
-    // Check if phlock is full
-    private var isPhlockFull: Bool {
-        currentPhlockMembers.count >= 5
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 0) {
-                    // MARK: - Current Members Section (5 slots)
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("my phlock")
-                            .font(.lora(size: 15, weight: .medium))
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 16)
-                            .padding(.top, 16)
-
-                        VStack(spacing: 0) {
-                            ForEach(sortedSlots, id: \.position) { slot in
-                                if let member = slot.member {
-                                    // Filled slot
-                                    filledSlotRow(member: member, position: slot.position)
-                                } else {
-                                    // Empty slot
-                                    emptySlotRow(position: slot.position)
-                                }
-
-                                if slot.position < 5 {
-                                    Divider()
-                                        .padding(.leading, 72)
-                                }
-                            }
-                        }
-                        .background(Color.gray.opacity(colorScheme == .dark ? 0.15 : 0.06))
-                        .cornerRadius(12)
-                        .padding(.horizontal, 16)
-                    }
-
-                    // MARK: - Available Friends Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("add from following")
-                            .font(.lora(size: 15, weight: .medium))
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 16)
-                            .padding(.top, 24)
-
-                        // Search bar
-                        HStack {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundColor(.secondary)
-                            TextField("search", text: $searchText)
-                                .font(.lora(size: 16))
-                        }
-                        .padding(12)
-                        .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
-                        .cornerRadius(12)
-                        .padding(.horizontal, 16)
-
-                        if isLoading {
-                            HStack {
-                                Spacer()
-                                ProgressView()
-                                Spacer()
-                            }
-                            .padding(.vertical, 40)
-                        } else if availableUsers.isEmpty {
-                            VStack(spacing: 8) {
-                                Text("no friends available")
-                                    .font(.lora(size: 14, weight: .medium))
-                                Text("follow more people to add them")
-                                    .font(.lora(size: 13))
-                                    .foregroundColor(.secondary)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 32)
-                        } else if filteredUsers.isEmpty {
-                            VStack(spacing: 8) {
-                                Text("no matches found")
-                                    .font(.lora(size: 14, weight: .medium))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 32)
-                        } else {
-                            VStack(spacing: 0) {
-                                ForEach(filteredUsers, id: \.id) { user in
-                                    availableFriendRow(user: user)
-
-                                    if user.id != filteredUsers.last?.id {
-                                        Divider()
-                                            .padding(.leading, 72)
-                                    }
-                                }
-                            }
-                            .background(Color.gray.opacity(colorScheme == .dark ? 0.15 : 0.06))
-                            .cornerRadius(12)
-                            .padding(.horizontal, 16)
-                        }
-                    }
-
-                    Spacer(minLength: 40)
-                }
-            }
-            .navigationTitle("edit phlock")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("done") {
-                        dismiss()
-                    }
-                    .font(.lora(size: 16, weight: .medium))
-                }
-            }
-        }
-        .task {
-            await loadFollowing()
-        }
-    }
-
-    // MARK: - Filled Slot Row
-
-    @ViewBuilder
-    private func filledSlotRow(member: FriendWithPosition, position: Int) -> some View {
-        HStack(spacing: 12) {
-            // Profile photo with streak
-            ProfilePhotoWithStreak(
-                photoUrl: member.user.profilePhotoUrl,
-                displayName: member.user.displayName,
-                streak: member.user.dailySongStreak,
-                size: 44,
-                badgeSize: .small
-            )
-            .frame(width: 44, height: 54) // Extra height for streak badge
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(member.user.displayName)
-                    .font(.lora(size: 16, weight: .medium))
-                if let username = member.user.username {
-                    Text("@\(username)")
-                        .font(.lora(size: 13))
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            Spacer()
-
-            // Replace button
-            Button {
-                memberToReplace = member.user
-            } label: {
-                Image(systemName: "arrow.triangle.swap")
-                    .font(.system(size: 18))
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-            .padding(.trailing, 8)
-
-            // Remove button
-            Button {
-                // Clear memberToReplace if this member was selected for replacement
-                if memberToReplace?.id == member.user.id {
-                    memberToReplace = nil
-                }
-                onMemberRemoved(member.user)
-            } label: {
-                Image(systemName: "minus.circle.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(.red)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(
-            // Highlight if this member is selected for replacement
-            memberToReplace?.id == member.user.id
-                ? Color.blue.opacity(0.1)
-                : Color.clear
-        )
-    }
-
-    // MARK: - Empty Slot Row
-
-    @ViewBuilder
-    private func emptySlotRow(position: Int) -> some View {
-        HStack(spacing: 12) {
-            // Empty circle placeholder
-            ZStack {
-                Circle()
-                    .strokeBorder(
-                        style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])
-                    )
-                    .foregroundColor(.secondary.opacity(0.3))
-                    .frame(width: 44, height: 44)
-
-                Image(systemName: "plus")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.secondary.opacity(0.4))
-            }
-
-            Text("add member to phlock")
-                .font(.lora(size: 15))
-                .foregroundColor(.secondary)
-
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-
-    // MARK: - Available Friend Row
-
-    @ViewBuilder
-    private func availableFriendRow(user: User) -> some View {
-        Button {
-            if let replacingUser = memberToReplace {
-                // Swap mode: replace the selected member
-                onMemberSwapped(replacingUser, user)
-                memberToReplace = nil
-            } else if !isPhlockFull {
-                // Add mode: add to next available slot
-                onMemberAdded(user)
-            }
-        } label: {
-            HStack(spacing: 12) {
-                // Profile photo with streak
-                ProfilePhotoWithStreak(
-                    photoUrl: user.profilePhotoUrl,
-                    displayName: user.displayName,
-                    streak: user.dailySongStreak,
-                    size: 44,
-                    badgeSize: .small
-                )
-                .frame(width: 44, height: 54) // Extra height for streak badge
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(user.displayName)
-                        .font(.lora(size: 16, weight: .medium))
-                        .foregroundColor(.primary)
-                    if let username = user.username {
-                        Text("@\(username)")
-                            .font(.lora(size: 13))
-                            .foregroundColor(.secondary)
-                    }
-                }
-
-                Spacer()
-
-                // Show swap icon if in replace mode, plus icon otherwise
-                if memberToReplace != nil {
-                    Image(systemName: "arrow.triangle.swap")
-                        .font(.system(size: 18))
-                        .foregroundColor(.blue)
-                } else if !isPhlockFull {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundColor(.green)
-                } else {
-                    // Phlock is full and not in replace mode
-                    Text("full")
-                        .font(.lora(size: 12))
-                        .foregroundColor(.secondary)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-        }
-        .buttonStyle(.plain)
-        .disabled(isPhlockFull && memberToReplace == nil)
-        .opacity(isPhlockFull && memberToReplace == nil ? 0.5 : 1.0)
-    }
-
-    private func loadFollowing() async {
-        do {
-            followingList = try await FollowService.shared.getFollowing(for: currentUserId)
-        } catch {
-            print("❌ Failed to load following list: \(error)")
-        }
-        isLoading = false
-    }
-}
+// PhlockManagerSheet has been replaced with UnifiedPhlockSheet in PhlockView.swift

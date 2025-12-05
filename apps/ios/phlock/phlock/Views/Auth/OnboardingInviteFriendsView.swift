@@ -16,12 +16,12 @@ struct OnboardingInviteFriendsView: View {
         let phone: String
     }
 
-    // Filter contacts based on search
-    private var filteredContacts: [(name: String, phone: String)] {
+    // Filter contacts based on search - uses InvitableContact with friend counts
+    private var filteredContacts: [InvitableContact] {
         if searchText.isEmpty {
-            return authState.onboardingAllContacts
+            return authState.onboardingInvitableContacts
         }
-        return authState.onboardingAllContacts.filter { contact in
+        return authState.onboardingInvitableContacts.filter { contact in
             contact.name.localizedCaseInsensitiveContains(searchText)
         }
     }
@@ -85,18 +85,24 @@ struct OnboardingInviteFriendsView: View {
             .padding(.horizontal, 20)
             .padding(.top, 20)
 
-            // Contacts list
+            // Contacts list - sorted by friend count > closeness score > photo > name
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(filteredContacts, id: \.phone) { contact in
-                        InviteContactRow(
+                    ForEach(Array(filteredContacts.enumerated()), id: \.element.id) { index, contact in
+                        OnboardingInviteContactRow(
                             name: contact.name,
                             phone: contact.phone,
+                            friendCount: contact.friendCount,
+                            imageData: contact.imageData,
                             isInvited: invitedContacts.contains(contact.phone),
                             onInvite: {
                                 inviteTarget = InviteTarget(phone: contact.phone)
                             }
                         )
+
+                        if index < filteredContacts.count - 1 {
+                            Divider().padding(.leading, 74)
+                        }
                     }
                 }
             }
@@ -159,13 +165,15 @@ struct OnboardingInviteFriendsView: View {
     }
 }
 
-// MARK: - Invite Contact Row
+// MARK: - Onboarding Invite Contact Row (with friend count context)
 
-struct InviteContactRow: View {
+struct OnboardingInviteContactRow: View {
     @Environment(\.colorScheme) var colorScheme
 
     let name: String
     let phone: String
+    let friendCount: Int
+    let imageData: Data?
     let isInvited: Bool
     let onInvite: () -> Void
 
@@ -186,22 +194,46 @@ struct InviteContactRow: View {
         return "?"
     }
 
-    var body: some View {
-        HStack(spacing: 16) {
-            // Avatar
-            Circle()
-                .fill(avatarColor)
-                .frame(width: 50, height: 50)
-                .overlay(
-                    Text(initials)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
-                )
+    private var contextText: String {
+        if friendCount > 0 {
+            return friendCount == 1 ? "1 friend on phlock" : "\(friendCount) friends on phlock"
+        }
+        return ""
+    }
 
-            // Name
-            Text(name)
-                .font(.lora(size: 17))
-                .foregroundColor(.primary)
+    var body: some View {
+        HStack(spacing: 12) {
+            // Avatar - show contact photo if available, otherwise initials
+            if let imageData = imageData, let uiImage = UIImage(data: imageData) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 50, height: 50)
+                    .clipShape(Circle())
+            } else {
+                Circle()
+                    .fill(avatarColor)
+                    .frame(width: 50, height: 50)
+                    .overlay(
+                        Text(initials)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(.white)
+                    )
+            }
+
+            // Name and context
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.lora(size: 17))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+
+                if !contextText.isEmpty {
+                    Text(contextText)
+                        .font(.lora(size: 12))
+                        .foregroundColor(.secondary)
+                }
+            }
 
             Spacer()
 

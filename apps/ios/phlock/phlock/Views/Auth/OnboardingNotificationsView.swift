@@ -39,32 +39,32 @@ struct OnboardingNotificationsView: View {
 
             // Mock phone with iOS notification
             ZStack {
-                // Phone body (black bezel)
+                // Phone body (black bezel) - iPhone aspect ratio ~9:19.5
                 RoundedRectangle(cornerRadius: 44)
                     .fill(Color.black)
-                    .frame(width: 260, height: 420)
+                    .frame(width: 200, height: 430)
 
                 // Phone screen
                 RoundedRectangle(cornerRadius: 38)
                     .fill(Color(UIColor.secondarySystemBackground))
-                    .frame(width: 248, height: 408)
+                    .frame(width: 188, height: 418)
 
                 // Side buttons - Volume
                 RoundedRectangle(cornerRadius: 2)
                     .fill(Color.black.opacity(0.6))
                     .frame(width: 3, height: 28)
-                    .offset(x: -131, y: -80)
+                    .offset(x: -101, y: -80)
 
                 RoundedRectangle(cornerRadius: 2)
                     .fill(Color.black.opacity(0.6))
                     .frame(width: 3, height: 28)
-                    .offset(x: -131, y: -40)
+                    .offset(x: -101, y: -40)
 
                 // Side button - Power
                 RoundedRectangle(cornerRadius: 2)
                     .fill(Color.black.opacity(0.6))
                     .frame(width: 3, height: 40)
-                    .offset(x: 131, y: -60)
+                    .offset(x: 101, y: -60)
 
                 VStack(spacing: 0) {
                     Spacer()
@@ -156,12 +156,12 @@ struct OnboardingNotificationsView: View {
                         .frame(width: 90, height: 4)
                         .padding(.bottom, 6)
                 }
-                .frame(width: 248, height: 408)
+                .frame(width: 188, height: 418)
 
                 // Pointing hand emoji - positioned at "Allow" button
                 Text("👆")
                     .font(.system(size: 28))
-                    .offset(x: 50, y: 178)
+                    .offset(x: 40, y: 182)
             }
             .padding(.top, 8)
 

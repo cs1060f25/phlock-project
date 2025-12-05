@@ -117,6 +117,7 @@ struct phlockApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .preferredColorScheme(.light)
                 .environmentObject(authState)
                 .onOpenURL { url in
                     // Try Google Sign-In first

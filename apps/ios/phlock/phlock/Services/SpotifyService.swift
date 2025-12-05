@@ -117,13 +117,19 @@ class SpotifyService: NSObject {
 
         print("✅ Token exchange successful!")
 
-        let tokenResponse = try JSONDecoder().decode(SpotifyTokenResponse.self, from: data)
-        return SpotifyAuthResult(
-            accessToken: tokenResponse.accessToken,
-            refreshToken: tokenResponse.refreshToken,
-            expiresIn: tokenResponse.expiresIn,
-            scope: tokenResponse.scope
-        )
+        do {
+            let tokenResponse = try JSONDecoder().decode(SpotifyTokenResponse.self, from: data)
+            return SpotifyAuthResult(
+                accessToken: tokenResponse.accessToken,
+                refreshToken: tokenResponse.refreshToken,
+                expiresIn: tokenResponse.expiresIn,
+                scope: tokenResponse.scope
+            )
+        } catch {
+            let responseBody = String(data: data, encoding: .utf8) ?? "Unable to read response"
+            print("❌ Failed to decode token response: \(error). Body: \(responseBody)")
+            throw SpotifyError.tokenExchangeFailed
+        }
     }
 
     // MARK: - Token Refresh
@@ -157,13 +163,19 @@ class SpotifyService: NSObject {
 
         print("✅ Token refresh successful!")
 
-        let tokenResponse = try JSONDecoder().decode(SpotifyTokenResponse.self, from: data)
-        return SpotifyAuthResult(
-            accessToken: tokenResponse.accessToken,
-            refreshToken: tokenResponse.refreshToken ?? refreshToken, // Spotify may not return a new refresh token
-            expiresIn: tokenResponse.expiresIn,
-            scope: tokenResponse.scope
-        )
+        do {
+            let tokenResponse = try JSONDecoder().decode(SpotifyTokenResponse.self, from: data)
+            return SpotifyAuthResult(
+                accessToken: tokenResponse.accessToken,
+                refreshToken: tokenResponse.refreshToken ?? refreshToken, // Spotify may not return a new refresh token
+                expiresIn: tokenResponse.expiresIn,
+                scope: tokenResponse.scope
+            )
+        } catch {
+            let responseBody = String(data: data, encoding: .utf8) ?? "Unable to read response"
+            print("❌ Failed to decode refresh token response: \(error). Body: \(responseBody)")
+            throw SpotifyError.tokenExchangeFailed
+        }
     }
 
     // MARK: - API Calls
@@ -173,8 +185,29 @@ class SpotifyService: NSObject {
         var request = URLRequest(url: URL(string: "https://api.spotify.com/v1/me")!)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
-        let (data, _) = try await URLSession.shared.data(for: request)
-        return try JSONDecoder().decode(SpotifyUserProfile.self, from: data)
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyError.networkError
+        }
+
+        if httpResponse.statusCode == 401 {
+            throw SpotifyError.tokenExpired
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "No body"
+            print("❌ getUserProfile failed. Status: \(httpResponse.statusCode), Body: \(body)")
+            throw SpotifyError.apiStatusError(httpResponse.statusCode)
+        }
+
+        do {
+            return try JSONDecoder().decode(SpotifyUserProfile.self, from: data)
+        } catch {
+            let body = String(data: data, encoding: .utf8) ?? "Unable to read response"
+            print("❌ Failed to decode user profile: \(error). Body: \(body)")
+            throw SpotifyError.apiError("Failed to parse user profile")
+        }
     }
 
     /// Fetch user's top tracks
@@ -190,8 +223,35 @@ class SpotifyService: NSObject {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 15 // 15 second timeout
 
-        let (data, _) = try await URLSession.shared.data(for: request)
-        return try JSONDecoder().decode(SpotifyTopTracksResponse.self, from: data)
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyError.networkError
+        }
+
+        if httpResponse.statusCode == 401 {
+            throw SpotifyError.tokenExpired
+        }
+
+        // Handle 204 No Content or empty items gracefully (new users may have no top tracks)
+        if httpResponse.statusCode == 204 || data.isEmpty {
+            return SpotifyTopTracksResponse(items: [])
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "No body"
+            print("❌ getTopTracks failed. Status: \(httpResponse.statusCode), Body: \(body)")
+            throw SpotifyError.apiStatusError(httpResponse.statusCode)
+        }
+
+        do {
+            return try JSONDecoder().decode(SpotifyTopTracksResponse.self, from: data)
+        } catch {
+            let body = String(data: data, encoding: .utf8) ?? "Unable to read response"
+            print("❌ Failed to decode top tracks: \(error). Body: \(body)")
+            // Return empty list instead of failing - top tracks are optional
+            return SpotifyTopTracksResponse(items: [])
+        }
     }
 
     /// Fetch user's top artists
@@ -206,8 +266,35 @@ class SpotifyService: NSObject {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 15 // 15 second timeout
 
-        let (data, _) = try await URLSession.shared.data(for: request)
-        return try JSONDecoder().decode(SpotifyTopArtistsResponse.self, from: data)
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyError.networkError
+        }
+
+        if httpResponse.statusCode == 401 {
+            throw SpotifyError.tokenExpired
+        }
+
+        // Handle 204 No Content or empty items gracefully (new users may have no top artists)
+        if httpResponse.statusCode == 204 || data.isEmpty {
+            return SpotifyTopArtistsResponse(items: [])
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "No body"
+            print("❌ getTopArtists failed. Status: \(httpResponse.statusCode), Body: \(body)")
+            throw SpotifyError.apiStatusError(httpResponse.statusCode)
+        }
+
+        do {
+            return try JSONDecoder().decode(SpotifyTopArtistsResponse.self, from: data)
+        } catch {
+            let body = String(data: data, encoding: .utf8) ?? "Unable to read response"
+            print("❌ Failed to decode top artists: \(error). Body: \(body)")
+            // Return empty list instead of failing - top artists are optional
+            return SpotifyTopArtistsResponse(items: [])
+        }
     }
 
     /// Fetch user's playlists
@@ -216,8 +303,35 @@ class SpotifyService: NSObject {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 15 // 15 second timeout
 
-        let (data, _) = try await URLSession.shared.data(for: request)
-        return try JSONDecoder().decode(SpotifyPlaylistsResponse.self, from: data)
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyError.networkError
+        }
+
+        if httpResponse.statusCode == 401 {
+            throw SpotifyError.tokenExpired
+        }
+
+        // Handle 204 No Content or empty items gracefully
+        if httpResponse.statusCode == 204 || data.isEmpty {
+            return SpotifyPlaylistsResponse(items: [])
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "No body"
+            print("❌ getUserPlaylists failed. Status: \(httpResponse.statusCode), Body: \(body)")
+            throw SpotifyError.apiStatusError(httpResponse.statusCode)
+        }
+
+        do {
+            return try JSONDecoder().decode(SpotifyPlaylistsResponse.self, from: data)
+        } catch {
+            let body = String(data: data, encoding: .utf8) ?? "Unable to read response"
+            print("❌ Failed to decode playlists: \(error). Body: \(body)")
+            // Return empty list instead of failing
+            return SpotifyPlaylistsResponse(items: [])
+        }
     }
 
     func getRecentlyPlayed(accessToken: String, limit: Int = 50) async throws -> SpotifyRecentlyPlayedResponse {
@@ -247,11 +361,25 @@ class SpotifyService: NSObject {
             throw SpotifyError.tokenExpired
         }
 
+        // Handle 204 No Content or empty data gracefully (new users may have no play history)
+        if response.statusCode == 204 || data.isEmpty {
+            return SpotifyRecentlyPlayedResponse(items: [])
+        }
+
         if response.statusCode != 200 {
+            let body = String(data: data, encoding: .utf8) ?? "No body"
+            print("❌ getRecentlyPlayed failed. Status: \(response.statusCode), Body: \(body)")
             throw SpotifyError.apiStatusError(response.statusCode)
         }
 
-        return try JSONDecoder().decode(SpotifyRecentlyPlayedResponse.self, from: data)
+        do {
+            return try JSONDecoder().decode(SpotifyRecentlyPlayedResponse.self, from: data)
+        } catch {
+            let body = String(data: data, encoding: .utf8) ?? "Unable to read response"
+            print("❌ Failed to decode recently played: \(error). Body: \(body)")
+            // Return empty list instead of failing - recently played is optional for onboarding
+            return SpotifyRecentlyPlayedResponse(items: [])
+        }
     }
 
     /// Search for an artist by name and return their Spotify ID
@@ -553,8 +681,8 @@ struct SpotifyTopTracksResponse: Codable {
 struct SpotifyTrack: Codable {
     let id: String
     let name: String
-    let artists: [SpotifyArtist]
-    let album: SpotifyAlbum
+    let artists: [SpotifyArtist]?  // Can be null or empty
+    let album: SpotifyAlbum?       // Can be null for some track types
     let previewUrl: String?
     let externalIds: SpotifyExternalIds?
 
@@ -570,14 +698,14 @@ struct SpotifyExternalIds: Codable {
 }
 
 struct SpotifyArtist: Codable {
-    let id: String
+    let id: String?   // Can be null for local files
     let name: String
 }
 
 struct SpotifyAlbum: Codable {
-    let id: String
-    let name: String
-    let images: [SpotifyImage]
+    let id: String?   // Can be null for local files
+    let name: String?  // Can be null
+    let images: [SpotifyImage]?  // Can be null or empty
 }
 
 struct SpotifyTopArtistsResponse: Codable {

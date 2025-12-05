@@ -301,6 +301,7 @@ struct MusicItem: Codable, Hashable {
     let id: String // Primary ID (platform-specific)
     let name: String
     var artistName: String?
+    var artistSpotifyId: String? // Spotify ID of the primary artist (for direct profile linking)
     var previewUrl: String?
     var albumArtUrl: String?
     var isrc: String? // International Standard Recording Code for universal track matching
@@ -315,6 +316,7 @@ struct MusicItem: Codable, Hashable {
         case id
         case name
         case artistName = "artist_name"
+        case artistSpotifyId = "artist_spotify_id"
         case previewUrl = "preview_url"
         case albumArtUrl = "album_art_url"
         case isrc

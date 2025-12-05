@@ -279,18 +279,22 @@ class SearchService {
             do {
                 let response = try await spotifyService.getRecentlyPlayed(accessToken: token.accessToken)
 
-                // Convert to MusicItems first
+                // Convert to MusicItems, filtering out tracks without album art
                 let isoFormatter = ISO8601DateFormatter()
-                let allTracks = response.items.enumerated().map { (index, item) -> MusicItem in
+                let allTracks = response.items.enumerated().compactMap { (index, item) -> MusicItem? in
+                    // Exclude tracks missing album art (local files, podcasts, etc.)
+                    guard let albumArtUrl = item.track.album?.images?.first?.url else {
+                        return nil
+                    }
                     // Use played_at timestamp + index to ensure unique IDs for duplicate tracks
                     let uniqueId = "\(item.track.id)_\(item.playedAt)_\(index)"
 
                     return MusicItem(
                         id: uniqueId,
                         name: item.track.name,
-                        artistName: item.track.artists.first?.name,
+                        artistName: item.track.artists?.first?.name,
                         previewUrl: item.track.previewUrl,
-                        albumArtUrl: item.track.album.images.first?.url,
+                        albumArtUrl: albumArtUrl,
                         isrc: item.track.externalIds?.isrc,
                         playedAt: isoFormatter.date(from: item.playedAt),
                         spotifyId: item.track.id,
@@ -356,16 +360,20 @@ class SearchService {
                     // Retry with new token
                     let response = try await spotifyService.getRecentlyPlayed(accessToken: newAuth.accessToken)
 
-                    // Convert to MusicItems
-                    let allTracks = response.items.enumerated().map { (index, item) -> MusicItem in
+                    // Convert to MusicItems, filtering out tracks without album art
+                    let allTracks = response.items.enumerated().compactMap { (index, item) -> MusicItem? in
+                        // Exclude tracks missing album art (local files, podcasts, etc.)
+                        guard let albumArtUrl = item.track.album?.images?.first?.url else {
+                            return nil
+                        }
                         let uniqueId = "\(item.track.id)_\(item.playedAt)_\(index)"
 
                         return MusicItem(
                             id: uniqueId,
                             name: item.track.name,
-                            artistName: item.track.artists.first?.name,
+                            artistName: item.track.artists?.first?.name,
                             previewUrl: item.track.previewUrl,
-                            albumArtUrl: item.track.album.images.first?.url,
+                            albumArtUrl: albumArtUrl,
                             isrc: item.track.externalIds?.isrc,
                             playedAt: isoFormatter.date(from: item.playedAt),
                             spotifyId: item.track.id,
@@ -426,6 +434,168 @@ class SearchService {
             )
         }
     }
+
+    // MARK: - Curated Playlist Methods
+
+    /// Cache for curated playlists (1-hour TTL)
+    private struct PlaylistCache {
+        let tracks: [MusicItem]
+        let fetchedAt: Date
+
+        var isExpired: Bool {
+            Date().timeIntervalSince(fetchedAt) > 3600 // 1 hour
+        }
+    }
+
+    private var playlistCache: [String: PlaylistCache] = [:]
+
+    private struct PlaylistRequest: Encodable {
+        let playlist: String
+        let limit: Int
+    }
+
+    private struct PlaylistResponse: Decodable {
+        let tracks: [PlaylistTrackItem]
+
+        struct PlaylistTrackItem: Decodable {
+            let id: String
+            let name: String
+            let artistName: String?
+            let previewUrl: String?
+            let albumArtUrl: String
+            let isrc: String?
+            let spotifyId: String
+        }
+    }
+
+    // MARK: - Apple Music Charts
+
+    private struct AppleChartsRequest: Encodable {
+        let chartType: String  // "top-songs" or "trending"
+        let limit: Int
+        let storefront: String
+    }
+
+    private struct AppleChartsResponse: Decodable {
+        let tracks: [AppleChartTrack]
+
+        struct AppleChartTrack: Decodable {
+            let id: String
+            let name: String
+            let artistName: String?
+            let previewUrl: String?
+            let albumArtUrl: String?
+            let isrc: String?
+            let appleMusicId: String?
+            let durationMs: Int?
+            let albumName: String?
+        }
+    }
+
+    private func fetchAppleMusicCharts(chartType: String, limit: Int = 15, forceRefresh: Bool = false) async throws -> [MusicItem] {
+        let cacheKey = "apple-\(chartType)"
+
+        // Return cached data if valid and not forcing refresh
+        if !forceRefresh, let cached = playlistCache[cacheKey], !cached.isExpired {
+            print("📦 Using cached Apple Music \(chartType) tracks (\(cached.tracks.count) tracks)")
+            return cached.tracks
+        }
+
+        print("🍎 Fetching Apple Music \(chartType) charts from edge function...")
+        let request = AppleChartsRequest(chartType: chartType, limit: limit, storefront: "us")
+
+        do {
+            let response: AppleChartsResponse = try await supabase.functions.invoke(
+                "get-apple-charts",
+                options: FunctionInvokeOptions(body: request)
+            )
+
+            let tracks = response.tracks.map { track in
+                MusicItem(
+                    id: track.id,
+                    name: track.name,
+                    artistName: track.artistName,
+                    previewUrl: track.previewUrl,
+                    albumArtUrl: track.albumArtUrl,
+                    isrc: track.isrc,
+                    playedAt: nil,
+                    spotifyId: nil,
+                    appleMusicId: track.appleMusicId ?? track.id,
+                    popularity: nil
+                )
+            }
+
+            print("✅ Fetched \(tracks.count) tracks from Apple Music \(chartType)")
+
+            // Cache the result
+            playlistCache[cacheKey] = PlaylistCache(tracks: tracks, fetchedAt: Date())
+
+            return tracks
+        } catch {
+            print("❌ Failed to fetch Apple Music \(chartType) charts: \(error)")
+            throw error
+        }
+    }
+
+    private func fetchPlaylist(_ playlist: String, limit: Int = 48, forceRefresh: Bool = false) async throws -> [MusicItem] {
+        // Return cached data if valid and not forcing refresh
+        if !forceRefresh, let cached = playlistCache[playlist], !cached.isExpired {
+            print("📦 Using cached \(playlist) tracks (\(cached.tracks.count) tracks)")
+            return cached.tracks
+        }
+
+        print("🎵 Fetching \(playlist) playlist from edge function...")
+        let request = PlaylistRequest(playlist: playlist, limit: limit)
+
+        do {
+            let response: PlaylistResponse = try await supabase.functions.invoke(
+                "get-playlist-tracks",
+                options: FunctionInvokeOptions(body: request)
+            )
+
+            let tracks = response.tracks.map { track in
+                MusicItem(
+                    id: track.id,
+                    name: track.name,
+                    artistName: track.artistName,
+                    previewUrl: track.previewUrl,
+                    albumArtUrl: track.albumArtUrl,
+                    isrc: track.isrc,
+                    playedAt: nil,
+                    spotifyId: track.spotifyId,
+                    appleMusicId: nil,
+                    popularity: nil
+                )
+            }
+
+            print("✅ Fetched \(tracks.count) tracks for \(playlist)")
+
+            // Cache the result
+            playlistCache[playlist] = PlaylistCache(tracks: tracks, fetchedAt: Date())
+
+            return tracks
+        } catch {
+            print("❌ Failed to fetch \(playlist) playlist: \(error)")
+            throw error
+        }
+    }
+
+    /// Fetch viral/trending tracks from TikTok 2025 playlist - 48 tracks, cached for 1 hour
+    func getViralTracks(forceRefresh: Bool = false) async throws -> [MusicItem] {
+        try await fetchPlaylist("viral-hits", forceRefresh: forceRefresh)
+    }
+
+    /// Fetch new releases (New Music Friday) from Spotify - 48 tracks, cached for 1 hour
+    func getNewReleases(forceRefresh: Bool = false) async throws -> [MusicItem] {
+        try await fetchPlaylist("new-music-friday", forceRefresh: forceRefresh)
+    }
+
+    /// Fetch top chart tracks from Billboard Hot 100 playlist - 48 tracks, cached for 1 hour
+    func getChartsTracks(forceRefresh: Bool = false) async throws -> [MusicItem] {
+        try await fetchPlaylist("todays-top-hits", forceRefresh: forceRefresh)
+    }
+
+    // MARK: - Artist Top Tracks
 
     private func getSpotifyArtistTopTracks(artistId: String) async throws -> [MusicItem] {
         struct ArtistTopTracksRequest: Encodable {

@@ -22,7 +22,7 @@ class AuthenticationState: ObservableObject {
 
     // Onboarding contact data
     @Published var onboardingContactMatches: [ContactMatch] = []
-    @Published var onboardingAllContacts: [(name: String, phone: String)] = []
+    @Published var onboardingInvitableContacts: [InvitableContact] = []
 
     // Profile photo cache busting
     @Published var profilePhotoVersion: Int = 0
@@ -97,7 +97,7 @@ class AuthenticationState: ObservableObject {
         needsNotificationPermission = false
         needsMusicPlatform = false
         onboardingContactMatches = []
-        onboardingAllContacts = []
+        onboardingInvitableContacts = []
         UserDefaults.standard.set(true, forKey: "isOnboardingComplete")
     }
 
@@ -211,7 +211,7 @@ class AuthenticationState: ObservableObject {
         needsNotificationPermission = false
         needsMusicPlatform = false
         onboardingContactMatches = []
-        onboardingAllContacts = []
+        onboardingInvitableContacts = []
         UserDefaults.standard.set(false, forKey: "isOnboardingComplete")
     }
 }

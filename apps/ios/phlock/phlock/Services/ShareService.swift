@@ -34,6 +34,7 @@ class ShareService {
                     let id: String
                     let name: String
                     let artistName: String
+                    let artistId: String?  // Spotify artist ID for direct profile linking
                     let artists: [String]
                     let albumArtUrl: String?
                     let previewUrl: String?
@@ -71,6 +72,7 @@ class ShareService {
                 id: validatedTrack.id,  // Use corrected ID as primary ID
                 name: validatedTrack.name,  // Use validated name
                 artistName: validatedTrack.artistName,  // Use validated artist
+                artistSpotifyId: validatedTrack.artistId,  // Artist Spotify ID for direct profile linking
                 previewUrl: validatedTrack.previewUrl ?? track.previewUrl,
                 albumArtUrl: validatedTrack.albumArtUrl,  // Use fresh album art
                 isrc: validatedTrack.isrc ?? track.isrc,
@@ -301,8 +303,15 @@ class ShareService {
             .execute()
             .value
 
-        // Update share status
-        try await updateShareStatus(shareId: shareId, status: .saved)
+        // Update share status AND saved_at timestamp
+        try await supabase
+            .from("shares")
+            .update([
+                "status": ShareStatus.saved.rawValue,
+                "saved_at": ISO8601DateFormatter().string(from: Date())
+            ])
+            .eq("id", value: shareId.uuidString)
+            .execute()
 
         // Record engagement
         try await recordEngagement(shareId: shareId, userId: userId, action: "saved")
@@ -595,12 +604,10 @@ class ShareService {
     ///   - userId: The user who saved the track
     ///   - platformType: The platform where it was saved
     func trackLibrarySave(trackId: String, userId: UUID, platformType: PlatformType) async throws {
-        // Note: This requires a 'library_saves' table in the database
-        // For now, we'll log this action
         print("📚 Tracked library save: track=\(trackId), user=\(userId), platform=\(platformType.rawValue)")
 
-        // If there's a related share, update it to saved status
-        let shares: [Share] = try await supabase
+        // First, check for direct shares sent TO this user
+        let directShares: [Share] = try await supabase
             .from("shares")
             .select("*")
             .eq("recipient_id", value: userId.uuidString)
@@ -610,9 +617,28 @@ class ShareService {
             .execute()
             .value
 
-        if let latestShare = shares.first {
+        if let latestShare = directShares.first {
             try await markAsSaved(shareId: latestShare.id, userId: userId)
-            print("✅ Updated related share \(latestShare.id) to saved status")
+            print("✅ Updated direct share \(latestShare.id) to saved status")
+            return
+        }
+
+        // If no direct share, check for daily songs from other users (self-shares)
+        // Daily songs are self-shares (sender_id == recipient_id) that other users can view/save
+        let dailySongShares: [Share] = try await supabase
+            .from("shares")
+            .select("*")
+            .eq("track_id", value: trackId)
+            .eq("is_daily_song", value: true)
+            .neq("sender_id", value: userId.uuidString) // Not the current user's own daily song
+            .order("created_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+
+        if let dailySong = dailySongShares.first {
+            try await markAsSaved(shareId: dailySong.id, userId: userId)
+            print("✅ Updated daily song share \(dailySong.id) from \(dailySong.senderId) to saved status")
         }
     }
 
@@ -646,6 +672,7 @@ class ShareService {
             let track_id: String
             let track_name: String
             let artist_name: String
+            let artist_id: String?  // Spotify artist ID for direct profile linking
             let album_art_url: String
             let message: String
             let status: String
@@ -667,6 +694,7 @@ class ShareService {
             track_id: validatedTrack.id,
             track_name: validatedTrack.name,
             artist_name: validatedTrack.artistName ?? "Unknown Artist",
+            artist_id: validatedTrack.artistSpotifyId,  // Store artist ID for direct profile linking
             album_art_url: validatedTrack.albumArtUrl ?? "",
             message: note ?? "",
             status: ShareStatus.sent.rawValue,
@@ -777,6 +805,30 @@ class ShareService {
             .value
 
         return shares.first
+    }
+
+    /// Check if a user has selected a daily song today (bypasses RLS)
+    /// This uses a SECURITY DEFINER function to check without revealing the song content
+    /// - Parameter userId: The user's ID to check
+    /// - Returns: true if the user has selected a song today, false otherwise
+    func hasDailySongToday(for userId: UUID) async throws -> Bool {
+        // Pass the local date to handle timezone correctly
+        let todayString = Self.dateOnlyString(for: Date())
+
+        do {
+            let result: Bool = try await supabase
+                .rpc("has_daily_song_today", params: [
+                    "check_user_id": userId.uuidString,
+                    "check_date": todayString
+                ])
+                .execute()
+                .value
+            print("🔍 hasDailySongToday(\(userId), date=\(todayString)): \(result)")
+            return result
+        } catch {
+            print("❌ hasDailySongToday(\(userId)) FAILED: \(error)")
+            throw error
+        }
     }
 
     func getDailySongs(from userIds: [UUID], for date: Date = Date()) async throws -> [Share] {

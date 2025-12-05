@@ -10,6 +10,7 @@ struct Share: Codable, Identifiable {
     let trackId: String
     let trackName: String
     let artistName: String
+    let artistId: String?  // Spotify/Apple Music artist ID for direct profile linking
     let albumArtUrl: String?
     let message: String?
     var status: ShareStatus
@@ -30,6 +31,7 @@ struct Share: Codable, Identifiable {
         case trackId = "track_id"
         case trackName = "track_name"
         case artistName = "artist_name"
+        case artistId = "artist_id"
         case albumArtUrl = "album_art_url"
         case message
         case status
@@ -70,6 +72,7 @@ struct Share: Codable, Identifiable {
         trackId = try container.decode(String.self, forKey: .trackId)
         trackName = try container.decode(String.self, forKey: .trackName)
         artistName = try container.decode(String.self, forKey: .artistName)
+        artistId = try container.decodeIfPresent(String.self, forKey: .artistId)
         albumArtUrl = try container.decodeIfPresent(String.self, forKey: .albumArtUrl)
         message = try container.decodeIfPresent(String.self, forKey: .message)
         status = try container.decode(ShareStatus.self, forKey: .status)
@@ -147,6 +150,7 @@ extension Share {
         trackId: String,
         trackName: String,
         artistName: String,
+        artistId: String? = nil,
         albumArtUrl: String? = nil,
         message: String? = nil,
         status: ShareStatus = .sent,
@@ -164,6 +168,7 @@ extension Share {
         self.trackId = trackId
         self.trackName = trackName
         self.artistName = artistName
+        self.artistId = artistId
         self.albumArtUrl = albumArtUrl
         self.message = message
         self.status = status

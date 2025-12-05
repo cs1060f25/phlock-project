@@ -20,6 +20,13 @@ enum SearchFilter: String, CaseIterable {
     }
 }
 
+enum BrowseTab: String, CaseIterable {
+    case recent = "Recent"
+    case viral = "Viral"
+    case new = "New"
+    case charts = "Charts"
+}
+
 struct DiscoverView: View {
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var navigationState: NavigationState
@@ -40,10 +47,20 @@ struct DiscoverView: View {
     @State private var isRefreshing = false
     @State private var pullProgress: CGFloat = 0
 
+    // Browse tab state
+    @State private var selectedBrowseTab: BrowseTab = .recent
+
     // Recently played tracks state
     @State private var recentlyPlayedTracks: [MusicItem] = []
     @State private var isLoadingRecentTracks = false
     @State private var recentTracksError: String?
+
+    // Curated playlist tracks state
+    @State private var viralTracks: [MusicItem] = []
+    @State private var newReleaseTracks: [MusicItem] = []
+    @State private var chartsTracks: [MusicItem] = []
+    @State private var isLoadingCuratedPlaylists = false
+    @State private var curatedPlaylistsError: String?
 
     // Daily song state
     @State private var todaysDailySong: Share?
@@ -59,6 +76,21 @@ struct DiscoverView: View {
     @State private var isSubmittingDailySong = false // Prevent double-tap
     @FocusState private var isNoteFieldFocused: Bool
 
+    // Check if user has a streaming platform connected
+    private var hasStreamingPlatform: Bool {
+        authState.currentUser?.musicPlatform != nil
+    }
+
+    // Available tabs based on whether streaming platform is connected
+    private var availableTabs: [BrowseTab] {
+        hasStreamingPlatform ? [.recent, .viral, .new, .charts] : [.viral, .new, .charts]
+    }
+
+    // Default tab based on streaming platform
+    private var defaultTab: BrowseTab {
+        hasStreamingPlatform ? .recent : .viral
+    }
+
     var body: some View {
         NavigationStack(path: $navigationPath) {
             ZStack(alignment: .bottom) {
@@ -71,7 +103,7 @@ struct DiscoverView: View {
                         )
                     }
 
-                    // Search Bar
+                    // Search Bar - overlay ensures immediate tap response without layout issues
                     HStack {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(.gray)
@@ -105,30 +137,44 @@ struct DiscoverView: View {
                         RoundedRectangle(cornerRadius: 12)
                             .stroke(Color.gray.opacity(0.3), lineWidth: 1)
                     )
+                    .overlay(
+                        // Invisible tap layer when not focused - uses overlay to match HStack size
+                        Group {
+                            if !isSearchFieldFocused {
+                                Color.clear
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        isSearchFieldFocused = true
+                                    }
+                            }
+                        }
+                    )
                     .padding(.horizontal)
                     .padding(.top)
 
-                    // Filter Tabs - always allocated to prevent layout shift
-                    Picker("Filter", selection: $selectedFilter) {
-                        ForEach(SearchFilter.allCases, id: \.self) { filter in
-                            Text(filter.rawValue).tag(filter)
+                    // Filter Tabs for search results - only shown when searching
+                    if !searchText.isEmpty || searchResults != nil {
+                        Picker("Filter", selection: $selectedFilter) {
+                            ForEach(SearchFilter.allCases, id: \.self) { filter in
+                                Text(filter.rawValue).tag(filter)
+                            }
                         }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-                    .padding(.top, 10)
-                    .padding(.bottom, 8)
-                    .opacity(!searchText.isEmpty || searchResults != nil ? 1 : 0)
-                    .disabled(searchText.isEmpty && searchResults == nil)
-                    .allowsHitTesting(!searchText.isEmpty || searchResults != nil)
-                    .onChange(of: selectedFilter) { newValue in
-                        if !searchText.isEmpty {
-                            performSearch()
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal)
+                        .padding(.top, 10)
+                        .padding(.bottom, 8)
+                        .onChange(of: selectedFilter) { newValue in
+                            if !searchText.isEmpty {
+                                performSearch()
+                            }
                         }
+
+                        Divider()
                     }
 
-                    if !searchText.isEmpty || searchResults != nil {
-                        Divider()
+                    // Browse Tabs - shown when not searching
+                    if searchText.isEmpty && searchResults == nil {
+                        browseTabsView
                     }
 
                     resultsSection
@@ -155,12 +201,6 @@ struct DiscoverView: View {
                     .zIndex(100)
                 }
             }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                // Dismiss keyboard when tapping anywhere
-                isSearchFieldFocused = false
-                isNoteFieldFocused = false
-            }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -175,8 +215,10 @@ struct DiscoverView: View {
                 switch destination {
                 case .artist(let artist, let platformType):
                     ArtistDetailView(artist: artist, platformType: platformType)
+                        .environmentObject(PlaybackService.shared)
+                        .environmentObject(authState)
                 case .profile:
-                    ProfileView()
+                    ProfileView(scrollToTopTrigger: .constant(0))
                 }
             }
             .onChange(of: clearSearchTrigger) { newValue in
@@ -192,12 +234,17 @@ struct DiscoverView: View {
                 }
             }
             .task {
-                // Load recently played tracks and daily song on view appear
+                // Set default tab based on streaming platform
+                selectedBrowseTab = defaultTab
+
+                // Load data on view appear
                 loadRecentlyPlayedTracks()
                 loadTodaysDailySong()
+                loadCuratedPlaylists()
             }
             .onChange(of: authState.currentUser?.musicPlatform) { _ in
                 // Reload when user's music platform changes (e.g., after connecting)
+                selectedBrowseTab = defaultTab
                 loadRecentlyPlayedTracks()
             }
             .onChange(of: refreshTrigger) { newValue in
@@ -221,6 +268,38 @@ struct DiscoverView: View {
         searchResults = nil
         loadRecentlyPlayedTracks()
         loadTodaysDailySong()
+        loadCuratedPlaylists(forceRefresh: true) // Force refresh on pull-to-refresh
+    }
+
+    private func loadCuratedPlaylists(forceRefresh: Bool = false) {
+        Task {
+            isLoadingCuratedPlaylists = true
+            curatedPlaylistsError = nil
+
+            // Load all playlist tracks in parallel (uses 1-hour cache unless forceRefresh)
+            do {
+                viralTracks = try await SearchService.shared.getViralTracks(forceRefresh: forceRefresh)
+            } catch {
+                print("❌ Failed to load viral tracks: \(error)")
+                viralTracks = []
+            }
+
+            do {
+                newReleaseTracks = try await SearchService.shared.getNewReleases(forceRefresh: forceRefresh)
+            } catch {
+                print("❌ Failed to load new releases: \(error)")
+                newReleaseTracks = []
+            }
+
+            do {
+                chartsTracks = try await SearchService.shared.getChartsTracks(forceRefresh: forceRefresh)
+            } catch {
+                print("❌ Failed to load charts: \(error)")
+                chartsTracks = []
+            }
+
+            isLoadingCuratedPlaylists = false
+        }
     }
 
     private func performDebouncedSearch() {
@@ -309,33 +388,7 @@ struct DiscoverView: View {
                 performSearch()
             }
         } else if searchText.isEmpty && searchResults == nil {
-            if isLoadingRecentTracks {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = recentTracksError {
-                ErrorView(message: error) {
-                    loadRecentlyPlayedTracks()
-                }
-            } else if recentlyPlayedTracks.isEmpty {
-                EmptySearchView(isSearchFieldFocused: $isSearchFieldFocused)
-            } else {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("recently played")
-                        .font(.lora(size: 20, weight: .semiBold))
-                        .padding(.horizontal, 16)
-                        .padding(.top, 4)
-
-                    RecentlyPlayedGridView(
-                        tracks: recentlyPlayedTracks,
-                        platformType: authState.currentUser?.resolvedPlatformType ?? .spotify,
-                        onSelectDailySong: { track in selectDailySong(track) },
-                        todaysDailySong: todaysDailySong,
-                        selectedDailyTrackId: $selectedDailyTrackId
-                    )
-                    .environmentObject(PlaybackService.shared)
-                    .environmentObject(navigationState)
-                }
-            }
+            browseContentSection
         } else if let results = searchResults {
             SearchResultsList(
                 results: results,
@@ -351,7 +404,135 @@ struct DiscoverView: View {
                 pullProgress: $pullProgress,
                 onRefresh: { await refreshContent() }
             )
+            .environmentObject(PlaybackService.shared)
+            .environmentObject(authState)
             .environmentObject(navigationState)
+        }
+    }
+
+    // MARK: - Browse Tabs View
+
+    @ViewBuilder
+    private var browseTabsView: some View {
+        if availableTabs.count > 3 {
+            // Scrollable pill selector for 4 tabs
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(availableTabs, id: \.self) { tab in
+                        Button {
+                            selectedBrowseTab = tab
+                        } label: {
+                            Text(tab.rawValue)
+                                .font(.lora(size: 14, weight: selectedBrowseTab == tab ? .semiBold : .regular))
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(selectedBrowseTab == tab ? Color.accentColor : Color.gray.opacity(0.2))
+                                .foregroundColor(selectedBrowseTab == tab ? .white : .primary)
+                                .cornerRadius(20)
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            }
+            .padding(.top, 10)
+            .padding(.bottom, 8)
+        } else {
+            // Segmented control for 3 tabs
+            Picker("Browse", selection: $selectedBrowseTab) {
+                ForEach(availableTabs, id: \.self) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.top, 10)
+            .padding(.bottom, 8)
+        }
+    }
+
+    // MARK: - Browse Content Section
+
+    @ViewBuilder
+    private var browseContentSection: some View {
+        switch selectedBrowseTab {
+        case .recent:
+            recentlyPlayedSection
+        case .viral:
+            curatedPlaylistSection(tracks: viralTracks, title: "viral hits", isLoading: isLoadingCuratedPlaylists)
+        case .new:
+            curatedPlaylistSection(tracks: newReleaseTracks, title: "new music friday", isLoading: isLoadingCuratedPlaylists)
+        case .charts:
+            curatedPlaylistSection(tracks: chartsTracks, title: "today's top hits", isLoading: isLoadingCuratedPlaylists)
+        }
+    }
+
+    @ViewBuilder
+    private func curatedPlaylistSection(tracks: [MusicItem], title: String, isLoading: Bool) -> some View {
+        if isLoading {
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let error = curatedPlaylistsError {
+            ErrorView(message: error) {
+                loadCuratedPlaylists()
+            }
+        } else if tracks.isEmpty {
+            VStack(spacing: 16) {
+                Image(systemName: "music.note.list")
+                    .font(.system(size: 48))
+                    .foregroundColor(.secondary.opacity(0.5))
+                Text("No tracks available")
+                    .font(.lora(size: 16))
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.lora(size: 20, weight: .semiBold))
+                    .padding(.horizontal, 16)
+                    .padding(.top, 4)
+
+                RecentlyPlayedGridView(
+                    tracks: tracks,
+                    platformType: .spotify, // Curated playlists are always from Spotify
+                    onSelectDailySong: { track in selectDailySong(track) },
+                    todaysDailySong: todaysDailySong,
+                    selectedDailyTrackId: $selectedDailyTrackId
+                )
+                .environmentObject(PlaybackService.shared)
+                .environmentObject(navigationState)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var recentlyPlayedSection: some View {
+        if isLoadingRecentTracks {
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let error = recentTracksError {
+            ErrorView(message: error) {
+                loadRecentlyPlayedTracks()
+            }
+        } else if recentlyPlayedTracks.isEmpty {
+            EmptySearchView(isSearchFieldFocused: $isSearchFieldFocused)
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("recently played")
+                    .font(.lora(size: 20, weight: .semiBold))
+                    .padding(.horizontal, 16)
+                    .padding(.top, 4)
+
+                RecentlyPlayedGridView(
+                    tracks: recentlyPlayedTracks,
+                    platformType: authState.currentUser?.resolvedPlatformType ?? .spotify,
+                    onSelectDailySong: { track in selectDailySong(track) },
+                    todaysDailySong: todaysDailySong,
+                    selectedDailyTrackId: $selectedDailyTrackId
+                )
+                .environmentObject(PlaybackService.shared)
+                .environmentObject(navigationState)
+            }
         }
     }
 
@@ -575,7 +756,7 @@ struct DailySongStreakBanner: View {
                             .font(.lora(size: 20))
                             .foregroundColor(.primary)
                         if user.dailySongStreak > 0 {
-                            Text("\(user.streakEmoji) \(user.dailySongStreak)")
+                            Text("(\(user.streakEmoji) \(user.dailySongStreak))")
                                 .font(.lora(size: 20))
                                 .foregroundColor(.primary)
                         }

@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import Supabase
+import Contacts
 
 // MARK: - Scrollable Message Text Component
 
@@ -105,7 +106,7 @@ struct PhlockView: View {
     @State private var nudgedUserIds: Set<UUID> = []
     @State private var nudgedResetDate = Calendar.current.startOfDay(for: Date())
     @State private var autoplayEnabled = true
-    @State private var savedTrackIds: Set<String> = []
+    // savedTrackIds now lives in playbackService.savedTrackIds to persist across tab switches
     @State private var myDailySong: Share?
     @State private var showDailySongSheet = false
     @State private var myDailySongNavPath = NavigationPath()
@@ -119,6 +120,12 @@ struct PhlockView: View {
     @State private var editMemberToSwap: User?  // Member being replaced in edit mode
     @State private var availableFriendsForEdit: [User] = []
     @State private var isLoadingFriends = false
+    @State private var showPhlockManagerSheet = false
+
+    // Share card state
+    @State private var isGeneratingShareCard = false
+    @State private var generatedShareCardImage: UIImage?
+    @State private var showShareSheet = false
 
     // Helper struct to organize phlock items
     struct PhlockItem: Identifiable {
@@ -126,11 +133,28 @@ struct PhlockView: View {
         let member: User?
         let song: Share?
         let type: ItemType
-        
+
         enum ItemType {
             case song
             case waiting
             case empty
+        }
+
+        // Stable UUIDs for empty slots to prevent view recreation
+        // These are deterministic based on position (0-4)
+        private static let emptySlotIds: [UUID] = [
+            UUID(uuidString: "E0000000-0000-0000-0000-000000000000")!,
+            UUID(uuidString: "E0000000-0000-0000-0000-000000000001")!,
+            UUID(uuidString: "E0000000-0000-0000-0000-000000000002")!,
+            UUID(uuidString: "E0000000-0000-0000-0000-000000000003")!,
+            UUID(uuidString: "E0000000-0000-0000-0000-000000000004")!
+        ]
+
+        static func stableEmptySlotId(at position: Int) -> UUID {
+            guard position >= 0 && position < emptySlotIds.count else {
+                return UUID() // Fallback for unexpected positions
+            }
+            return emptySlotIds[position]
         }
     }
 
@@ -157,10 +181,18 @@ struct PhlockView: View {
         }
 
         // 3. Empty slots (up to 5 total)
+        // CRITICAL: Use stable UUIDs for empty slots to prevent SwiftUI from
+        // recreating views on every recomputation of sortedPhlockItems.
+        // Empty slots are always at the END of the list, so we use their
+        // final position (0-4) as a stable identifier.
         let currentCount = items.count
         if currentCount < 5 {
-            for _ in 0..<(5 - currentCount) {
-                items.append(PhlockItem(id: UUID(), member: nil, song: nil, type: .empty))
+            for i in 0..<(5 - currentCount) {
+                // Use a deterministic UUID based on the empty slot's position in the full 5-slot array
+                // Position = currentCount + i (e.g., if 3 members, empty slots are at positions 3, 4)
+                let emptySlotPosition = currentCount + i
+                let stableId = PhlockItem.stableEmptySlotId(at: emptySlotPosition)
+                items.append(PhlockItem(id: stableId, member: nil, song: nil, type: .empty))
             }
         }
 
@@ -192,16 +224,15 @@ struct PhlockView: View {
                         items: sortedPhlockItems,
                         dailySongs: dailySongs,
                         myDailySong: myDailySong,
-                        savedTrackIds: savedTrackIds,
+                        savedTrackIds: playbackService.savedTrackIds,
                         nudgedUserIds: nudgedUserIds,
                         currentlyPlayingId: playbackService.currentTrack?.id,
                         isPlaying: playbackService.isPlaying,
                         onPlayTapped: { song, shouldAutoPlay, savedPosition in
                             playTrack(song: song, autoPlay: shouldAutoPlay, fromPosition: savedPosition)
                         },
-                        onSwapTapped: { member in
-                            selectedMemberToSwap = member
-                            showSwapSheet = true
+                        onSwapTapped: { _ in
+                            showPhlockManagerSheet = true
                         },
                         onAddToLibrary: { song in
                             addToLibrary(song)
@@ -245,6 +276,12 @@ struct PhlockView: View {
                             editMemberToSwap = nil
                             Task { await loadAvailableFriendsForEdit() }
                             showFriendPicker = true
+                        },
+                        onMenuTapped: {
+                            showPhlockManagerSheet = true
+                        },
+                        onShareTapped: {
+                            generateAndShareCard()
                         }
                     )
                     .ignoresSafeArea(edges: .top)
@@ -253,9 +290,11 @@ struct PhlockView: View {
             .navigationDestination(for: PhlockDestination.self) { destination in
                 switch destination {
                 case .profile:
-                    ProfileView()
+                    ProfileView(scrollToTopTrigger: .constant(0))
                 case .userProfile(let user):
                     UserProfileView(user: user)
+                        .environmentObject(authState)
+                        .environmentObject(playbackService)
                 case .conversation(let user):
                     ConversationView(otherUser: user)
                         .environmentObject(authState)
@@ -278,9 +317,10 @@ struct PhlockView: View {
                 }
             }
             .sheet(isPresented: $showAddSheet) {
-                AddMemberView(
-                    phlockMembers: phlockMembers,
-                    onAddCompleted: { user in
+                UnifiedPhlockSheet(
+                    currentUserId: authState.currentUser?.id ?? UUID(),
+                    currentPhlockMembers: $phlockMembers,
+                    onMemberAdded: { user in
                         // Find first available position
                         let usedPositions = Set(phlockMembers.map { $0.position })
                         for pos in 1...5 {
@@ -289,7 +329,11 @@ struct PhlockView: View {
                                 break
                             }
                         }
-                    }
+                    },
+                    onMemberRemoved: { user in
+                        Task { await handleRemoveMember(user: user) }
+                    },
+                    title: "add to phlock"
                 )
                 .environmentObject(authState)
             }
@@ -309,6 +353,27 @@ struct PhlockView: View {
                         await loadDailyPlaylist()
                     }
                 }
+            }
+            .sheet(isPresented: $showPhlockManagerSheet) {
+                UnifiedPhlockSheet(
+                    currentUserId: authState.currentUser?.id ?? UUID(),
+                    currentPhlockMembers: $phlockMembers,
+                    onMemberAdded: { user in
+                        // Find first available position
+                        let usedPositions = Set(phlockMembers.map { $0.position })
+                        for pos in 1...5 {
+                            if !usedPositions.contains(pos) {
+                                handleAddMember(user: user, position: pos)
+                                break
+                            }
+                        }
+                    },
+                    onMemberRemoved: { user in
+                        Task { await handleRemoveMember(user: user) }
+                    },
+                    title: "edit phlock"
+                )
+                .environmentObject(authState)
             }
             .overlay(alignment: .bottom) {
                 // Friend picker panel for edit mode
@@ -368,6 +433,12 @@ struct PhlockView: View {
             .animation(.easeInOut(duration: 0.25), value: showFriendPicker)
         }
         .toast(isPresented: $showToast, message: toastMessage, type: toastType)
+        .sheet(isPresented: $showShareSheet) {
+            if let image = generatedShareCardImage {
+                let message = "hey cutie, this is my phlock today - join me at https://phlock.app so i can add you too"
+                ActivityViewController(activityItems: [message, image])
+            }
+        }
         .task {
             // Load phlock playlist and user's daily song in parallel
             async let playlistTask: () = loadDailyPlaylist()
@@ -397,6 +468,46 @@ struct PhlockView: View {
                 playbackService.skipForward(wrap: true)
             }
         }
+        .onChange(of: navigationPath) { newPath in
+            // When returning to root (empty path), override non-phlock playback with phlock track
+            if newPath.isEmpty {
+                resumePhlockPlaybackIfNeeded()
+            }
+        }
+    }
+
+    // MARK: - Phlock Playback Resume
+
+    /// Resume phlock playback when returning to root view from a pushed profile
+    private func resumePhlockPlaybackIfNeeded() {
+        // Only act if a track is currently playing/loaded
+        guard playbackService.currentTrack != nil else { return }
+
+        // Check if the current track is from phlock
+        let phlockTrackIds = Set(dailySongs.map { $0.trackId })
+        let isPlayingPhlockTrack = phlockTrackIds.contains(playbackService.currentTrack?.id ?? "")
+
+        // If already playing a phlock track, no need to override
+        if isPlayingPhlockTrack { return }
+
+        // Find the track at the saved carousel position
+        // Use the same AppStorage key as PhlockCarouselView
+        let savedIndex = UserDefaults.standard.integer(forKey: "phlockCarouselIndex")
+        let phlockItems = sortedPhlockItems
+
+        // savedIndex is the position in the full carousel (songs, waiting, empty)
+        // Get the item at that position
+        guard savedIndex < phlockItems.count else { return }
+        let item = phlockItems[savedIndex]
+
+        // Only override if the saved position has a song
+        guard item.type == .song, let song = item.song else { return }
+
+        // Get saved position for this track (for resume capability)
+        let savedPosition = playbackService.getSavedPosition(for: song.trackId)
+
+        // Override with the phlock track, maintaining current play state
+        playTrack(song: song, autoPlay: playbackService.isPlaying, fromPosition: savedPosition)
     }
 
 
@@ -421,7 +532,7 @@ struct PhlockView: View {
                                 song: song,
                                 member: member,
                                 isCurrentlyPlaying: playbackService.currentTrack?.id == song.trackId && playbackService.isPlaying,
-                                isSaved: savedTrackIds.contains(song.trackId),
+                                isSaved: playbackService.savedTrackIds.contains(song.trackId),
                                 hasSongToday: true,
                                 onPlayTapped: {
                                     // Find index in dailySongs for playback context
@@ -430,8 +541,7 @@ struct PhlockView: View {
                                     }
                                 },
                                 onSwapTapped: {
-                                    selectedMemberToSwap = member
-                                    showSwapSheet = true
+                                    showPhlockManagerSheet = true
                                 },
                                 onAddToLibrary: {
                                     addToLibrary(song)
@@ -457,8 +567,7 @@ struct PhlockView: View {
                                 member: member,
                                 isNudged: nudgedUserIds.contains(member.id),
                                 onSwapTapped: {
-                                    selectedMemberToSwap = member
-                                    showSwapSheet = true
+                                    showPhlockManagerSheet = true
                                 },
                                 onNudgeTapped: {
                                     nudgeMember(member)
@@ -470,7 +579,7 @@ struct PhlockView: View {
                             .listRowInsets(EdgeInsets())
                             .listRowSeparator(.hidden)
                         }
-                        
+
                     case .empty:
                         EmptySlotRow(
                             onAddMemberTapped: {
@@ -621,10 +730,13 @@ struct PhlockView: View {
             // Sort daily songs by time (earliest first)
             dailySongs.sort { $0.createdAt < $1.createdAt }
 
-            // Initial saved state from database
-            savedTrackIds = Set(dailySongs.compactMap { share in
-                share.savedAt != nil ? share.trackId : nil
-            })
+            // Preserve existing saved state for tracks still in playlist
+            // Only use database savedAt for tracks we don't already have state for
+            let currentTrackIds = Set(dailySongs.map { $0.trackId })
+            let preservedSavedIds = playbackService.savedTrackIds.intersection(currentTrackIds)
+            let newTrackIds = currentTrackIds.subtracting(playbackService.savedTrackIds)
+            let newSavedFromDb = Set(dailySongs.filter { newTrackIds.contains($0.trackId) && $0.savedAt != nil }.map { $0.trackId })
+            playbackService.savedTrackIds = preservedSavedIds.union(newSavedFromDb)
 
             // If no songs today, just show waiting state (no demo data)
             if dailySongs.isEmpty {
@@ -688,14 +800,14 @@ struct PhlockView: View {
                     try await AppleMusicService.shared.saveTrackToLibrary(trackId: appleMusicId)
                 }
 
-                try await ShareService.shared.trackLibrarySave(
-                    trackId: song.trackId,
-                    userId: currentUser.id,
-                    platformType: platformType
+                // Mark the specific share as saved (not just by track ID)
+                try await ShareService.shared.markAsSaved(
+                    shareId: song.id,
+                    userId: currentUser.id
                 )
 
                 _ = await MainActor.run {
-                    savedTrackIds.insert(song.trackId)
+                    playbackService.savedTrackIds.insert(song.trackId)
                 }
             } catch {
                 let message = (error as? LocalizedError)?.errorDescription ?? "Failed to add to library"
@@ -733,14 +845,14 @@ struct PhlockView: View {
                         accessToken: accessToken
                     )
                     _ = await MainActor.run {
-                        savedTrackIds.remove(song.trackId)
+                        playbackService.savedTrackIds.remove(song.trackId)
                     }
                 case .appleMusic:
                     toastMessage = "Open Apple Music to remove track"
                     toastType = .info
                     showToast = true
                     _ = await MainActor.run {
-                        savedTrackIds.remove(song.trackId)
+                        playbackService.savedTrackIds.remove(song.trackId)
                     }
                 }
             } catch {
@@ -841,7 +953,7 @@ struct PhlockView: View {
         guard let currentUser = authState.currentUser,
               currentUser.resolvedPlatformType == .spotify else {
             // For non-Spotify users or no user, use savedAt from database
-            savedTrackIds = Set(songs.compactMap { $0.savedAt != nil ? $0.trackId : nil })
+            playbackService.savedTrackIds = Set(songs.compactMap { $0.savedAt != nil ? $0.trackId : nil })
             return
         }
 
@@ -858,11 +970,11 @@ struct PhlockView: View {
                     newSavedIds.insert(song.trackId)
                 }
             }
-            savedTrackIds = newSavedIds
+            playbackService.savedTrackIds = newSavedIds
         } catch {
             print("⚠️ Failed to check Spotify library status: \(error)")
             // Fall back to savedAt from database
-            savedTrackIds = Set(songs.compactMap { $0.savedAt != nil ? $0.trackId : nil })
+            playbackService.savedTrackIds = Set(songs.compactMap { $0.savedAt != nil ? $0.trackId : nil })
         }
     }
 
@@ -949,6 +1061,9 @@ struct PhlockView: View {
     }
 
     private func handleEditSwap(oldMember: User, newMember: User) async {
+        // Store for potential rollback
+        let oldMemberData = phlockMembers.first { $0.user.id == oldMember.id }
+
         do {
             guard let userId = authState.currentUser?.id else { return }
             let swappedImmediately = try await UserService.shared.scheduleSwap(
@@ -956,6 +1071,14 @@ struct PhlockView: View {
                 newMemberId: newMember.id,
                 for: userId
             )
+
+            // Optimistic UI update only if swapped immediately
+            if swappedImmediately, let oldPosition = oldMemberData?.position {
+                await MainActor.run {
+                    phlockMembers.removeAll { $0.user.id == oldMember.id }
+                    phlockMembers.append(FriendWithPosition(user: newMember, position: oldPosition))
+                }
+            }
 
             await MainActor.run {
                 if swappedImmediately {
@@ -968,7 +1091,7 @@ struct PhlockView: View {
                 showToast = true
             }
 
-            // Refresh to show change
+            // Refresh to get accurate data from server
             await loadDailyPlaylist()
         } catch {
             await MainActor.run {
@@ -981,6 +1104,14 @@ struct PhlockView: View {
     }
 
     private func handleRemoveMember(user: User) async {
+        // Store for potential rollback
+        let removedMember = phlockMembers.first { $0.user.id == user.id }
+
+        // Optimistic UI update - remove immediately
+        await MainActor.run {
+            phlockMembers.removeAll { $0.user.id == user.id }
+        }
+
         do {
             guard let userId = authState.currentUser?.id else { return }
             try await UserService.shared.removeFromPhlock(friendId: user.id, for: userId)
@@ -991,9 +1122,16 @@ struct PhlockView: View {
                 showToast = true
             }
 
-            // Refresh to show change
+            // Refresh to get accurate data from server
             await loadDailyPlaylist()
         } catch {
+            // Rollback optimistic update on failure
+            if let removedMember = removedMember {
+                await MainActor.run {
+                    phlockMembers.append(removedMember)
+                }
+            }
+
             await MainActor.run {
                 toastMessage = "Failed to remove"
                 toastType = .error
@@ -1037,7 +1175,12 @@ struct PhlockView: View {
     }
 
     private func handleAddMember(user: User, position: Int) {
+        // Optimistic UI update - add member immediately before closing sheet
+        let newMember = FriendWithPosition(user: user, position: position)
+        phlockMembers.append(newMember)
+
         showAddSheet = false
+        showPhlockManagerSheet = false
         selectedPositionToAdd = nil
 
         Task {
@@ -1053,13 +1196,52 @@ struct PhlockView: View {
                 toastType = .success
                 showToast = true
 
-                // Refresh playlist
+                // Refresh playlist to get accurate data from server
                 await loadDailyPlaylist()
             } catch {
+                // Rollback optimistic update on failure
+                phlockMembers.removeAll { $0.user.id == user.id }
+
                 toastMessage = "Failed to add member"
                 toastType = .error
                 showToast = true
                 print("❌ Error adding member: \(error)")
+            }
+        }
+    }
+
+    // MARK: - Share Card Generation
+
+    private func generateAndShareCard() {
+        // Need at least one song to share
+        let hasContent = myDailySong != nil || !dailySongs.isEmpty
+        guard hasContent else {
+            toastMessage = "No songs to share yet"
+            toastType = .info
+            showToast = true
+            return
+        }
+
+        isGeneratingShareCard = true
+
+        Task {
+            let image = await ShareCardGenerator.generateCard(
+                myPick: myDailySong,
+                phlockSongs: dailySongs,
+                members: phlockMembers
+            )
+
+            await MainActor.run {
+                isGeneratingShareCard = false
+
+                if let image = image {
+                    generatedShareCardImage = image
+                    showShareSheet = true
+                } else {
+                    toastMessage = "Failed to create share card"
+                    toastType = .error
+                    showToast = true
+                }
             }
         }
     }
@@ -1084,9 +1266,6 @@ struct PhlockView: View {
         let queueTracks = dailySongs.map { musicItem(from: $0) }
         let sourceIds = dailySongs.map { Optional($0.id.uuidString) }
 
-        // Pass saved track IDs to PlaybackService for FullScreenPlayerView to use
-        playbackService.savedTrackIds = savedTrackIds
-
         playbackService.startQueue(
             tracks: queueTracks,
             startAt: index,
@@ -1097,9 +1276,6 @@ struct PhlockView: View {
 
     private func playTrack(song: Share, autoPlay: Bool = true, fromPosition: Double? = nil) {
         let track = musicItem(from: song)
-
-        // Pass saved track IDs to PlaybackService for FullScreenPlayerView to use
-        playbackService.savedTrackIds = savedTrackIds
 
         // Pass autoPlay and seekToPosition directly to startQueue
         // This ensures the track starts in the correct state without play-then-pause jitter
@@ -1891,9 +2067,9 @@ struct SwapMemberView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if friends.isEmpty {
                     VStack(spacing: 12) {
-                        Text("No available friends")
+                        Text("no available friends")
                             .font(.lora(size: 16, weight: .medium))
-                        Text("All your friends are already in your phlock")
+                        Text("all your friends are already in your phlock")
                             .font(.lora(size: 14))
                             .foregroundColor(.secondary)
                     }
@@ -2007,12 +2183,12 @@ struct SwapMemberView: View {
                 !phlockMemberIds.contains(friend.id)
             }
 
-            // Fetch today's song status in parallel
+            // Fetch today's song status in parallel using RPC function (bypasses RLS)
             var statusUpdates: [(UUID, Bool)] = []
             await withTaskGroup(of: (UUID, Bool).self) { group in
                 for friend in friends {
                     group.addTask {
-                        let hasSong = (try? await ShareService.shared.getTodaysDailySong(for: friend.id)) != nil
+                        let hasSong = (try? await ShareService.shared.hasDailySongToday(for: friend.id)) ?? false
                         return (friend.id, hasSong)
                     }
                 }
@@ -2038,128 +2214,864 @@ struct SwapMemberView: View {
     }
 }
 
-// MARK: - Add Member View
+// MARK: - Unified Phlock Sheet
 
-struct AddMemberView: View {
-    let phlockMembers: [FriendWithPosition]
-    let onAddCompleted: (User) -> Void
+import MessageUI
 
-    @Environment(\.dismiss) var dismiss
+/// Helper struct for invite target
+struct PhlockInviteContactTarget: Identifiable {
+    let id = UUID()
+    let phone: String
+}
+
+/// Unified sheet for both "add to phlock" and "edit phlock"
+struct UnifiedPhlockSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject var authState: AuthenticationState
-    @State private var friends: [User] = []
-    @State private var selectedFriend: User?
+
+    let currentUserId: UUID
+    @Binding var currentPhlockMembers: [FriendWithPosition]
+    let onMemberAdded: (User) -> Void
+    let onMemberRemoved: (User) -> Void
+    let title: String  // "add to phlock" or "edit phlock"
+
+    // Navigation
+    @State private var navigationPath = NavigationPath()
+
+    // Following state
+    @State private var followingList: [User] = []
     @State private var isLoading = true
+    @State private var searchText = ""
+
+    // Discovery state
+    @State private var suggestedUsers: [RecommendedFriend] = []
+    @State private var isLoadingSuggestions = true
+    @State private var invitableContacts: [InvitableContact] = []
+    @State private var contactMatches: [ContactMatch] = []
+    @State private var isLoadingContacts = false
+
+    // Invite state
+    @State private var inviteTarget: PhlockInviteContactTarget?
+    @State private var invitedContacts: Set<String> = []
+
+    // Daily song status tracking (userId -> hasSongToday)
+    @State private var dailySongStatus: [UUID: Bool] = [:]
+    @State private var isLoadingDailySongStatus = true
+
+    // Computed: users not in phlock
+    private var availableUsers: [User] {
+        let phlockMemberIds = Set(currentPhlockMembers.map { $0.user.id })
+        return followingList.filter { !phlockMemberIds.contains($0.id) }
+    }
+
+    // Filter by search text and sort by: picked today first, then by streak count
+    private var filteredUsers: [User] {
+        let filtered: [User]
+        if searchText.isEmpty {
+            filtered = availableUsers
+        } else {
+            filtered = availableUsers.filter {
+                $0.displayName.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+
+        // Sort: picked today first (by streak), then not picked (by streak)
+        return filtered.sorted { user1, user2 in
+            let hasPicked1 = dailySongStatus[user1.id] ?? false
+            let hasPicked2 = dailySongStatus[user2.id] ?? false
+
+            if hasPicked1 != hasPicked2 {
+                // Users who picked today come first
+                return hasPicked1
+            }
+            // Within each group, sort by streak (highest first)
+            return user1.dailySongStreak > user2.dailySongStreak
+        }
+    }
+
+    private var hasAvailableFriends: Bool {
+        !availableUsers.isEmpty
+    }
+
+    // Get sorted slots (members first sorted by streak, then empty slots)
+    private var sortedSlots: [(position: Int, member: FriendWithPosition?)] {
+        let filledSlots = currentPhlockMembers
+            .sorted { ($0.user.dailySongStreak ?? 0) > ($1.user.dailySongStreak ?? 0) }
+            .map { (position: $0.position, member: Optional($0)) }
+
+        let filledPositions = Set(currentPhlockMembers.map { $0.position })
+        let emptySlots = (1...5)
+            .filter { !filledPositions.contains($0) }
+            .map { (position: $0, member: nil as FriendWithPosition?) }
+
+        return filledSlots + emptySlots
+    }
+
+    // Check if phlock is full
+    private var isPhlockFull: Bool {
+        currentPhlockMembers.count >= 5
+    }
 
     var body: some View {
-        NavigationStack {
-            VStack {
-                if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if friends.isEmpty {
-                    VStack(spacing: 12) {
-                        Text("No available friends")
-                            .font(.lora(size: 16, weight: .medium))
-                        Text("Add more friends to build your phlock")
-                            .font(.lora(size: 14))
-                            .foregroundColor(.secondary)
+        NavigationStack(path: $navigationPath) {
+            ScrollView {
+                VStack(spacing: 0) {
+                    // MARK: - My Phlock Section (5 slots)
+                    myPhlockSection
+
+                    // MARK: - Conditional Content
+                    if isLoading {
+                        loadingSection
+                    } else if hasAvailableFriends {
+                        addFromFollowingSection
+                    } else {
+                        suggestedForYouSection
+                        inviteContactsSection
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    List(friends) { friend in
-                        HStack {
-                            // Profile photo
-                            if let photoUrl = friend.profilePhotoUrl,
-                               let url = URL(string: photoUrl) {
-                                AsyncImage(url: url) { image in
-                                    image
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                } placeholder: {
-                                    Circle()
-                                        .fill(Color.gray.opacity(0.3))
-                                }
-                                .frame(width: 40, height: 40)
-                                .clipShape(Circle())
-                            } else {
-                                Circle()
-                                    .fill(Color.gray.opacity(0.3))
-                                    .frame(width: 40, height: 40)
-                            }
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(friend.displayName)
-                                    .font(.lora(size: 16, weight: .medium))
-
-                                if friend.username != nil {
-                                    Text("@\(friend.username ?? "")")
-                                        .font(.lora(size: 12, weight: .medium))
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-
-                            Spacer()
-
-                            if selectedFriend?.id == friend.id {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.blue)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            selectedFriend = friend
-                        }
-                    }
+                    Spacer(minLength: 40)
                 }
             }
-            .navigationTitle("Add to Phlock")
+            .background(Color(uiColor: .secondarySystemBackground))
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("done") {
                         dismiss()
                     }
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Add") {
-                        if let friend = selectedFriend {
-                            onAddCompleted(friend)
-                            dismiss()
-                        }
-                    }
-                    .disabled(selectedFriend == nil)
                     .font(.lora(size: 16, weight: .medium))
                 }
             }
-            .task {
-                await loadAvailableFriends()
+            .navigationDestination(for: User.self) { user in
+                UserProfileView(user: user)
+            }
+        }
+        .sheet(item: $inviteTarget) { target in
+            PhlockMessageComposeView(
+                recipients: [target.phone],
+                body: "hey cutie - I have a song for you https://phlock.app",
+                onFinished: { result in
+                    if result == .sent {
+                        invitedContacts.insert(target.phone)
+                    }
+                    inviteTarget = nil
+                }
+            )
+        }
+        .task {
+            await loadAllData()
+        }
+    }
+
+    // MARK: - My Phlock Section
+
+    @ViewBuilder
+    private var myPhlockSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("my phlock")
+                .font(.lora(size: 15, weight: .medium))
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+
+            VStack(spacing: 0) {
+                ForEach(sortedSlots, id: \.position) { slot in
+                    if let member = slot.member {
+                        filledSlotRow(member: member, position: slot.position)
+                    } else {
+                        emptySlotRow(position: slot.position)
+                    }
+
+                    if slot.position < 5 {
+                        Divider()
+                            .padding(.leading, 72)
+                    }
+                }
+            }
+            .background(Color.gray.opacity(colorScheme == .dark ? 0.15 : 0.06))
+            .cornerRadius(12)
+            .padding(.horizontal, 16)
+        }
+    }
+
+    @ViewBuilder
+    private func filledSlotRow(member: FriendWithPosition, position: Int) -> some View {
+        HStack(spacing: 12) {
+            // Tappable profile section
+            Button {
+                navigationPath.append(member.user)
+            } label: {
+                HStack(spacing: 12) {
+                    ProfilePhotoWithStreak(
+                        photoUrl: member.user.profilePhotoUrl,
+                        displayName: member.user.displayName,
+                        streak: member.user.dailySongStreak,
+                        size: 44,
+                        badgeSize: .small
+                    )
+                    .frame(width: 44, height: 54)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(member.user.displayName)
+                            .font(.lora(size: 16, weight: .medium))
+                            .foregroundColor(.primary)
+                        if let username = member.user.username {
+                            Text("@\(username)")
+                                .font(.lora(size: 13))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            // Daily pick status indicator (only show after status is loaded)
+            if !isLoadingDailySongStatus {
+                if dailySongStatus[member.user.id] == true {
+                    HStack(spacing: 4) {
+                        Text("picked today")
+                            .font(.lora(size: 11))
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12))
+                    }
+                    .foregroundColor(.green)
+                } else {
+                    HStack(spacing: 4) {
+                        Text("no pick yet today")
+                            .font(.lora(size: 11))
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 12))
+                    }
+                    .foregroundColor(.orange)
+                }
+            }
+
+            // Remove button - only show if member hasn't picked today (and status is loaded)
+            if !isLoadingDailySongStatus && dailySongStatus[member.user.id] != true {
+                Button {
+                    onMemberRemoved(member.user)
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.red)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    @ViewBuilder
+    private func emptySlotRow(position: Int) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .strokeBorder(
+                        style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])
+                    )
+                    .foregroundColor(.secondary.opacity(0.3))
+                    .frame(width: 44, height: 44)
+
+                Image(systemName: "plus")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.secondary.opacity(0.4))
+            }
+
+            Text("add member to phlock")
+                .font(.lora(size: 15))
+                .foregroundColor(.secondary)
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    // MARK: - Loading Section
+
+    @ViewBuilder
+    private var loadingSection: some View {
+        HStack {
+            Spacer()
+            ProgressView()
+            Spacer()
+        }
+        .padding(.vertical, 40)
+    }
+
+    // MARK: - Add From Following Section
+
+    @ViewBuilder
+    private var addFromFollowingSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("add from following")
+                .font(.lora(size: 15, weight: .medium))
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 16)
+                .padding(.top, 24)
+
+            // Search bar
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                TextField("search", text: $searchText)
+                    .font(.lora(size: 16))
+            }
+            .padding(12)
+            .background(Color.gray.opacity(colorScheme == .dark ? 0.2 : 0.1))
+            .cornerRadius(12)
+            .padding(.horizontal, 16)
+
+            if filteredUsers.isEmpty {
+                VStack(spacing: 8) {
+                    Text(searchText.isEmpty ? "no friends available" : "no matches found")
+                        .font(.lora(size: 14, weight: .medium))
+                    if searchText.isEmpty {
+                        Text("follow more people to add them")
+                            .font(.lora(size: 13))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 32)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(filteredUsers, id: \.id) { user in
+                        availableFriendRow(user: user)
+
+                        if user.id != filteredUsers.last?.id {
+                            Divider()
+                                .padding(.leading, 72)
+                        }
+                    }
+                }
+                .background(Color.gray.opacity(colorScheme == .dark ? 0.15 : 0.06))
+                .cornerRadius(12)
+                .padding(.horizontal, 16)
             }
         }
     }
 
-    private func loadAvailableFriends() async {
-        guard let userId = authState.currentUser?.id else {
-            isLoading = false
+    @ViewBuilder
+    private func availableFriendRow(user: User) -> some View {
+        HStack(spacing: 12) {
+            // Tappable profile section
+            Button {
+                navigationPath.append(user)
+            } label: {
+                HStack(spacing: 12) {
+                    ProfilePhotoWithStreak(
+                        photoUrl: user.profilePhotoUrl,
+                        displayName: user.displayName,
+                        streak: user.dailySongStreak,
+                        size: 44,
+                        badgeSize: .small
+                    )
+                    .frame(width: 44, height: 54)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(user.displayName)
+                            .font(.lora(size: 16, weight: .medium))
+                            .foregroundColor(.primary)
+                        if let username = user.username {
+                            Text("@\(username)")
+                                .font(.lora(size: 13))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            // Daily pick status indicator (only show after status is loaded)
+            if !isLoadingDailySongStatus {
+                if dailySongStatus[user.id] == true {
+                    HStack(spacing: 4) {
+                        Text("picked today")
+                            .font(.lora(size: 11))
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12))
+                    }
+                    .foregroundColor(.green)
+                } else {
+                    HStack(spacing: 4) {
+                        Text("no pick yet today")
+                            .font(.lora(size: 11))
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 12))
+                    }
+                    .foregroundColor(.orange)
+                }
+            }
+
+            // Add button
+            if !isPhlockFull {
+                Button {
+                    onMemberAdded(user)
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.green)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text("full")
+                    .font(.lora(size: 12))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .opacity(isPhlockFull ? 0.5 : 1.0)
+    }
+
+    // MARK: - Suggested For You Section
+
+    @ViewBuilder
+    private var suggestedForYouSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("suggested for you")
+                .font(.lora(size: 15, weight: .medium))
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 16)
+                .padding(.top, 24)
+
+            if isLoadingSuggestions {
+                HStack {
+                    ProgressView()
+                    Text("finding people you may know...")
+                        .font(.lora(size: 14))
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 20)
+            } else if suggestedUsers.isEmpty {
+                Text("no suggestions yet")
+                    .font(.lora(size: 14))
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(suggestedUsers) { suggestion in
+                        PhlockSuggestionRow(
+                            suggestion: suggestion,
+                            onFollow: { await followUser(suggestion.user) },
+                            onAddToPhlock: { user in onMemberAdded(user) },
+                            onTap: { navigationPath.append(suggestion.user) },
+                            isPhlockFull: isPhlockFull
+                        )
+
+                        if suggestion.id != suggestedUsers.last?.id {
+                            Divider().padding(.leading, 68)
+                        }
+                    }
+                }
+                .background(Color.gray.opacity(colorScheme == .dark ? 0.15 : 0.06))
+                .cornerRadius(12)
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+
+    // MARK: - Invite Contacts Section
+
+    @ViewBuilder
+    private var inviteContactsSection: some View {
+        let status = ContactsService.shared.authorizationStatus()
+        let hasAccess: Bool = {
+            if status == .authorized { return true }
+            if #available(iOS 18.0, *), status == .limited { return true }
+            return false
+        }()
+
+        if hasAccess && (isLoadingContacts || !invitableContacts.isEmpty) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("invite your contacts")
+                    .font(.lora(size: 15, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 24)
+
+                if isLoadingContacts && invitableContacts.isEmpty {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                        Text("loading your contacts...")
+                            .font(.lora(size: 14))
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(Array(invitableContacts.prefix(10).enumerated()), id: \.element.id) { index, contact in
+                            PhlockInviteRow(
+                                contact: contact,
+                                isInvited: invitedContacts.contains(contact.phone),
+                                onInvite: { inviteTarget = PhlockInviteContactTarget(phone: contact.phone) }
+                            )
+
+                            if index < min(invitableContacts.count, 10) - 1 {
+                                Divider().padding(.leading, 68)
+                            }
+                        }
+                    }
+                    .background(Color.gray.opacity(colorScheme == .dark ? 0.15 : 0.06))
+                    .cornerRadius(12)
+                    .padding(.horizontal, 16)
+                }
+            }
+        }
+    }
+
+    // MARK: - Data Loading
+
+    private func loadAllData() async {
+        // Load following first (needed for daily song status)
+        await loadFollowing()
+
+        // Then load everything else in parallel
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.loadSuggestions() }
+            group.addTask { await self.loadContacts() }
+            group.addTask { await self.loadDailySongStatus() }
+        }
+    }
+
+    private func loadDailySongStatus() async {
+        // Gather all user IDs we need to check (phlock members + following)
+        var userIds = Set(currentPhlockMembers.map { $0.user.id })
+        userIds.formUnion(followingList.map { $0.id })
+
+        guard !userIds.isEmpty else { return }
+
+        // Fetch status in parallel using RPC function (bypasses RLS)
+        var statusUpdates: [(UUID, Bool)] = []
+        await withTaskGroup(of: (UUID, Bool).self) { group in
+            for userId in userIds {
+                group.addTask {
+                    let hasSong = (try? await ShareService.shared.hasDailySongToday(for: userId)) ?? false
+                    return (userId, hasSong)
+                }
+            }
+
+            for await result in group {
+                statusUpdates.append(result)
+            }
+        }
+
+        // Update state on main thread
+        await MainActor.run {
+            for (userId, hasSong) in statusUpdates {
+                dailySongStatus[userId] = hasSong
+            }
+            isLoadingDailySongStatus = false
+            print("🔍 UnifiedPhlockSheet loadDailySongStatus: updated \(statusUpdates.count) statuses")
+        }
+    }
+
+    private func loadFollowing() async {
+        do {
+            followingList = try await FollowService.shared.getFollowing(for: currentUserId)
+        } catch {
+            print("❌ Failed to load following list: \(error)")
+        }
+        isLoading = false
+    }
+
+    private func loadSuggestions() async {
+        guard let currentUser = authState.currentUser else {
+            isLoadingSuggestions = false
             return
         }
 
         do {
-            // Get all friends
-            let allFriends = try await UserService.shared.getFriends(for: userId)
-
-            // Filter out current phlock members
-            let phlockMemberIds = phlockMembers.map { $0.user.id }
-            friends = allFriends.filter { friend in
-                !phlockMemberIds.contains(friend.id)
-            }
-
-            print("✅ Found \(friends.count) friends available to add")
+            suggestedUsers = try await FollowService.shared.getRecommendedFriends(
+                for: currentUser.id,
+                contactMatches: contactMatches
+            )
         } catch {
-            print("❌ Error loading friends: \(error)")
-            friends = []
+            print("Failed to load suggestions: \(error)")
+        }
+        isLoadingSuggestions = false
+    }
+
+    private func loadContacts() async {
+        let status = ContactsService.shared.authorizationStatus()
+        guard status == .authorized else {
+            isLoadingContacts = false
+            return
         }
 
-        isLoading = false
+        isLoadingContacts = true
+        do {
+            contactMatches = try await ContactsService.shared.findPhlockUsersInContacts()
+            let matchedPhones = Set(contactMatches.compactMap { match -> String? in
+                guard let phone = match.user.phone else { return nil }
+                return ContactsService.normalizePhone(phone)
+            })
+            invitableContacts = try await ContactsService.shared.fetchContactsWithFriendCounts(excludingPhones: matchedPhones)
+        } catch {
+            print("Error loading contacts: \(error)")
+        }
+        isLoadingContacts = false
+    }
+
+    private func followUser(_ user: User) async -> Bool {
+        guard let currentUserId = authState.currentUser?.id else { return false }
+        do {
+            try await FollowService.shared.followOrRequest(
+                userId: user.id,
+                currentUserId: currentUserId,
+                targetUser: user
+            )
+            // Return true for public profiles (immediate follow), false for private (pending request)
+            return !user.isPrivate
+        } catch {
+            print("Error following user: \(error)")
+            return false
+        }
+    }
+}
+
+// MARK: - Phlock Suggestion Row
+
+private struct PhlockSuggestionRow: View {
+    let suggestion: RecommendedFriend
+    let onFollow: () async -> Bool
+    let onAddToPhlock: (User) -> Void
+    let onTap: () -> Void
+    let isPhlockFull: Bool
+
+    @State private var buttonState: FollowButtonState = .notFollowing
+
+    enum FollowButtonState {
+        case notFollowing
+        case requested
+        case following
+    }
+
+    private var contextText: String {
+        switch suggestion.context {
+        case .inContacts: return "in your contacts"
+        case .recentActivity: return "recent activity"
+        case .youMayKnow: return "you may know"
+        case .mutualFriends:
+            if let count = suggestion.mutualCount, count > 0 {
+                return "\(count) mutual"
+            }
+            return "mutual friends"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Tappable profile photo
+            Button(action: onTap) {
+                if let photoUrl = suggestion.user.profilePhotoUrl, let url = URL(string: photoUrl) {
+                    AsyncImage(url: url) { image in
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        Circle().fill(Color.gray.opacity(0.3))
+                    }
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
+                } else {
+                    Circle()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Text(suggestion.user.displayName.prefix(1).uppercased())
+                                .font(.lora(size: 18, weight: .semiBold))
+                                .foregroundColor(.gray)
+                        )
+                }
+            }
+            .buttonStyle(.plain)
+
+            // Tappable name/username
+            Button(action: onTap) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(suggestion.user.displayName)
+                        .font(.lora(size: 16, weight: .medium))
+                        .foregroundColor(.primary)
+
+                    Text(contextText)
+                        .font(.lora(size: 13))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            // Dynamic button based on state
+            switch buttonState {
+            case .notFollowing:
+                Button {
+                    Task {
+                        let isImmediate = await onFollow()
+                        withAnimation(.spring(response: 0.3)) {
+                            buttonState = isImmediate ? .following : .requested
+                        }
+                    }
+                } label: {
+                    Text("follow")
+                        .font(.lora(size: 14, weight: .semiBold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.black)
+                        .cornerRadius(8)
+                }
+
+            case .requested:
+                Text("requested")
+                    .font(.lora(size: 14, weight: .semiBold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.gray.opacity(0.2))
+                    .cornerRadius(8)
+
+            case .following:
+                if !isPhlockFull {
+                    Button {
+                        onAddToPhlock(suggestion.user)
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.system(size: 22))
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text("full")
+                        .font(.lora(size: 12))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+}
+
+// MARK: - Phlock Invite Row
+
+private struct PhlockInviteRow: View {
+    let contact: InvitableContact
+    let isInvited: Bool
+    let onInvite: () -> Void
+
+    private var avatarColor: Color {
+        let colors: [Color] = [.orange, .green, .blue, .purple, .pink, .red, .teal, .indigo]
+        return colors[abs(contact.phone.hashValue) % colors.count]
+    }
+
+    private var initials: String {
+        let parts = contact.name.split(separator: " ")
+        if parts.count >= 2 {
+            return String(parts[0].prefix(1) + parts[1].prefix(1)).uppercased()
+        }
+        return String(contact.name.prefix(2)).uppercased()
+    }
+
+    private var contextText: String {
+        if contact.friendCount > 0 {
+            return contact.friendCount == 1 ? "1 friend on phlock" : "\(contact.friendCount) friends on phlock"
+        }
+        return "not on phlock yet"
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Avatar
+            if let imageData = contact.imageData, let uiImage = UIImage(data: imageData) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
+            } else {
+                Circle()
+                    .fill(avatarColor)
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Text(initials)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                    )
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(contact.name)
+                    .font(.lora(size: 16, weight: .medium))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+
+                Text(contextText)
+                    .font(.lora(size: 13))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            // Invite button
+            Button(action: onInvite) {
+                Text(isInvited ? "invited" : "invite")
+                    .font(.lora(size: 14, weight: .semiBold))
+                    .foregroundColor(isInvited ? .secondary : .white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(isInvited ? Color.gray.opacity(0.2) : Color.black)
+                    .cornerRadius(8)
+            }
+            .disabled(isInvited)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+}
+
+// MARK: - Phlock Message Compose View
+
+struct PhlockMessageComposeView: UIViewControllerRepresentable {
+    let recipients: [String]
+    let body: String
+    let onFinished: (MessageComposeResult) -> Void
+
+    func makeUIViewController(context: Context) -> MFMessageComposeViewController {
+        let controller = MFMessageComposeViewController()
+        controller.recipients = recipients
+        controller.body = body
+        controller.messageComposeDelegate = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: MFMessageComposeViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onFinished: onFinished)
+    }
+
+    class Coordinator: NSObject, MFMessageComposeViewControllerDelegate {
+        let onFinished: (MessageComposeResult) -> Void
+
+        init(onFinished: @escaping (MessageComposeResult) -> Void) {
+            self.onFinished = onFinished
+        }
+
+        func messageComposeViewController(_ controller: MFMessageComposeViewController, didFinishWith result: MessageComposeResult) {
+            controller.dismiss(animated: true) {
+                self.onFinished(result)
+            }
+        }
     }
 }

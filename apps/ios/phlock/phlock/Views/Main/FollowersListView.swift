@@ -100,6 +100,7 @@ struct FollowersListView: View {
             NavigationStack {
                 UserProfileView(user: user)
                     .environmentObject(authState)
+                    .environmentObject(PlaybackService.shared)
             }
         }
         .task {
