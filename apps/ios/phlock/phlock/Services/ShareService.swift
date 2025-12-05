@@ -18,19 +18,19 @@ class ShareService {
         print("🔍 Validating track: '\(track.name)' by \(track.artistName ?? "Unknown")")
 
         do {
-            struct ValidationRequest: Encodable {
+            struct ValidationRequest: Encodable, @unchecked Sendable {
                 let trackId: String?
                 let trackName: String
                 let artistName: String
             }
 
-            struct ValidationResponse: Decodable {
+            struct ValidationResponse: Decodable, @unchecked Sendable {
                 let success: Bool
                 let method: String?
                 let track: ValidatedTrack?
                 let error: String?
 
-                struct ValidatedTrack: Decodable {
+                struct ValidatedTrack: Decodable, @unchecked Sendable {
                     let id: String
                     let name: String
                     let artistName: String
@@ -103,7 +103,7 @@ class ShareService {
         var shareIds: [UUID] = []
 
         for recipientId in recipients {
-            struct ShareInsert: Encodable {
+            struct ShareInsert: Encodable, @unchecked Sendable {
                 let sender_id: String
                 let recipient_id: String
                 let track_id: String
@@ -333,15 +333,11 @@ class ShareService {
     ///   - shareId: The share's ID
     ///   - userId: The user who unsaved it
     func markAsUnsaved(shareId: UUID, userId: UUID) async throws {
-        struct UnsaveUpdate: Encodable {
-            let status: String
-            let saved_at: String?
-        }
-
-        let update = UnsaveUpdate(
-            status: ShareStatus.played.rawValue,
-            saved_at: nil
-        )
+        // Use AnyJSON to properly encode null for saved_at
+        let update: [String: AnyJSON] = [
+            "status": .string(ShareStatus.played.rawValue),
+            "saved_at": .null
+        ]
 
         try await supabase
             .from("shares")
@@ -538,14 +534,14 @@ class ShareService {
             throw ShareServiceError.commentTooLong
         }
 
-        struct CommentInsert: Encodable {
+        struct CommentInsert: Encodable, @unchecked Sendable {
             let share_id: String
             let user_id: String
             let comment_text: String
             let parent_comment_id: String?
         }
 
-        struct CommentResponse: Decodable {
+        struct CommentResponse: Decodable, @unchecked Sendable {
             let id: UUID
         }
 
@@ -690,7 +686,7 @@ class ShareService {
         let validatedTrack = try await validateTrackMetadata(track)
 
         // Create a self-share with is_daily_song = true
-        struct DailySongInsert: Encodable {
+        struct DailySongInsert: Encodable, @unchecked Sendable {
             let sender_id: String
             let recipient_id: String
             let track_id: String
@@ -781,7 +777,7 @@ class ShareService {
     private func checkAndNotifyStreakMilestone(userId: UUID) async {
         do {
             // Fetch user's current streak from the database
-            struct UserStreak: Decodable {
+            struct UserStreak: Decodable, @unchecked Sendable {
                 let dailySongStreak: Int?
 
                 enum CodingKeys: String, CodingKey {

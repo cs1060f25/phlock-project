@@ -114,7 +114,13 @@ struct DiscoverView: View {
                             .autocorrectionDisabled()
                             .focused($isSearchFieldFocused)
                             .onChange(of: searchText) { newValue in
-                                performDebouncedSearch()
+                                if newValue.isEmpty {
+                                    // Clear search results when text is empty to return to browse view
+                                    searchResults = nil
+                                    searchTask?.cancel()
+                                } else {
+                                    performDebouncedSearch()
+                                }
                             }
                             .onSubmit {
                                 isSearchFieldFocused = false

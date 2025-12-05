@@ -3,7 +3,7 @@ import Foundation
 /// Represents a unilateral follow relationship
 /// follower_id follows following_id (no reciprocation required)
 /// Maps to the 'follows' table in Supabase
-struct Follow: Codable, Identifiable {
+struct Follow: Codable, Identifiable, @unchecked Sendable {
     let id: UUID
     let followerId: UUID
     let followingId: UUID
@@ -26,14 +26,14 @@ struct Follow: Codable, Identifiable {
 }
 
 /// Follow with the user data of who is being followed
-struct FollowWithUser: Identifiable {
+struct FollowWithUser: Identifiable, @unchecked Sendable {
     let id: UUID
     let follow: Follow
     let user: User  // The user being followed (for following list) or the follower (for followers list)
 }
 
 /// Follow with position info for phlock display
-struct FollowWithPosition: Identifiable {
+struct FollowWithPosition: Identifiable, @unchecked Sendable {
     var id: UUID { user.id }
     let user: User
     let position: Int
@@ -76,7 +76,7 @@ enum FollowRequestStatus: String, Codable {
 
 /// Represents a follow request for a private profile
 /// Maps to the 'follow_requests' table in Supabase
-struct FollowRequest: Codable, Identifiable {
+struct FollowRequest: Codable, Identifiable, @unchecked Sendable {
     let id: UUID
     let requesterId: UUID
     let targetId: UUID
@@ -95,7 +95,7 @@ struct FollowRequest: Codable, Identifiable {
 }
 
 /// Follow request with requester user data (for displaying incoming requests)
-struct FollowRequestWithUser: Identifiable {
+struct FollowRequestWithUser: Identifiable, @unchecked Sendable {
     let id: UUID
     let request: FollowRequest
     let user: User  // The user who sent the request

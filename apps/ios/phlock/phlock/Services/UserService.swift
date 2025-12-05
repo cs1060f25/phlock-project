@@ -320,7 +320,7 @@ class UserService {
         // Note: We can't unfollow on their behalf, but blocking will prevent interactions
 
         // 2. Add to blocked_users table
-        struct BlockInsert: Encodable {
+        struct BlockInsert: Encodable, @unchecked Sendable {
             let blocker_id: String
             let blocked_id: String
         }
@@ -341,7 +341,7 @@ class UserService {
 
     /// Report a user
     func reportUser(userId: UUID, reporterId: UUID, reason: String) async throws {
-        struct ReportInsert: Encodable {
+        struct ReportInsert: Encodable, @unchecked Sendable {
             let reporter_id: String
             let reported_id: String
             let reason: String
@@ -365,7 +365,7 @@ class UserService {
 // MARK: - Helper Structures
 
 /// Represents a scheduled swap
-struct ScheduledSwap: Decodable {
+struct ScheduledSwap: Decodable, @unchecked Sendable {
     let id: UUID
     let userId: UUID
     let oldMemberId: UUID

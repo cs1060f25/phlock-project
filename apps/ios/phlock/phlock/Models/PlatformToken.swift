@@ -3,7 +3,7 @@ import Combine
 
 /// Represents OAuth tokens for music platform APIs
 /// Maps to the 'platform_tokens' table in Supabase
-struct PlatformToken: Codable, Identifiable {
+struct PlatformToken: Codable, Identifiable, @unchecked Sendable {
     let id: UUID
     let userId: UUID
     let platformType: PlatformType

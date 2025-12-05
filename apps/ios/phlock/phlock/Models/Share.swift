@@ -3,7 +3,7 @@ import Foundation
 /// Represents a music share transaction between two users
 /// Maps to the 'shares' table in Supabase
 /// Extended to support daily song curation
-struct Share: Codable, Identifiable {
+struct Share: Codable, Identifiable, @unchecked Sendable {
     let id: UUID
     let senderId: UUID
     let recipientId: UUID

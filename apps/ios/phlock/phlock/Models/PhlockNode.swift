@@ -2,7 +2,7 @@ import Foundation
 
 /// Represents a single node in the phlock network visualization
 /// Maps to the 'phlock_nodes' table in Supabase
-struct PhlockNode: Codable, Identifiable {
+struct PhlockNode: Codable, Identifiable, @unchecked Sendable {
     let id: UUID
     let phlockId: UUID
     let shareId: UUID?
@@ -36,13 +36,13 @@ struct PhlockNode: Codable, Identifiable {
 
 /// Complete data structure for D3.js visualization
 /// This is what gets passed to the WebView as JSON
-struct PhlockVisualizationData: Codable {
+struct PhlockVisualizationData: Codable, @unchecked Sendable {
     let phlock: PhlockBasicInfo
     let nodes: [VisualizationNode]
     let links: [VisualizationLink]
     let metrics: PhlockMetrics
 
-    struct PhlockBasicInfo: Codable {
+    struct PhlockBasicInfo: Codable, @unchecked Sendable {
         let id: String
         let trackName: String
         let artistName: String
@@ -51,7 +51,7 @@ struct PhlockVisualizationData: Codable {
 }
 
 /// A node in the D3 force-directed graph
-struct VisualizationNode: Codable {
+struct VisualizationNode: Codable, @unchecked Sendable {
     let id: String  // UUID as string
     let userId: String
     let name: String
@@ -76,14 +76,14 @@ struct VisualizationNode: Codable {
 }
 
 /// A link/edge between nodes in the graph
-struct VisualizationLink: Codable {
+struct VisualizationLink: Codable, @unchecked Sendable {
     let source: String  // Node ID
     let target: String  // Node ID
     let timestamp: String  // ISO8601 date string
 }
 
 /// Calculated metrics for the phlock
-struct PhlockMetrics: Codable {
+struct PhlockMetrics: Codable, @unchecked Sendable {
     let totalReach: Int
     let generations: Int
     let saveRate: Double
@@ -102,7 +102,7 @@ struct PhlockMetrics: Codable {
 // MARK: - Preview Data for Gallery Cards
 
 /// Simplified phlock data for displaying in the gallery view
-struct PhlockPreview: Identifiable {
+struct PhlockPreview: Identifiable, @unchecked Sendable {
     let id: UUID
     let trackName: String
     let artistName: String

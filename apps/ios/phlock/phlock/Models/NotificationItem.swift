@@ -1,7 +1,7 @@
 import Foundation
 
 /// Supported notification types for the app
-enum NotificationType: String, Codable {
+enum NotificationType: String, Codable, Sendable {
     case dailyNudge = "daily_nudge"
     case newFollower = "new_follower"
     case followRequestReceived = "follow_request_received"
@@ -14,7 +14,7 @@ enum NotificationType: String, Codable {
 }
 
 /// Lightweight notification model rendered in the Notifications tab
-struct NotificationItem: Identifiable {
+struct NotificationItem: Identifiable, @unchecked Sendable {
     let id: UUID
     let type: NotificationType
     let actors: [User]

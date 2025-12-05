@@ -781,13 +781,9 @@ struct PhlockView: View {
                 await MainActor.run {
                     self.dailySongs = songs
 
-                    // Preserve existing saved state for tracks still in playlist
-                    // Only use database savedAt for tracks we don't already have state for
-                    let currentTrackIds = Set(songs.map { $0.trackId })
-                    let preservedSavedIds = self.playbackService.savedTrackIds.intersection(currentTrackIds)
-                    let newTrackIds = currentTrackIds.subtracting(self.playbackService.savedTrackIds)
-                    let newSavedFromDb = Set(songs.filter { newTrackIds.contains($0.trackId) && $0.savedAt != nil }.map { $0.trackId })
-                    self.playbackService.savedTrackIds = preservedSavedIds.union(newSavedFromDb)
+                    // Use database savedAt as initial state
+                    // checkSpotifyLibraryStatus will override with actual Spotify state
+                    self.playbackService.savedTrackIds = Set(songs.compactMap { $0.savedAt != nil ? $0.trackId : nil })
 
                     // If no songs today, just show waiting state (no demo data)
                     if songs.isEmpty {

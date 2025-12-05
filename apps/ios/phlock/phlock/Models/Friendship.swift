@@ -2,7 +2,7 @@ import Foundation
 
 /// Represents a friendship/friend request between two users
 /// Maps to the 'friendships' table in Supabase
-struct Friendship: Codable, Identifiable {
+struct Friendship: Codable, Identifiable, @unchecked Sendable {
     let id: UUID
     let userId1: UUID
     let userId2: UUID
@@ -72,14 +72,14 @@ struct Friendship: Codable, Identifiable {
     }
 }
 
-enum FriendshipStatus: String, Codable {
+enum FriendshipStatus: String, Codable, Sendable {
     case pending
     case accepted
     case blocked
 }
 
 /// Enriched friendship with user data
-struct FriendshipWithUser: Identifiable {
+struct FriendshipWithUser: Identifiable, @unchecked Sendable {
     let id: UUID
     let friendship: Friendship
     let user: User

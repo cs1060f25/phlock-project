@@ -97,7 +97,7 @@ class FollowService {
         }
 
         // Create follow relationship
-        struct FollowInsert: Encodable {
+        struct FollowInsert: Encodable, @unchecked Sendable {
             let follower_id: String
             let following_id: String
         }
@@ -145,7 +145,7 @@ class FollowService {
         }
 
         // Create follow relationship with phlock position 1
-        struct FollowInsert: Encodable {
+        struct FollowInsert: Encodable, @unchecked Sendable {
             let follower_id: String
             let following_id: String
             let is_in_phlock: Bool
@@ -167,7 +167,7 @@ class FollowService {
             .execute()
 
         // Add to phlock_history for reach tracking (ignore conflict if already exists)
-        struct PhlockHistoryInsert: Encodable {
+        struct PhlockHistoryInsert: Encodable, @unchecked Sendable {
             let phlock_owner_id: String
             let phlock_member_id: String
             let first_added_at: String
@@ -425,7 +425,7 @@ class FollowService {
         }
 
         // Update the follow to add to phlock
-        struct PhlockUpdate: Encodable {
+        struct PhlockUpdate: Encodable, @unchecked Sendable {
             let is_in_phlock: Bool
             let phlock_position: Int
             let phlock_added_at: String
@@ -482,7 +482,7 @@ class FollowService {
         for (index, userId) in userIds.enumerated() {
             let position = index + 1
             if let follow = try await getFollow(followerId: currentUserId, followingId: userId) {
-                struct PhlockUpdate: Encodable {
+                struct PhlockUpdate: Encodable, @unchecked Sendable {
                     let is_in_phlock: Bool
                     let phlock_position: Int
                     let phlock_added_at: String
@@ -531,7 +531,7 @@ class FollowService {
             throw FollowServiceError.schedulingFailed
         }
 
-        struct ScheduledSwapInsert: Encodable {
+        struct ScheduledSwapInsert: Encodable, @unchecked Sendable {
             let user_id: String
             let old_member_id: String
             let new_member_id: String
@@ -571,7 +571,7 @@ class FollowService {
             throw FollowServiceError.schedulingFailed
         }
 
-        struct ScheduledRemovalInsert: Encodable {
+        struct ScheduledRemovalInsert: Encodable, @unchecked Sendable {
             let user_id: String
             let old_member_id: String
             let new_member_id: String?
@@ -595,7 +595,7 @@ class FollowService {
 
     /// Cancel a scheduled removal for a phlock member
     func cancelScheduledRemoval(userId: UUID, currentUserId: UUID) async throws {
-        struct StatusUpdate: Encodable {
+        struct StatusUpdate: Encodable, @unchecked Sendable {
             let status: String
             let updated_at: String
         }
@@ -617,7 +617,7 @@ class FollowService {
 
     /// Get all pending scheduled removals for a user (member IDs scheduled to be removed)
     func getScheduledRemovals(for userId: UUID) async throws -> Set<UUID> {
-        struct ScheduledRemoval: Decodable {
+        struct ScheduledRemoval: Decodable, @unchecked Sendable {
             let old_member_id: String
         }
 
@@ -699,7 +699,7 @@ class FollowService {
             throw FollowServiceError.requestAlreadyExists
         }
 
-        struct FollowRequestInsert: Encodable {
+        struct FollowRequestInsert: Encodable, @unchecked Sendable {
             let requester_id: String
             let target_id: String
         }
@@ -779,7 +779,7 @@ class FollowService {
 
     /// Reject a follow request
     func rejectFollowRequest(requestId: UUID) async throws {
-        struct StatusUpdate: Encodable {
+        struct StatusUpdate: Encodable, @unchecked Sendable {
             let status: String
             let responded_at: String
         }

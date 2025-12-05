@@ -2,7 +2,7 @@ import Foundation
 
 /// Represents a phlock - a network visualization of how a song spreads through your social network
 /// Maps to the 'phlocks' table in Supabase
-struct Phlock: Codable, Identifiable {
+struct Phlock: Codable, Identifiable, @unchecked Sendable {
     let id: UUID
     let originShareId: UUID?  // Optional because we may create phlocks without a share (for demos/testing)
     let createdBy: UUID

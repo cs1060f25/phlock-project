@@ -761,7 +761,14 @@ struct PhlockCarouselView: View {
         }
         .onAppear {
             // DEBUG: Track when onAppear is called
-            print("🔄 PhlockCarouselView.onAppear called - hasInitialized=\(hasInitialized) currentIndex=\(currentIndex)")
+            print("🔄 PhlockCarouselView.onAppear called - hasInitialized=\(hasInitialized) currentIndex=\(currentIndex) isUserDrivenChange=\(isUserDrivenChange)")
+
+            // CRITICAL: Skip restoration if user is actively navigating
+            // This prevents the view recreation from overriding user's tap navigation
+            if isUserDrivenChange || isHandlingCardChange {
+                print("🔄 Skipping onAppear logic - user navigation in progress")
+                return
+            }
 
             // Initialize lastQueueIndex to current queue position for reliable wrap detection
             lastQueueIndex = playbackService.currentQueueIndex
@@ -940,8 +947,12 @@ struct PhlockCarouselView: View {
         }
 
         // Mark that we're handling a card change to prevent queue listener from interfering
-        isHandlingCardChange = true
-        print("🔒 isHandlingCardChange = true")
+        // Only set if not already set (user-driven change sets it with longer timeout)
+        let wasAlreadyHandling = isHandlingCardChange
+        if !wasAlreadyHandling {
+            isHandlingCardChange = true
+            print("🔒 isHandlingCardChange = true (from handleCardChange)")
+        }
 
         // Perform non-blocking operations asynchronously
         Task { @MainActor in
@@ -962,10 +973,12 @@ struct PhlockCarouselView: View {
             // Haptic feedback
             impact.impactOccurred()
 
-            // Reset flag after a delay to allow queue changes to settle
-            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms delay
-            isHandlingCardChange = false
-            print("🔓 isHandlingCardChange = false")
+            // Only reset flag if we were the ones who set it (not user-driven change)
+            if !wasAlreadyHandling {
+                try? await Task.sleep(nanoseconds: 300_000_000) // 300ms delay
+                isHandlingCardChange = false
+                print("🔓 isHandlingCardChange = false (from handleCardChange)")
+            }
         }
     }
 }

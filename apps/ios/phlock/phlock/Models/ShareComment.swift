@@ -2,7 +2,7 @@ import Foundation
 
 /// Represents a comment on a shared song
 /// Enables tweet-sized threads (max 280 characters) on shares for conversation
-struct ShareComment: Codable, Identifiable {
+struct ShareComment: Codable, Identifiable, @unchecked Sendable {
     let id: UUID
     let shareId: UUID
     let userId: UUID
