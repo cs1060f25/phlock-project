@@ -365,7 +365,9 @@ class UserService {
 
     /// Update user's platform data (topArtists and topTracks)
     /// Used for manual selection of favorite artists and tracks
-    func updatePlatformData(userId: UUID, topArtists: [MusicItem]?, topTracks: [MusicItem]?) async throws {
+    /// Returns the updated user with the new platform data
+    @discardableResult
+    func updatePlatformData(userId: UUID, topArtists: [MusicItem]?, topTracks: [MusicItem]?) async throws -> User {
         // Fetch current platform data to preserve other fields
         guard let user = try await getUser(userId: userId, bypassCache: true) else {
             throw UserServiceError.userNotFound
@@ -408,6 +410,32 @@ class UserService {
         userCache.removeValue(forKey: userId)
 
         print("✅ Platform data updated for user: \(userId)")
+
+        // Return the updated user with the new platform data (construct locally to avoid refetch race condition)
+        return User(
+            id: user.id,
+            displayName: user.displayName,
+            profilePhotoUrl: user.profilePhotoUrl,
+            bio: user.bio,
+            email: user.email,
+            phone: user.phone,
+            platformType: user.platformType,
+            platformUserId: user.platformUserId,
+            platformData: updatedData,
+            privacyWhoCanSend: user.privacyWhoCanSend,
+            createdAt: user.createdAt,
+            updatedAt: Date(),
+            authUserId: user.authUserId,
+            authProvider: user.authProvider,
+            musicPlatform: user.musicPlatform,
+            spotifyUserId: user.spotifyUserId,
+            appleUserId: user.appleUserId,
+            username: user.username,
+            phlockCount: user.phlockCount,
+            dailySongStreak: user.dailySongStreak,
+            lastDailySongDate: user.lastDailySongDate,
+            isPrivate: user.isPrivate
+        )
     }
 }
 

@@ -589,7 +589,14 @@ class AuthServiceV2 {
             )
         }
 
-        print("🔄 Updating platform_data with \(newTopTracks.count) tracks and \(newTopArtists.count) artists")
+        // Preserve manually selected topArtists/topTracks if they exist
+        // Only update recentlyPlayed from Spotify API
+        let existingTopArtists = platformData.topArtists
+        let existingTopTracks = platformData.topTracks
+        let hasManualArtists = existingTopArtists != nil && !existingTopArtists!.isEmpty
+        let hasManualTracks = existingTopTracks != nil && !existingTopTracks!.isEmpty
+
+        print("🔄 Updating platform_data - preserving manual selections: artists=\(hasManualArtists), tracks=\(hasManualTracks)")
 
         let updatedData = PlatformUserData(
             spotifyEmail: platformData.spotifyEmail,
@@ -599,8 +606,8 @@ class AuthServiceV2 {
             spotifyProduct: platformData.spotifyProduct,
             appleMusicUserId: platformData.appleMusicUserId,
             appleMusicStorefront: platformData.appleMusicStorefront,
-            topArtists: Array(newTopArtists),
-            topTracks: Array(newTopTracks),
+            topArtists: hasManualArtists ? existingTopArtists : Array(newTopArtists),
+            topTracks: hasManualTracks ? existingTopTracks : Array(newTopTracks),
             recentlyPlayed: Array(newTopTracks),
             playlists: platformData.playlists
         )
@@ -697,7 +704,14 @@ class AuthServiceV2 {
             )
         }
 
-        print("🔄 Updating platform_data with \(newTopTracks.count) tracks and \(newTopArtists.count) artists")
+        // Preserve manually selected topArtists/topTracks if they exist
+        // Only update recentlyPlayed from Apple Music API
+        let existingTopArtists = platformData.topArtists
+        let existingTopTracks = platformData.topTracks
+        let hasManualArtists = existingTopArtists != nil && !existingTopArtists!.isEmpty
+        let hasManualTracks = existingTopTracks != nil && !existingTopTracks!.isEmpty
+
+        print("🔄 Updating platform_data - preserving manual selections: artists=\(hasManualArtists), tracks=\(hasManualTracks)")
 
         let updatedData = PlatformUserData(
             spotifyEmail: platformData.spotifyEmail,
@@ -707,8 +721,8 @@ class AuthServiceV2 {
             spotifyProduct: platformData.spotifyProduct,
             appleMusicUserId: platformData.appleMusicUserId,
             appleMusicStorefront: platformData.appleMusicStorefront,
-            topArtists: Array(newTopArtists),
-            topTracks: Array(newTopTracks),
+            topArtists: hasManualArtists ? existingTopArtists : Array(newTopArtists),
+            topTracks: hasManualTracks ? existingTopTracks : Array(newTopTracks),
             recentlyPlayed: Array(newTopTracks),
             playlists: platformData.playlists
         )

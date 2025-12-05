@@ -52,8 +52,8 @@ struct ProfileView: View {
     // Favorite Artist/Track Picker
     @State private var showFavoritePicker = false
     @State private var favoritePickerType: FavoriteType = .artist
-    @State private var favoritePickerPosition: Int = 0
     @State private var isSavingFavorite = false
+    @State private var musicStatsRefreshId = 0
     // Historical reach: unique users who have EVER had this user in their phlock
     @State private var historicalReachCount: Int = 0
 
@@ -303,18 +303,17 @@ struct ProfileView: View {
                         EditableMusicStatsSection(
                             user: refreshedUser ?? user,
                             isCurrentUser: true,
-                            onSelectArtist: { position in
+                            onEditArtists: {
                                 favoritePickerType = .artist
-                                favoritePickerPosition = position
                                 showFavoritePicker = true
                             },
-                            onSelectTrack: { position in
+                            onEditTracks: {
                                 favoritePickerType = .track
-                                favoritePickerPosition = position
                                 showFavoritePicker = true
                             }
                         )
                         .environmentObject(playbackService)
+                        .id("musicStats-\(musicStatsRefreshId)")
 
 
 
@@ -479,11 +478,16 @@ struct ProfileView: View {
             ImagePicker(image: $selectedProfileImage, imageData: $selectedProfileImageData)
         }
         .sheet(isPresented: $showFavoritePicker) {
-            FavoritePickerSheet(favoriteType: favoritePickerType) { selectedItem in
-                Task {
-                    await saveFavoriteSelection(selectedItem, at: favoritePickerPosition)
+            FavoritePickerSheet(
+                favoriteType: favoritePickerType,
+                existingItems: getExistingItemsForPicker()
+            ) { selectedItems in
+                Task { @MainActor in
+                    print("🎵 FavoritePickerSheet callback - saving \(selectedItems.count) items")
+                    await saveFavoriteSelections(selectedItems)
                 }
             }
+            .environmentObject(authState)
         }
         .confirmationDialog(
             "How would you like to provide feedback?",
@@ -514,17 +518,10 @@ struct ProfileView: View {
             }
         }
         .task(id: authState.currentUser?.id) {
-            // Re-run whenever the current user changes (including from nil to a value)
+            // Load data when the current user changes (including from nil to a value)
+            // This handles initial load and user switches
             if let user = authState.currentUser {
                 await loadData(for: user)
-            }
-        }
-        .onAppear {
-            // Refresh data every time the view appears (e.g., when navigating back from another profile)
-            Task {
-                if let user = authState.currentUser {
-                    await loadData(for: user)
-                }
             }
         }
     }
@@ -568,7 +565,7 @@ struct ProfileView: View {
             async let todaysPickTask = ShareService.shared.getTodaysDailySong(for: user.id)
             async let pastPicksTask = ShareService.shared.getDailySongHistory(for: user.id)
             async let phlockTask = UserService.shared.getPhlockMembers(for: user.id)
-            async let freshUserTask = UserService.shared.getUser(userId: user.id)
+            async let freshUserTask = UserService.shared.getUser(userId: user.id, bypassCache: true)
 
             let (today, past, phlock, freshUser) = try await (
                 todaysPickTask,
@@ -726,70 +723,61 @@ struct ProfileView: View {
         }
     }
 
-    private func saveFavoriteSelection(_ item: MusicItem, at position: Int) async {
-        guard let userId = authState.currentUser?.id else { return }
+    /// Get existing items for the current picker type (limited to 6 for display)
+    private func getExistingItemsForPicker() -> [MusicItem] {
+        let user = refreshedUser ?? authState.currentUser
+        guard let platformData = user?.platformData else { return [] }
+
+        switch favoritePickerType {
+        case .artist:
+            let artists = platformData.topArtists?.filter { !$0.id.isEmpty } ?? []
+            return Array(artists.prefix(6))
+        case .track:
+            let tracks = platformData.topTracks?.filter { !$0.id.isEmpty } ?? []
+            return Array(tracks.prefix(6))
+        }
+    }
+
+    /// Save all selected favorites (replaces the entire list)
+    @MainActor
+    private func saveFavoriteSelections(_ items: [MusicItem]) async {
+        guard let userId = authState.currentUser?.id else {
+            print("❌ No user ID found for saving favorites")
+            return
+        }
+
+        print("🎵 saveFavoriteSelections called with \(items.count) items for type: \(favoritePickerType)")
 
         isSavingFavorite = true
         defer { isSavingFavorite = false }
 
         do {
-            // Get current platform data
-            let currentData = authState.currentUser?.platformData
-
+            let updatedUser: User
             if favoritePickerType == .artist {
-                // Update artists
-                var updatedArtists = currentData?.topArtists ?? []
-
-                // Ensure we have 6 slots
-                while updatedArtists.count < 6 {
-                    updatedArtists.append(MusicItem(id: "", name: ""))
-                }
-
-                // Replace at position (0-indexed)
-                if position < updatedArtists.count {
-                    updatedArtists[position] = item
-                }
-
-                // Filter out empty placeholders for storage
-                let filteredArtists = updatedArtists.filter { !$0.id.isEmpty }
-
-                try await UserService.shared.updatePlatformData(
+                updatedUser = try await UserService.shared.updatePlatformData(
                     userId: userId,
-                    topArtists: filteredArtists,
+                    topArtists: items,
                     topTracks: nil
                 )
+                print("✅ Saved \(items.count) artists: \(items.map { $0.name }.joined(separator: ", "))")
             } else {
-                // Update tracks
-                var updatedTracks = currentData?.topTracks ?? []
-
-                // Ensure we have 6 slots
-                while updatedTracks.count < 6 {
-                    updatedTracks.append(MusicItem(id: "", name: ""))
-                }
-
-                // Replace at position (0-indexed)
-                if position < updatedTracks.count {
-                    updatedTracks[position] = item
-                }
-
-                // Filter out empty placeholders for storage
-                let filteredTracks = updatedTracks.filter { !$0.id.isEmpty }
-
-                try await UserService.shared.updatePlatformData(
+                updatedUser = try await UserService.shared.updatePlatformData(
                     userId: userId,
                     topArtists: nil,
-                    topTracks: filteredTracks
+                    topTracks: items
                 )
+                print("✅ Saved \(items.count) tracks: \(items.map { $0.name }.joined(separator: ", "))")
             }
 
-            // Refresh user data to show update
-            if let updatedUser = try await UserService.shared.getUser(userId: userId, bypassCache: true) {
-                refreshedUser = updatedUser
-            }
-
-            print("✅ Saved \(favoritePickerType == .artist ? "artist" : "track"): \(item.name) at position \(position)")
+            // Use the returned updated user directly (avoids refetch race condition)
+            print("✅ Got updated user - topArtists: \(updatedUser.platformData?.topArtists?.count ?? 0), topTracks: \(updatedUser.platformData?.topTracks?.count ?? 0)")
+            print("   Artists: \(updatedUser.platformData?.topArtists?.map { $0.name }.joined(separator: ", ") ?? "none")")
+            refreshedUser = updatedUser
+            authState.currentUser = updatedUser
+            musicStatsRefreshId += 1
+            print("✅ Updated refreshedUser and authState.currentUser, refreshId=\(musicStatsRefreshId)")
         } catch {
-            print("❌ Failed to save favorite: \(error)")
+            print("❌ Failed to save favorites: \(error)")
         }
     }
 }
@@ -1386,8 +1374,8 @@ struct GenreBreakdownCard: View {
 struct EditableMusicStatsSection: View {
     let user: User
     let isCurrentUser: Bool
-    let onSelectArtist: (Int) -> Void
-    let onSelectTrack: (Int) -> Void
+    let onEditArtists: () -> Void
+    let onEditTracks: () -> Void
 
     @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject var playbackService: PlaybackService
@@ -1436,13 +1424,13 @@ struct EditableMusicStatsSection: View {
                             EditableTrackCell(
                                 item: item,
                                 isEditable: isCurrentUser,
-                                onTap: { onSelectTrack(slot.index) }
+                                onTap: onEditTracks
                             )
                             .environmentObject(playbackService)
                         } else if isCurrentUser {
                             // Empty slot for current user - show placeholder
                             EmptyFavoriteSlot(type: .track) {
-                                onSelectTrack(slot.index)
+                                onEditTracks()
                             }
                         }
                     }
@@ -1463,12 +1451,12 @@ struct EditableMusicStatsSection: View {
                             EditableArtistCell(
                                 item: item,
                                 isEditable: isCurrentUser,
-                                onTap: { onSelectArtist(slot.index) }
+                                onTap: onEditArtists
                             )
                         } else if isCurrentUser {
                             // Empty slot for current user - show placeholder
                             EmptyFavoriteSlot(type: .artist) {
-                                onSelectArtist(slot.index)
+                                onEditArtists()
                             }
                         }
                     }

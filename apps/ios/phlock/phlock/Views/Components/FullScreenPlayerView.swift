@@ -101,17 +101,10 @@ struct FullScreenPlayerView: View {
                         let dismissThreshold: CGFloat = 150
 
                         if gesture.translation.height > dismissThreshold {
-                            // Animate dismissal
-                            withAnimation(.easeOut(duration: 0.25)) {
-                                dragOffset = UIScreen.main.bounds.height
-                            }
-
-                            // Dismiss after animation
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                                isPresented = false
-                                dragOffset = 0 // Reset for next time
-                                activeGesture = .none
-                            }
+                            // Dismiss - keep dragOffset where it is so view doesn't snap back
+                            // fullScreenCover will handle the dismissal animation
+                            activeGesture = .none
+                            isPresented = false
                         } else {
                             // Spring back to original position
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -126,6 +119,8 @@ struct FullScreenPlayerView: View {
         )
         .toast(isPresented: $showToast, message: toastMessage, type: .success, duration: 3.0)
         .onAppear {
+            // Reset drag offset for fresh presentation
+            dragOffset = 0
             refreshSavedState()
             displayedTrack = playbackService.currentTrack
         }

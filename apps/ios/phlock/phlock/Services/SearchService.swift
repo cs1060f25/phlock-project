@@ -185,6 +185,58 @@ class SearchService {
         }
     }
 
+    // MARK: - Browse Artists by Genre
+
+    /// Browse popular artists by genre using Spotify's genre-based search
+    /// Returns artists sorted by popularity
+    func browseArtistsByGenre(genre: String, limit: Int = 20) async throws -> [MusicItem] {
+        struct BrowseRequest: Encodable {
+            let genre: String
+            let limit: Int
+        }
+
+        struct BrowseResponse: Decodable {
+            let genre: String
+            let artists: [GenreArtist]
+        }
+
+        struct GenreArtist: Decodable {
+            let id: String
+            let name: String
+            let imageUrl: String?
+            let popularity: Int?
+            let followerCount: Int?
+            let genres: [String]?
+        }
+
+        let request = BrowseRequest(genre: genre, limit: limit)
+        print("🎵 SearchService: Calling browse-artists-by-genre for \(genre)")
+
+        let response: BrowseResponse = try await supabase.functions.invoke(
+            "browse-artists-by-genre",
+            options: FunctionInvokeOptions(body: request)
+        )
+
+        print("🎵 SearchService: Got \(response.artists.count) artists from edge function")
+
+        return response.artists.map { artist in
+            MusicItem(
+                id: artist.id,
+                name: artist.name,
+                artistName: nil,
+                previewUrl: nil,
+                albumArtUrl: artist.imageUrl,
+                isrc: nil,
+                playedAt: nil,
+                spotifyId: artist.id,
+                appleMusicId: nil,
+                popularity: artist.popularity,
+                followerCount: artist.followerCount,
+                genres: artist.genres
+            )
+        }
+    }
+
     // MARK: - Apple Music Search
 
     private func searchAppleMusic(query: String, type: SearchType) async throws -> SearchResult {

@@ -288,18 +288,13 @@ struct UserProfileView: View {
                 .padding(.bottom, 8)
             }
         }
-        .overlay {
-            // Full Screen Player Overlay
-            if showFullPlayer {
-                FullScreenPlayerView(
-                    playbackService: playbackService,
-                    isPresented: $showFullPlayer
-                )
-                .environmentObject(authState)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+        .fullScreenCover(isPresented: $showFullPlayer) {
+            FullScreenPlayerView(
+                playbackService: playbackService,
+                isPresented: $showFullPlayer
+            )
+            .environmentObject(authState)
         }
-        .animation(.spring(response: 0.4, dampingFraction: 0.88), value: showFullPlayer)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
