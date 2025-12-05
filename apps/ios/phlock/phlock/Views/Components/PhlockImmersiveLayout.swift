@@ -457,12 +457,16 @@ struct PhlockCarouselView: View {
     @State private var lastQueueIndex: Int? = nil // Track previous queue index for wrap detection
     @State private var isAnimatingWrap: Bool = false // Prevent conflicts during wrap animation
     @State private var hasInitialized: Bool = false // Track if we've done initial setup
-    @State private var isUserDrivenChange: Bool = false // Prevent queue index listener from interfering with user-initiated changes
-    @State private var isHandlingCardChange: Bool = false // Prevent queue listener from interfering during card change processing
     @State private var wasPlayingBeforeNonSongPage: Bool = false // Track play state when leaving song page for non-song page
     @State private var lastPageHadSong: Bool = true // Track if the last visited page had a song
     @State private var isEditMode: Bool = false  // Edit mode state
     @Environment(\.colorScheme) var colorScheme
+
+    // Consolidated carousel state to prevent race conditions between multiple flags
+    // Uses a counter-based approach: increment when starting operations, only respond to queue when 0
+    @State private var activeOperationCount: Int = 0
+    // Track the expected next index to ignore queue updates that would cause oscillation
+    @State private var expectedIndex: Int? = nil
 
     // Persistent storage for carousel position
     @AppStorage("phlockCarouselIndex") private var savedCarouselIndex: Int = 0
@@ -595,12 +599,14 @@ struct PhlockCarouselView: View {
                     currentIndex: realIndex,
                     isEditMode: isEditMode,
                     onTap: { index in
-                        // Mark as user-driven to prevent queue index listener from interfering
-                        isUserDrivenChange = true
-                        isHandlingCardChange = true
+                        // Increment operation count to block queue listener
+                        activeOperationCount += 1
 
                         // Convert real index to extended index (+1 for phantom page at start)
                         let targetIndex = index + 1
+
+                        // Set expected index so we can ignore queue updates that would cause oscillation
+                        expectedIndex = targetIndex
 
                         // Use transaction to ensure atomic index update without interference
                         var transaction = Transaction(animation: .easeInOut(duration: 0.3))
@@ -611,10 +617,14 @@ struct PhlockCarouselView: View {
                         // Also update saved position immediately
                         savedCarouselIndex = index
 
-                        // Reset flags after animation + playback settle (longer window)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                            isUserDrivenChange = false
-                            isHandlingCardChange = false
+                        // Decrement operation count after animation completes
+                        // Use longer delay to account for async card change processing
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                            activeOperationCount = max(0, activeOperationCount - 1)
+                            // Clear expected index only if we've settled
+                            if activeOperationCount == 0 {
+                                expectedIndex = nil
+                            }
                         }
                     },
                     onProfileTapped: onProfileTapped,
@@ -634,7 +644,12 @@ struct PhlockCarouselView: View {
         }
         .onChange(of: currentIndex) { newIndex in
             // DEBUG: Track all currentIndex changes
-            print("📍 currentIndex changed to \(newIndex) (isUserDrivenChange=\(isUserDrivenChange), isAnimatingWrap=\(isAnimatingWrap))")
+            print("📍 currentIndex changed to \(newIndex) (activeOps=\(activeOperationCount), isAnimatingWrap=\(isAnimatingWrap), expected=\(String(describing: expectedIndex)))")
+
+            // If this matches our expected index, we're on track - no oscillation
+            if let expected = expectedIndex, newIndex == expected {
+                print("📍 Index matches expected, continuing normally")
+            }
 
             // Skip handleCardChange during wrap animation to avoid interfering with playback
             if !isAnimatingWrap {
@@ -648,6 +663,9 @@ struct PhlockCarouselView: View {
             // Landed on phantom first page (index 0) -> jump to real last
             // Don't update previousIndex here - these are visual corrections, not user navigation
             if newIndex == 0 {
+                // Increment operation count during phantom jump
+                activeOperationCount += 1
+                expectedIndex = memberCount
                 // Use CATransaction to truly disable all animations including implicit ones
                 DispatchQueue.main.async {
                     CATransaction.begin()
@@ -659,10 +677,18 @@ struct PhlockCarouselView: View {
                         currentIndex = memberCount // Real last is at index memberCount (since index 1 is first real)
                     }
                     CATransaction.commit()
+                    // Decrement after jump completes
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        activeOperationCount = max(0, activeOperationCount - 1)
+                        if activeOperationCount == 0 { expectedIndex = nil }
+                    }
                 }
             }
             // Landed on phantom last page -> jump to real first
             else if newIndex == extendedMembers.count - 1 {
+                // Increment operation count during phantom jump
+                activeOperationCount += 1
+                expectedIndex = 1
                 // Use longer delay during wrap animation to let animation complete
                 let delay = isAnimatingWrap ? 0.35 : 0.0
                 DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
@@ -676,6 +702,11 @@ struct PhlockCarouselView: View {
                     }
                     CATransaction.commit()
                     isAnimatingWrap = false
+                    // Decrement after jump completes
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        activeOperationCount = max(0, activeOperationCount - 1)
+                        if activeOperationCount == 0 { expectedIndex = nil }
+                    }
                 }
             }
         }
@@ -686,11 +717,17 @@ struct PhlockCarouselView: View {
                 return
             }
 
-            // Skip if user is actively changing the carousel position or if we're
-            // in the middle of handling a card change (which triggers its own queue update)
-            // This prevents interfering with user-initiated navigation
-            if isUserDrivenChange || isHandlingCardChange {
-                print("🔇 Queue change ignored (isUserDrivenChange=\(isUserDrivenChange), isHandlingCardChange=\(isHandlingCardChange))")
+            // Skip if any carousel operation is in progress
+            // This prevents queue listener from interfering with user navigation or phantom jumps
+            if activeOperationCount > 0 {
+                print("🔇 Queue change ignored (activeOperationCount=\(activeOperationCount))")
+                lastQueueIndex = queueIndex
+                return
+            }
+
+            // Skip if the current index already matches expected - avoid oscillation
+            if let expected = expectedIndex, currentIndex == expected {
+                print("🔇 Queue change ignored - already at expected index \(expected)")
                 lastQueueIndex = queueIndex
                 return
             }
@@ -761,12 +798,12 @@ struct PhlockCarouselView: View {
         }
         .onAppear {
             // DEBUG: Track when onAppear is called
-            print("🔄 PhlockCarouselView.onAppear called - hasInitialized=\(hasInitialized) currentIndex=\(currentIndex) isUserDrivenChange=\(isUserDrivenChange)")
+            print("🔄 PhlockCarouselView.onAppear called - hasInitialized=\(hasInitialized) currentIndex=\(currentIndex) activeOps=\(activeOperationCount)")
 
-            // CRITICAL: Skip restoration if user is actively navigating
+            // CRITICAL: Skip restoration if any operation is in progress
             // This prevents the view recreation from overriding user's tap navigation
-            if isUserDrivenChange || isHandlingCardChange {
-                print("🔄 Skipping onAppear logic - user navigation in progress")
+            if activeOperationCount > 0 {
+                print("🔄 Skipping onAppear logic - operation in progress")
                 return
             }
 
@@ -782,13 +819,22 @@ struct PhlockCarouselView: View {
                 // Fresh start - initialize and auto-play
                 hasInitialized = true
 
+                // Block queue listener during initialization to prevent oscillation
+                activeOperationCount += 1
+
                 // Restore saved carousel position (with bounds checking)
                 let restoredIndex = min(savedCarouselIndex, max(0, baseMembers.count - 1))
+                let targetIndex: Int
                 if baseMembers.count > 1 {
-                    currentIndex = restoredIndex + 1 // +1 for phantom page offset
+                    targetIndex = restoredIndex + 1 // +1 for phantom page offset
                 } else {
-                    currentIndex = max(0, restoredIndex)
+                    targetIndex = max(0, restoredIndex)
                 }
+
+                // Set expected index before changing currentIndex
+                expectedIndex = targetIndex
+                currentIndex = targetIndex
+
                 print("🔄 Fresh start - restored to index \(currentIndex)")
                 // Initialize lastPageHadSong based on restored position
                 lastPageHadSong = extendedMembers[safe: currentIndex]?.song != nil
@@ -798,6 +844,14 @@ struct PhlockCarouselView: View {
                     let currentSlot = extendedMembers[safe: currentIndex]
                     if let song = currentSlot?.song {
                         onPlayTapped(song, true, nil)  // Fresh launch = autoPlay, no seek
+                    }
+                }
+
+                // Release the lock after initialization settles
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    activeOperationCount = max(0, activeOperationCount - 1)
+                    if activeOperationCount == 0 {
+                        expectedIndex = nil
                     }
                 }
             } else if isAlreadyPlayingPhlock {
@@ -946,12 +1000,11 @@ struct PhlockCarouselView: View {
             }
         }
 
-        // Mark that we're handling a card change to prevent queue listener from interfering
-        // Only set if not already set (user-driven change sets it with longer timeout)
-        let wasAlreadyHandling = isHandlingCardChange
-        if !wasAlreadyHandling {
-            isHandlingCardChange = true
-            print("🔒 isHandlingCardChange = true (from handleCardChange)")
+        // Increment operation count to prevent queue listener from interfering
+        let shouldDecrementOnComplete = activeOperationCount == 0 // Only we manage the count if we started at 0
+        if shouldDecrementOnComplete {
+            activeOperationCount += 1
+            print("🔒 activeOperationCount++ (from handleCardChange) = \(activeOperationCount)")
         }
 
         // Perform non-blocking operations asynchronously
@@ -973,11 +1026,14 @@ struct PhlockCarouselView: View {
             // Haptic feedback
             impact.impactOccurred()
 
-            // Only reset flag if we were the ones who set it (not user-driven change)
-            if !wasAlreadyHandling {
-                try? await Task.sleep(nanoseconds: 300_000_000) // 300ms delay
-                isHandlingCardChange = false
-                print("🔓 isHandlingCardChange = false (from handleCardChange)")
+            // Decrement operation count after playback has settled
+            if shouldDecrementOnComplete {
+                try? await Task.sleep(nanoseconds: 400_000_000) // 400ms delay for playback to settle
+                activeOperationCount = max(0, activeOperationCount - 1)
+                if activeOperationCount == 0 {
+                    expectedIndex = nil
+                }
+                print("🔓 activeOperationCount-- (from handleCardChange) = \(activeOperationCount)")
             }
         }
     }

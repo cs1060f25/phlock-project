@@ -11,7 +11,6 @@ struct ProfileView: View {
     @State private var showEditProfile = false
     @State private var showSettings = false
     @State private var isRefreshing = false
-    @State private var refreshCount = 0 // Force view refresh
     @StateObject private var insightsViewModel = ProfileInsightsViewModel()
     @State private var insightsLoadedForUser: UUID?
     
@@ -300,6 +299,7 @@ struct ProfileView: View {
                         )
                         
                         // Music Stats Section - Editable for current user's own profile
+                        let _ = print("📊 MusicStats section - refreshedUser artists: \(refreshedUser?.platformData?.topArtists?.count ?? -1), user artists: \(user.platformData?.topArtists?.count ?? -1), refreshId: \(musicStatsRefreshId)")
                         EditableMusicStatsSection(
                             user: refreshedUser ?? user,
                             isCurrentUser: true,
@@ -390,15 +390,13 @@ struct ProfileView: View {
             }
         }
         .instagramRefreshable {
-            // Pull to refresh
+            // Pull to refresh - no view identity change to avoid cancelling in-flight requests
             print("🔄 User initiated pull-to-refresh on ProfileView")
             await authState.refreshMusicData()
             if let user = authState.currentUser {
                 await loadData(for: user)
             }
-            refreshCount += 1 // Force view to re-render
         }
-        .id(refreshCount) // Force view refresh when refreshCount changes
         .sheet(isPresented: $showEditProfile) {
             EditProfileView()
         }
@@ -1410,6 +1408,8 @@ struct EditableMusicStatsSection: View {
     }
 
     var body: some View {
+        let _ = print("🎨 EditableMusicStatsSection rendering - topArtists: \(user.platformData?.topArtists?.count ?? 0), topTracks: \(user.platformData?.topTracks?.count ?? 0)")
+        let _ = print("   Artists: \(user.platformData?.topArtists?.map { $0.name }.joined(separator: ", ") ?? "none")")
         VStack(spacing: 24) {
             // Tracks Section
             VStack(alignment: .leading, spacing: 12) {

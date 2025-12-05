@@ -57,6 +57,13 @@ class PlaybackService: ObservableObject {
     /// This is set by the view that starts playback and allows FullScreenPlayerView to show correct saved state
     @Published var savedTrackIds: Set<String> = []
 
+    // Throttle time updates to reduce view recomposition overhead
+    private var lastReportedTime: Double = 0
+    private let timeUpdateThreshold: Double = 0.3 // Only update every 0.3 seconds
+
+    // Prevent duplicate preview fetches for the same track
+    private var currentFetchingTrackId: String? = nil
+
     nonisolated private init() {
         Task { @MainActor in
             setupAudioSession()
@@ -183,15 +190,28 @@ class PlaybackService: ObservableObject {
         // Use spotifyId if available, otherwise fall back to track.id (which is often the Spotify ID for Spotify tracks)
         let effectiveSpotifyId = track.spotifyId ?? track.id
         if !effectiveSpotifyId.isEmpty {
+            // Guard against duplicate fetches for the same track
+            // This can happen when view recomposition triggers multiple play() calls
+            if currentFetchingTrackId == track.id {
+                print("⚠️ Already fetching preview for track \(track.name), skipping duplicate request")
+                return
+            }
+            currentFetchingTrackId = track.id
+
             print("⚠️ No preview URL, fetching from server via validate-track (id: \(effectiveSpotifyId))")
-            Task {
+            Task { [weak self] in
+                defer {
+                    Task { @MainActor in
+                        self?.currentFetchingTrackId = nil
+                    }
+                }
                 do {
                     // Check cache first
-                    if let cachedIsrc = getCachedISRC(for: effectiveSpotifyId),
-                       let cachedUrl = getCachedPreviewUrl(for: cachedIsrc) {
+                    if let cachedIsrc = self?.getCachedISRC(for: effectiveSpotifyId),
+                       let cachedUrl = self?.getCachedPreviewUrl(for: cachedIsrc) {
                         print("⚡️ Using cached preview URL")
                         await MainActor.run {
-                            self.playFromURL(cachedUrl, track: MusicItem(
+                            self?.playFromURL(cachedUrl, track: MusicItem(
                                 id: track.id,
                                 name: track.name,
                                 artistName: track.artistName,
@@ -209,7 +229,8 @@ class PlaybackService: ObservableObject {
                     }
 
                     // Call validate-track edge function which uses Apple Music Catalog API server-side
-                    let validatedTrack = try await fetchPreviewFromServer(
+                    guard let self = self else { return }
+                    let validatedTrack = try await self.fetchPreviewFromServer(
                         spotifyId: effectiveSpotifyId,
                         trackName: track.name,
                         artistName: track.artistName ?? ""
@@ -220,8 +241,8 @@ class PlaybackService: ObservableObject {
 
                         // Cache the results
                         if let isrc = validatedTrack.isrc {
-                            setCachedISRC(isrc, for: effectiveSpotifyId)
-                            setCachedPreviewUrl(previewUrl, for: isrc)
+                            self.setCachedISRC(isrc, for: effectiveSpotifyId)
+                            self.setCachedPreviewUrl(previewUrl, for: isrc)
                         }
 
                         let updatedTrack = MusicItem(
@@ -403,23 +424,30 @@ class PlaybackService: ObservableObject {
         // Set initial playback state based on autoPlay
         isPlaying = autoPlay
 
-        // Get duration and then seek if needed
-        Task { @MainActor in
-            if let duration = try? await playerItem.asset.load(.duration) {
-                self.duration = CMTimeGetSeconds(duration)
-            }
+        // Get duration on background thread to avoid blocking main thread
+        // Then seek if needed
+        Task.detached { [weak self] in
+            let loadedDuration = try? await playerItem.asset.load(.duration)
 
-            // Seek to saved position if provided (must happen after player is ready)
-            if let position = seekToPosition, position > 0 {
-                let cmTime = CMTime(seconds: position, preferredTimescale: 600)
-                await player?.seek(to: cmTime)
-                // currentTime already set above, but update again to be safe
-                self.currentTime = position
-                print("⏩ Seeked to saved position: \(position)s")
-            }
+            await MainActor.run {
+                guard let self = self else { return }
 
-            // Signal that track switch is complete - time observer can now update currentTime
-            self.isTrackSwitching = false
+                if let duration = loadedDuration {
+                    self.duration = CMTimeGetSeconds(duration)
+                }
+
+                // Seek to saved position if provided (must happen after player is ready)
+                if let position = seekToPosition, position > 0 {
+                    let cmTime = CMTime(seconds: position, preferredTimescale: 600)
+                    self.player?.seek(to: cmTime)
+                    // currentTime already set above, but update again to be safe
+                    self.currentTime = position
+                    print("⏩ Seeked to saved position: \(position)s")
+                }
+
+                // Signal that track switch is complete - time observer can now update currentTime
+                self.isTrackSwitching = false
+            }
         }
 
         // Start or pause based on autoPlay
@@ -467,6 +495,7 @@ class PlaybackService: ObservableObject {
         isPlaying = false
         currentTime = 0
         duration = 0
+        lastReportedTime = 0 // Reset throttle tracking
         if clearQueue {
             queue.removeAll()
             currentQueueIndex = nil
@@ -499,6 +528,8 @@ class PlaybackService: ObservableObject {
     // MARK: - Private Helpers
 
     private func setupTimeObserver() {
+        // Use 0.3s interval for smoother playhead but throttle @Published updates
+        // to reduce SwiftUI view recomposition overhead
         let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
         timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
             // Use MainActor.assumeIsolated since we know we're on main queue
@@ -507,7 +538,14 @@ class PlaybackService: ObservableObject {
                 // Ignore updates while seeking or switching tracks to prevent UI jitter
                 // This prevents the playhead from briefly jumping to 0:00 before seek completes
                 guard !self.isPerformingSeek && !self.isTrackSwitching else { return }
-                self.currentTime = CMTimeGetSeconds(time)
+
+                let seconds = CMTimeGetSeconds(time)
+                // Throttle updates: only publish if changed by threshold OR if paused (need accurate final position)
+                // This significantly reduces SwiftUI view recomposition causing main thread hangs
+                if abs(seconds - self.lastReportedTime) >= self.timeUpdateThreshold || !self.isPlaying {
+                    self.lastReportedTime = seconds
+                    self.currentTime = seconds
+                }
             }
         }
     }
