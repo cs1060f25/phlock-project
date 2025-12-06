@@ -112,9 +112,15 @@ async function searchByISRC(isrc: string, accessToken: string): Promise<SpotifyT
 async function getAppleMusicPreview(isrc: string, trackName: string, artistName: string): Promise<string | null> {
   // First try Apple Music Catalog API with ISRC (most accurate)
   if (isrc) {
-    const catalogPreview = await getAppleMusicPreviewByISRC(isrc);
+    const catalogPreview = await getAppleMusicPreviewByISRC(isrc, artistName);
     if (catalogPreview) {
       return catalogPreview;
+    }
+
+    // Try iTunes API with ISRC as fallback (also very accurate)
+    const itunesIsrcPreview = await getAppleMusicPreviewByISRC_iTunes(isrc, artistName);
+    if (itunesIsrcPreview) {
+      return itunesIsrcPreview;
     }
   }
 
@@ -126,12 +132,16 @@ async function getAppleMusicPreview(isrc: string, trackName: string, artistName:
  * Search Apple Music Catalog API by ISRC for 100% accurate matching
  * Requires APPLE_MUSIC_DEVELOPER_TOKEN in environment
  */
-async function getAppleMusicPreviewByISRC(isrc: string, storefront: string = 'us'): Promise<string | null> {
+async function getAppleMusicPreviewByISRC(isrc: string, expectedArtistName: string, storefront: string = 'us'): Promise<string | null> {
   const developerToken = Deno.env.get('APPLE_MUSIC_DEVELOPER_TOKEN');
   if (!developerToken) {
     console.log('No Apple Music developer token configured, falling back to iTunes Search');
     return null;
   }
+
+  // Helper to clean artist name
+  const cleanArtistName = (name: string) => name.split(/\s+(?:ft\.|feat\.|featuring|&)\s+/i)[0].toLowerCase().trim();
+  const targetCleanArtist = cleanArtistName(expectedArtistName);
 
   try {
     const response = await fetch(
@@ -157,11 +167,19 @@ async function getAppleMusicPreviewByISRC(isrc: string, storefront: string = 'us
     const song = data.data?.[0];
 
     if (song?.attributes?.previews?.[0]?.url) {
-      console.log(`✅ Found Apple Music preview via ISRC ${isrc}: ${song.attributes.name}`);
-      return song.attributes.previews[0].url;
+      // Verify artist match
+      const resultArtist = song.attributes.artistName ?? "";
+      const resultCleanArtist = cleanArtistName(resultArtist);
+
+      if (resultCleanArtist === targetCleanArtist) {
+        console.log(`✅ Found Apple Music preview via ISRC ${isrc}: ${song.attributes.name}`);
+        return song.attributes.previews[0].url;
+      } else {
+        console.log(`⚠️ Apple Music ISRC match rejected due to artist mismatch: '${resultCleanArtist}' vs '${targetCleanArtist}'`);
+      }
     }
 
-    console.log(`No preview found for ISRC ${isrc} on Apple Music`);
+    console.log(`No matching preview found for ISRC ${isrc} on Apple Music`);
     return null;
   } catch (error) {
     console.error('Apple Music Catalog API error:', error);
@@ -170,49 +188,124 @@ async function getAppleMusicPreviewByISRC(isrc: string, storefront: string = 'us
 }
 
 /**
- * Fallback: Search iTunes API by track name and artist (less accurate)
+ * Search iTunes API by ISRC (fallback if Catalog API fails)
  */
-async function getAppleMusicPreviewBySearch(trackName: string, artistName: string): Promise<string | null> {
+async function getAppleMusicPreviewByISRC_iTunes(isrc: string, expectedArtistName: string): Promise<string | null> {
+  // Helper to clean artist name
+  const cleanArtistName = (name: string) => name.split(/\s+(?:ft\.|feat\.|featuring|&)\s+/i)[0].toLowerCase().trim();
+  const targetCleanArtist = cleanArtistName(expectedArtistName);
+
   try {
-    const searchTerm = encodeURIComponent(`${trackName} ${artistName}`);
-    const response = await fetch(
-      `https://itunes.apple.com/search?term=${searchTerm}&media=music&entity=song&limit=10`,
-      { headers: { 'Accept': 'application/json' } }
-    );
+    const response = await fetch(`https://itunes.apple.com/lookup?isrc=${isrc}&entity=song&limit=1`);
 
     if (!response.ok) {
-      console.log('iTunes Search API failed:', response.status);
+      console.log('iTunes ISRC Lookup failed:', response.status);
       return null;
     }
 
     const data = await response.json();
 
     if (data.results && data.results.length > 0) {
-      // Try to find exact match by name and artist
-      const exactMatch = data.results.find((result: any) => {
-        const nameMatch = result.trackName?.toLowerCase() === trackName.toLowerCase();
-        const artistMatch = result.artistName?.toLowerCase().includes(artistName.toLowerCase().split(' ')[0]);
-        return nameMatch && artistMatch && result.previewUrl;
-      });
+      const track = data.results[0];
+      if (track.previewUrl) {
+        // Verify artist match
+        const resultArtist = track.artistName ?? "";
+        const resultCleanArtist = cleanArtistName(resultArtist);
 
-      if (exactMatch?.previewUrl) {
-        console.log(`Found iTunes preview for "${trackName}": ${exactMatch.previewUrl}`);
-        return exactMatch.previewUrl;
-      }
-
-      // Fall back to first result with preview
-      const withPreview = data.results.find((r: any) => r.previewUrl);
-      if (withPreview?.previewUrl) {
-        console.log(`Using iTunes fallback preview: ${withPreview.previewUrl}`);
-        return withPreview.previewUrl;
+        if (resultCleanArtist === targetCleanArtist) {
+          console.log(`✅ Found iTunes preview via ISRC ${isrc}: ${track.trackName}`);
+          return track.previewUrl;
+        } else {
+          console.log(`⚠️ iTunes ISRC match rejected due to artist mismatch: '${resultCleanArtist}' vs '${targetCleanArtist}'`);
+        }
       }
     }
 
     return null;
   } catch (error) {
-    console.error('iTunes Search API error:', error);
+    console.error('iTunes ISRC Lookup error:', error);
     return null;
   }
+}
+
+/**
+ * Fallback: Search iTunes API by track name and artist (less accurate)
+ */
+async function getAppleMusicPreviewBySearch(trackName: string, artistName: string): Promise<string | null> {
+  // Helper to clean artist name (remove ft., etc)
+  const cleanArtistName = (name: string) => name.split(/\s+(?:ft\.|feat\.|featuring|&)\s+/i)[0].toLowerCase().trim();
+  const targetCleanArtist = cleanArtistName(artistName);
+
+  // Helper to perform search and check matches
+  const performSearch = async (searchTrackName: string): Promise<string | null> => {
+    try {
+      const searchTerm = encodeURIComponent(`${searchTrackName} ${targetCleanArtist}`);
+      const response = await fetch(
+        `https://itunes.apple.com/search?term=${searchTerm}&media=music&entity=song&limit=10`,
+        { headers: { 'Accept': 'application/json' } }
+      );
+
+      if (!response.ok) return null;
+      const data = await response.json();
+
+      if (data.results && data.results.length > 0) {
+        // 1. Try exact match on name AND artist
+        const exactMatch = data.results.find((result: any) => {
+          const resultName = result.trackName?.toLowerCase() ?? "";
+          const resultCleanArtist = cleanArtistName(result.artistName ?? "");
+
+          const nameMatch = resultName === searchTrackName.toLowerCase();
+          // Strict artist match: must be equal (ignoring case/features)
+          const artistMatch = resultCleanArtist === targetCleanArtist;
+
+          return nameMatch && artistMatch && result.previewUrl;
+        });
+
+        if (exactMatch?.previewUrl) {
+          console.log(`Found iTunes exact preview for "${searchTrackName}": ${exactMatch.previewUrl}`);
+          return exactMatch.previewUrl;
+        }
+
+        // 2. Try fuzzy match: Name must contain track name, Artist must match exactly
+        const fuzzyMatch = data.results.find((result: any) => {
+          const resultName = result.trackName?.toLowerCase() ?? "";
+          const resultCleanArtist = cleanArtistName(result.artistName ?? "");
+
+          const nameMatch = resultName.includes(searchTrackName.toLowerCase()) || searchTrackName.toLowerCase().includes(resultName);
+          const artistMatch = resultCleanArtist === targetCleanArtist;
+
+          return nameMatch && artistMatch && result.previewUrl;
+        });
+
+        if (fuzzyMatch?.previewUrl) {
+          console.log(`Using iTunes fuzzy match preview: ${fuzzyMatch.previewUrl}`);
+          return fuzzyMatch.previewUrl;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('iTunes Search API error:', error);
+      return null;
+    }
+  };
+
+  // 1. Try full track name first
+  const fullMatch = await performSearch(trackName);
+  if (fullMatch) return fullMatch;
+
+  // 2. Try simplified track name (remove " - ", "(", "[")
+  // e.g. "Bags - Recorded At Electric Lady Studios" -> "Bags"
+  // e.g. "Untitled (How Does It Feel)" -> "Untitled"
+  const simplifiedName = trackName.split(/\s+(?:-|\[|\()\s+/)[0].trim();
+
+  if (simplifiedName && simplifiedName !== trackName && simplifiedName.length > 2) {
+    console.log(`Retrying search with simplified name: "${simplifiedName}"`);
+    const simpleMatch = await performSearch(simplifiedName);
+    if (simpleMatch) return simpleMatch;
+  }
+
+  console.log(`No matching preview found in iTunes for "${trackName}" by "${artistName}"`);
+  return null;
 }
 
 /**
@@ -228,7 +321,7 @@ function parseArtists(artistName: string): string[] {
 /**
  * Check if track artists match the expected artist name (handles featured artists)
  */
-function artistsMatch(trackArtists: Array<{name: string}>, expectedArtistName: string): boolean {
+function artistsMatch(trackArtists: Array<{ name: string }>, expectedArtistName: string): boolean {
   const expectedArtists = parseArtists(expectedArtistName);
   const trackArtistNames = trackArtists.map(a => a.name.toLowerCase());
 
@@ -279,8 +372,8 @@ async function searchTrack(trackName: string, artistName: string, accessToken: s
       const trackNameLower = track.name.toLowerCase();
       const expectedNameLower = trackName.toLowerCase();
       const nameMatch = trackNameLower === expectedNameLower ||
-                       trackNameLower.startsWith(expectedNameLower + ' (') ||
-                       trackNameLower.startsWith(expectedNameLower + ' -');
+        trackNameLower.startsWith(expectedNameLower + ' (') ||
+        trackNameLower.startsWith(expectedNameLower + ' -');
 
       const artistMatch = artistsMatch(track.artists, artistName);
       return nameMatch && artistMatch;

@@ -199,6 +199,10 @@ class PlaybackService: ObservableObject {
             currentFetchingTrackId = track.id
 
             print("⚠️ No preview URL, fetching from server via validate-track (id: \(effectiveSpotifyId))")
+            
+            // Stop previous playback immediately to prevent mismatch (UI shows new track, audio plays old)
+            stopPlayback(clearQueue: false)
+            
             Task { [weak self] in
                 defer {
                     Task { @MainActor in
