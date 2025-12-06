@@ -156,14 +156,7 @@ struct User: Codable, Identifiable, Hashable, Sendable {
         try container.encodeIfPresent(platformData, forKey: .platformData)
     }
 
-    // Manual Hashable conformance (required because of custom init)
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-    }
 
-    static func == (lhs: User, rhs: User) -> Bool {
-        lhs.id == rhs.id
-    }
 
     // Convenience initializer for manual construction (e.g., placeholders)
     init(

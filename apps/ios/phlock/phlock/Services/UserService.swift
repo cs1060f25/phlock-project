@@ -406,13 +406,8 @@ class UserService {
             .eq("id", value: userId.uuidString)
             .execute()
 
-        // Clear cache so next fetch gets updated data
-        userCache.removeValue(forKey: userId)
-
-        print("✅ Platform data updated for user: \(userId)")
-
-        // Return the updated user with the new platform data (construct locally to avoid refetch race condition)
-        return User(
+        // Construct the updated user locally
+        let updatedUser = User(
             id: user.id,
             displayName: user.displayName,
             profilePhotoUrl: user.profilePhotoUrl,
@@ -436,6 +431,13 @@ class UserService {
             lastDailySongDate: user.lastDailySongDate,
             isPrivate: user.isPrivate
         )
+
+        // Update cache so next fetch gets updated data
+        userCache[userId] = updatedUser
+
+        print("✅ Platform data updated for user: \(userId)")
+
+        return updatedUser
     }
 }
 

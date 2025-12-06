@@ -581,7 +581,20 @@ struct ProfileView: View {
             }
 
             if let freshUser = freshUser {
-                print("✅ Refreshed user data: cachedPhlockCount=\(freshUser.phlockCount)")
+                // Check if the fetched user is stale compared to what we already have
+                // This handles the race condition where we update locally but Supabase returns old data
+                if let freshUpdatedAt = freshUser.updatedAt,
+                   let currentUpdatedAt = user.updatedAt,
+                   freshUpdatedAt < currentUpdatedAt {
+                    print("⚠️ Fetched user is stale (updatedAt: \(freshUpdatedAt) < \(currentUpdatedAt)). Using passed user.")
+                    self.refreshedUser = user
+                } else {
+                    self.refreshedUser = freshUser
+                }
+                
+                if let finalUser = self.refreshedUser {
+                    print("✅ Refreshed user data: cachedPhlockCount=\(finalUser.phlockCount)")
+                }
             }
         } catch {
             print("❌ Failed to load profile data: \(error)")
