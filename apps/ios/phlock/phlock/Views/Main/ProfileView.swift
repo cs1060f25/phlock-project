@@ -299,7 +299,8 @@ struct ProfileView: View {
                         )
                         
                         // Music Stats Section - Editable for current user's own profile
-                        let _ = print("📊 MusicStats section - refreshedUser artists: \(refreshedUser?.platformData?.topArtists?.count ?? -1), user artists: \(user.platformData?.topArtists?.count ?? -1), refreshId: \(musicStatsRefreshId)")
+                        let effectiveUser = refreshedUser ?? user
+                        let _ = print("📊 MusicStats - refreshedUser tracks: \(refreshedUser?.platformData?.topTracks?.count ?? -1), user tracks: \(user.platformData?.topTracks?.count ?? -1), effectiveUser tracks: \(effectiveUser.platformData?.topTracks?.count ?? -1), refreshId: \(musicStatsRefreshId)")
                         EditableMusicStatsSection(
                             user: refreshedUser ?? user,
                             isCurrentUser: true,
@@ -313,7 +314,7 @@ struct ProfileView: View {
                             }
                         )
                         .environmentObject(playbackService)
-                        .id("musicStats-\(musicStatsRefreshId)")
+                        .id("musicStats-\(musicStatsRefreshId)-\((refreshedUser ?? user).platformData?.topArtists?.count ?? 0)-\((refreshedUser ?? user).platformData?.topTracks?.count ?? 0)")
 
 
 
@@ -1408,8 +1409,8 @@ struct EditableMusicStatsSection: View {
     }
 
     var body: some View {
-        let _ = print("🎨 EditableMusicStatsSection rendering - topArtists: \(user.platformData?.topArtists?.count ?? 0), topTracks: \(user.platformData?.topTracks?.count ?? 0)")
-        let _ = print("   Artists: \(user.platformData?.topArtists?.map { $0.name }.joined(separator: ", ") ?? "none")")
+        let _ = print("🎨 EditableMusicStatsSection rendering - topArtists: \(user.platformData?.topArtists?.count ?? 0), topTracks: \(user.platformData?.topTracks?.count ?? 0), user.id: \(user.id)")
+        let _ = print("   Tracks: \(user.platformData?.topTracks?.map { $0.name }.joined(separator: ", ") ?? "none")")
         VStack(spacing: 24) {
             // Tracks Section
             VStack(alignment: .leading, spacing: 12) {
