@@ -190,8 +190,9 @@ final class SongRecognitionManager: NSObject, ObservableObject {
                 enrichedTrack.appleMusicId = appleTrack.id
             }
 
+            let finalTrack = enrichedTrack
             await MainActor.run {
-                self.matchedTrack = enrichedTrack
+                self.matchedTrack = finalTrack
                 self.state = .matched
                 self.lastErrorMessage = nil
             }

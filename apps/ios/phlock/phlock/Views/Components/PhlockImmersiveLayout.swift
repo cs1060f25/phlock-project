@@ -609,7 +609,7 @@ struct PhlockCarouselView: View {
                         expectedIndex = targetIndex
 
                         // Use transaction to ensure atomic index update without interference
-                        var transaction = Transaction(animation: .easeInOut(duration: 0.3))
+                        let transaction = Transaction(animation: .easeInOut(duration: 0.3))
                         withTransaction(transaction) {
                             currentIndex = targetIndex
                         }

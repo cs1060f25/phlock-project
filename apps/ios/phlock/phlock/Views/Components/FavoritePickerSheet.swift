@@ -254,7 +254,7 @@ struct FavoritePickerSheet: View {
             try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
 
             if !Task.isCancelled {
-                await performSearch()
+                performSearch()
             }
         }
     }
@@ -635,9 +635,9 @@ struct EmptySlotThumbnail: View {
 // MARK: - AnyShape Helper
 
 struct AnyShape: Shape {
-    private let makePath: (CGRect) -> Path
+    private let makePath: @Sendable (CGRect) -> Path
 
-    init<S: Shape>(_ shape: S) {
+    init<S: Shape & Sendable>(_ shape: S) {
         makePath = { rect in
             shape.path(in: rect)
         }

@@ -164,11 +164,13 @@ struct SearchResultsList: View {
                             .environmentObject(authState)
                             .environmentObject(navigationState)
                         } else {
-                            ArtistResultRow(artist: result.item, showType: true)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    navigationPath.append(DiscoverDestination.artist(result.item, platformType))
-                                }
+                            Button {
+                                navigationPath.append(DiscoverDestination.artist(result.item, platformType))
+                            } label: {
+                                ArtistResultRow(artist: result.item, showType: true)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 } else {
@@ -191,11 +193,13 @@ struct SearchResultsList: View {
                     // Artists Section
                     if !displayedArtists.isEmpty {
                         ForEach(displayedArtists, id: \.id) { artist in
-                            ArtistResultRow(artist: artist, showType: false)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    navigationPath.append(DiscoverDestination.artist(artist, platformType))
-                                }
+                            Button {
+                                navigationPath.append(DiscoverDestination.artist(artist, platformType))
+                            } label: {
+                                ArtistResultRow(artist: artist, showType: false)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -616,100 +620,93 @@ struct RecentTrackCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-                // Album Art with Play Overlay and Select Button
-                ZStack {
-                    if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                            case .failure, .empty:
-                                Color.gray.opacity(0.2)
-                            @unknown default:
-                                Color.gray.opacity(0.2)
-                            }
-                        }
-                    } else {
-                        Color.gray.opacity(0.2)
-                    }
-
-                    // Play icon overlay (center)
-                    Circle()
-                        .fill(Color.black.opacity(isPlaying ? 0.5 : 0.3))
-                        .frame(width: 36, height: 36)
-
-                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white)
-
-                    // Top-right action: daily select button
-                    if let selectHandler = onSelectDailySong {
-                        VStack {
-                            HStack {
-                                Spacer()
-                                Button {
-                                    selectHandler(track)
-                                } label: {
-                                    ZStack {
-                                        Circle()
-                                            .fill((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.white.opacity(0.65))
-                                            .overlay(
-                                                Circle()
-                                                    .stroke((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.secondary, lineWidth: 2)
-                                            )
-                                            .frame(width: 26, height: 26)
-                                        if isCommittedAsDaily || isPendingSelection {
-                                            Image(systemName: "checkmark")
-                                                .font(.system(size: 10, weight: .bold))
-                                                .foregroundColor(.white)
-                                        }
-                                    }
-                                    .frame(width: 36, height: 36)
-                                    .contentShape(Rectangle())
+        ZStack(alignment: .topTrailing) {
+            // Main Card Button
+            Button {
+                handleTap()
+            } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    // Album Art with Play Overlay
+                    ZStack {
+                        if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                case .failure, .empty:
+                                    Color.gray.opacity(0.2)
+                                @unknown default:
+                                    Color.gray.opacity(0.2)
                                 }
-                                .buttonStyle(.plain)
                             }
-                            Spacer()
+                        } else {
+                            Color.gray.opacity(0.2)
                         }
-                        .padding(4)
+
+                        // Play icon overlay (center)
+                        Circle()
+                            .fill(Color.black.opacity(isPlaying ? 0.5 : 0.3))
+                            .frame(width: 36, height: 36)
+
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(1, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(2) // Make room for border
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(isCurrentTrack ? Color.primary : Color.clear, lineWidth: 2)
+                    )
+
+                    // Track name
+                    Text(track.name)
+                        .font(.lora(size: 12))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+
+                    // Artist name
+                    if let artist = track.artistName {
+                        Text(artist)
+                            .font(.lora(size: 11))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .aspectRatio(1, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .padding(2) // Make room for border
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(isCurrentTrack ? Color.primary : Color.clear, lineWidth: 2)
-                )
-
-                // Track name
-                Text(track.name)
-                    .font(.lora(size: 12))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-
-                // Artist name
-                if let artist = track.artistName {
-                    Text(artist)
-                        .font(.lora(size: 11))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
+                .contentShape(Rectangle())
             }
-        .contentShape(Rectangle())
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 5)
-                .updating($isDragging) { _, state, _ in
-                    state = true
+            .buttonStyle(.plain)
+
+            // Top-right action: daily select button
+            // Placed as an overlay to be independent of the main button
+            if let selectHandler = onSelectDailySong {
+                Button {
+                    selectHandler(track)
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.white.opacity(0.65))
+                            .overlay(
+                                Circle()
+                                    .stroke((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.secondary, lineWidth: 2)
+                            )
+                            .frame(width: 26, height: 26)
+                        if isCommittedAsDaily || isPendingSelection {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
                 }
-        )
-        .onTapGesture {
-            guard !isDragging else { return }
-            handleTap()
+                .buttonStyle(.plain)
+                .padding(6) // Match the visual padding (4 internal + 2 border)
+            }
         }
     }
 }

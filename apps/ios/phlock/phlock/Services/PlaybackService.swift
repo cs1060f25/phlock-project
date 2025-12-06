@@ -426,28 +426,25 @@ class PlaybackService: ObservableObject {
 
         // Get duration on background thread to avoid blocking main thread
         // Then seek if needed
-        Task.detached { [weak self] in
+        Task { [weak self] in
+            guard let self = self else { return }
             let loadedDuration = try? await playerItem.asset.load(.duration)
 
-            await MainActor.run {
-                guard let self = self else { return }
-
-                if let duration = loadedDuration {
-                    self.duration = CMTimeGetSeconds(duration)
-                }
-
-                // Seek to saved position if provided (must happen after player is ready)
-                if let position = seekToPosition, position > 0 {
-                    let cmTime = CMTime(seconds: position, preferredTimescale: 600)
-                    self.player?.seek(to: cmTime)
-                    // currentTime already set above, but update again to be safe
-                    self.currentTime = position
-                    print("⏩ Seeked to saved position: \(position)s")
-                }
-
-                // Signal that track switch is complete - time observer can now update currentTime
-                self.isTrackSwitching = false
+            if let duration = loadedDuration {
+                self.duration = CMTimeGetSeconds(duration)
             }
+
+            // Seek to saved position if provided (must happen after player is ready)
+            if let position = seekToPosition, position > 0 {
+                let cmTime = CMTime(seconds: position, preferredTimescale: 600)
+                await self.player?.seek(to: cmTime)
+                // currentTime already set above, but update again to be safe
+                self.currentTime = position
+                print("⏩ Seeked to saved position: \(position)s")
+            }
+
+            // Signal that track switch is complete - time observer can now update currentTime
+            self.isTrackSwitching = false
         }
 
         // Start or pause based on autoPlay

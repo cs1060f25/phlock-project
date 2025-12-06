@@ -159,70 +159,65 @@ struct FriendSelectorItem: View {
     let onTap: () -> Void
 
     @Environment(\.colorScheme) var colorScheme
-    @State private var isPressing = false
 
     var body: some View {
-        VStack(spacing: 6) {
-            ZStack(alignment: .bottomTrailing) {
-                // Avatar
-                Group {
-                    if let photoUrl = friend.profilePhotoUrl, let url = URL(string: photoUrl) {
-                        AsyncImage(url: url) { image in
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        } placeholder: {
-                            FriendInitialsView(displayName: friend.displayName)
-                        }
-                        .frame(width: 55, height: 55)
-                        .clipShape(Circle())
-                    } else {
-                        FriendInitialsView(displayName: friend.displayName)
+        Button(action: onTap) {
+            VStack(spacing: 6) {
+                ZStack(alignment: .bottomTrailing) {
+                    // Avatar
+                    Group {
+                        if let photoUrl = friend.profilePhotoUrl, let url = URL(string: photoUrl) {
+                            AsyncImage(url: url) { image in
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            } placeholder: {
+                                FriendInitialsView(displayName: friend.displayName)
+                            }
                             .frame(width: 55, height: 55)
+                            .clipShape(Circle())
+                        } else {
+                            FriendInitialsView(displayName: friend.displayName)
+                                .frame(width: 55, height: 55)
+                        }
+                    }
+                    .overlay(
+                        Circle()
+                            .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+                    )
+
+                    // Selection checkmark
+                    if isSelected {
+                        Circle()
+                            .fill(Color.blue)
+                            .frame(width: 20, height: 20)
+                            .overlay(
+                                Image(systemName: "checkmark")
+                                    .font(.lora(size: 10))
+                                    .foregroundColor(.white)
+                            )
+                            .offset(x: 2, y: 2)
                     }
                 }
-                .overlay(
-                    Circle()
-                        .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
-                )
 
-                // Selection checkmark
-                if isSelected {
-                    Circle()
-                        .fill(Color.blue)
-                        .frame(width: 20, height: 20)
-                        .overlay(
-                            Image(systemName: "checkmark")
-                                .font(.lora(size: 10))
-                                .foregroundColor(.white)
-                        )
-                        .offset(x: 2, y: 2)
-                }
+                // Name
+                Text(friend.displayName)
+                    .font(.lora(size: 10))
+                    .lineLimit(1)
+                    .foregroundColor(.primary)
+                    .frame(width: 60)
             }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle())
+    }
+}
 
-            // Name
-            Text(friend.displayName)
-                .font(.lora(size: 10))
-                .lineLimit(1)
-                .foregroundColor(.primary)
-                .frame(width: 60)
-        }
-        .scaleEffect(isPressing ? 0.95 : 1.0)
-        .animation(.easeInOut(duration: 0.1), value: isPressing)
-        .onTapGesture {
-            onTap()
-        }
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    if !isPressing {
-                        isPressing = true
-                    }
-                }
-                .onEnded { _ in
-                    isPressing = false
-                }
-        )
+struct PressableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 

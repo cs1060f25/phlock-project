@@ -179,7 +179,7 @@ class FollowService {
             first_added_at: ISO8601DateFormatter().string(from: Date())
         )
 
-        try? await supabase
+        _ = try? await supabase
             .from("phlock_history")
             .upsert(historyData, onConflict: "phlock_owner_id,phlock_member_id")
             .execute()

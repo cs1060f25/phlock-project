@@ -773,10 +773,8 @@ struct PhlockView: View {
 
                 // Get their daily songs
                 let memberIds = members.map { $0.user.id }
-                var songs = try await ShareService.shared.getDailySongs(from: memberIds)
-
-                // Sort daily songs by time (earliest first)
-                songs.sort { $0.createdAt < $1.createdAt }
+                let songs = try await ShareService.shared.getDailySongs(from: memberIds)
+                    .sorted { $0.createdAt < $1.createdAt }
 
                 await MainActor.run {
                     self.dailySongs = songs
@@ -2162,7 +2160,7 @@ struct SwapMemberView: View {
                 } else {
                     List(friends) { friend in
                         HStack {
-                            // Profile photo
+                            // Profile photo - separate button for profile navigation
                             Button {
                                 onProfileTapped(friend)
                             } label: {
@@ -2186,42 +2184,49 @@ struct SwapMemberView: View {
                             }
                             .buttonStyle(.plain)
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(friend.displayName)
-                                    .font(.lora(size: 16, weight: .medium))
+                            // Main selection area - covers name and status
+                            Button {
+                                selectedFriend = friend
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(friend.displayName)
+                                            .font(.lora(size: 16, weight: .medium))
+                                            .foregroundColor(.primary)
 
-                                if friend.username != nil {
-                                    Text("@\(friend.username ?? "")")
-                                        .font(.lora(size: 12, weight: .medium))
-                                        .foregroundColor(.secondary)
+                                        if friend.username != nil {
+                                            Text("@\(friend.username ?? "")")
+                                                .font(.lora(size: 12, weight: .medium))
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+
+                                    Spacer()
+
+                                    if let hasSong = dailySongStatus[friend.id] {
+                                        HStack(spacing: 6) {
+                                            Circle()
+                                                .fill(hasSong ? Color.green : Color.gray.opacity(0.4))
+                                                .frame(width: 8, height: 8)
+
+                                            Text(hasSong ? "has today's song" : "no song yet")
+                                                .font(.lora(size: 11))
+                                                .foregroundColor(hasSong ? .green : .secondary)
+                                        }
+                                    } else {
+                                        ProgressView()
+                                            .scaleEffect(0.6)
+                                    }
+
+                                    if selectedFriend?.id == friend.id {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.blue)
+                                            .padding(.leading, 8)
+                                    }
                                 }
+                                .contentShape(Rectangle())
                             }
-
-                            Spacer()
-
-                            if let hasSong = dailySongStatus[friend.id] {
-                                HStack(spacing: 6) {
-                                    Circle()
-                                        .fill(hasSong ? Color.green : Color.gray.opacity(0.4))
-                                        .frame(width: 8, height: 8)
-
-                                    Text(hasSong ? "has today's song" : "no song yet")
-                                        .font(.lora(size: 11))
-                                        .foregroundColor(hasSong ? .green : .secondary)
-                                }
-                            } else {
-                                ProgressView()
-                                    .scaleEffect(0.6)
-                            }
-
-                            if selectedFriend?.id == friend.id {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.blue)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            selectedFriend = friend
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -2392,7 +2397,7 @@ struct UnifiedPhlockSheet: View {
     // Get sorted slots (members first sorted by streak, then empty slots)
     private var sortedSlots: [(position: Int, member: FriendWithPosition?)] {
         let filledSlots = currentPhlockMembers
-            .sorted { ($0.user.dailySongStreak ?? 0) > ($1.user.dailySongStreak ?? 0) }
+            .sorted { $0.user.dailySongStreak > $1.user.dailySongStreak }
             .map { (position: $0.position, member: Optional($0)) }
 
         let filledPositions = Set(currentPhlockMembers.map { $0.position })

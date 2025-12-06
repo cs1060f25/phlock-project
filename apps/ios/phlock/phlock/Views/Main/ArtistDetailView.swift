@@ -470,64 +470,71 @@ struct ArtistTrackRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Playing indicator bar
-            if isCurrentTrack {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(Color.primary)
-                    .frame(width: 4, height: 40)
-            }
+            // Main Selection Button (Left side)
+            Button(action: onSelect) {
+                HStack(spacing: 12) {
+                    // Playing indicator bar
+                    if isCurrentTrack {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.primary)
+                            .frame(width: 4, height: 40)
+                    }
 
-            // Track Number
-            Text("\(index + 1)")
-                .font(.lora(size: 14))
-                .foregroundColor(.secondary)
-                .frame(width: 30)
+                    // Track Number
+                    Text("\(index + 1)")
+                        .font(.lora(size: 14))
+                        .foregroundColor(.secondary)
+                        .frame(width: 30)
 
-            // Album Art
-            if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
-                AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                } placeholder: {
-                    Color.gray.opacity(0.2)
-                }
-                .frame(width: 50, height: 50)
-                .cornerRadius(4)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(isCurrentTrack ? Color.primary : (isCommittedAsDaily ? Color.green : Color.clear), lineWidth: 2.5)
-                )
-            } else {
-                Color.gray.opacity(0.2)
-                    .frame(width: 50, height: 50)
-                    .cornerRadius(4)
-            }
+                    // Album Art
+                    if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
+                        AsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        } placeholder: {
+                            Color.gray.opacity(0.2)
+                        }
+                        .frame(width: 50, height: 50)
+                        .cornerRadius(4)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(isCurrentTrack ? Color.primary : (isCommittedAsDaily ? Color.green : Color.clear), lineWidth: 2.5)
+                        )
+                    } else {
+                        Color.gray.opacity(0.2)
+                            .frame(width: 50, height: 50)
+                            .cornerRadius(4)
+                    }
 
-            // Track Info
-            Text(track.name)
-                .font(.lora(size: 16))
-                .lineLimit(1)
-                .foregroundColor(.primary)
+                    // Track Info
+                    Text(track.name)
+                        .font(.lora(size: 16))
+                        .lineLimit(1)
+                        .foregroundColor(.primary)
 
-            Spacer()
+                    Spacer()
 
-            // Selection indicator (visual only, whole row is tappable)
-            ZStack {
-                Circle()
-                    .fill((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.white.opacity(0.65))
-                    .overlay(
+                    // Selection indicator
+                    ZStack {
                         Circle()
-                            .stroke((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.secondary, lineWidth: 2)
-                    )
-                    .frame(width: 24, height: 24)
-                if isCommittedAsDaily || isPendingSelection {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.white)
+                            .fill((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.white.opacity(0.65))
+                            .overlay(
+                                Circle()
+                                    .stroke((isCommittedAsDaily || isPendingSelection) ? Color.accentColor : Color.secondary, lineWidth: 2)
+                            )
+                            .frame(width: 24, height: 24)
+                        if isCommittedAsDaily || isPendingSelection {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .padding(.trailing, 4)
                 }
+                .contentShape(Rectangle())
             }
-            .padding(.trailing, 4)
+            .buttonStyle(.plain)
 
             // Play Button - isolated tap target
             Button {
@@ -553,11 +560,6 @@ struct ArtistTrackRow: View {
                 : Color.clear
         )
         .cornerRadius(8)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            // Tapping anywhere on the row (except play button) selects the track
-            onSelect()
-        }
     }
 }
 
