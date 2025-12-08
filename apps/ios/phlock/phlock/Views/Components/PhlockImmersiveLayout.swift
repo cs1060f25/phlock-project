@@ -450,9 +450,11 @@ struct PhlockCarouselView: View {
     let onEditAddTapped: () -> Void  // Edit mode: add member
     let onMenuTapped: () -> Void  // Open phlock manager sheet
     let onShareTapped: () -> Void  // Share phlock card
+    let onSendTapped: (Share) -> Void  // Send/share individual song
 
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
+    @StateObject private var socialService = SocialEngagementService.shared
     @State private var currentIndex: Int = 1 // Start at 1 because index 0 is phantom last page
     @State private var lastQueueIndex: Int? = nil // Track previous queue index for wrap detection
     @State private var isAnimatingWrap: Bool = false // Prevent conflicts during wrap animation
@@ -460,6 +462,8 @@ struct PhlockCarouselView: View {
     @State private var wasPlayingBeforeNonSongPage: Bool = false // Track play state when leaving song page for non-song page
     @State private var lastPageHadSong: Bool = true // Track if the last visited page had a song
     @State private var isEditMode: Bool = false  // Edit mode state
+    @State private var showCommentSheet: Bool = false  // Comment sheet state
+    @State private var selectedShareForComments: Share?  // Share to show comments for
     @Environment(\.colorScheme) var colorScheme
 
     // Consolidated carousel state to prevent race conditions between multiple flags
@@ -528,6 +532,11 @@ struct PhlockCarouselView: View {
         }
     }
 
+    // Current share for the displayed card
+    private var currentShare: Share? {
+        extendedMembers[safe: currentIndex]?.song
+    }
+
     var body: some View {
         ZStack {
             // Horizontal carousel with extended pages for infinite scroll
@@ -566,14 +575,49 @@ struct PhlockCarouselView: View {
             // to reset during user navigation. The TabView updates naturally when
             // items change without needing a forced rebuild.
 
-            // MARK: - Commented out: Your pick bar at top (may re-implement later)
-            // VStack {
-            //     if let mySong = myDailySong {
-            //         YourPickBar(song: mySong, onTap: onOpenFullPlayer)
-            //             .padding(.top, 12)
-            //     }
-            //     Spacer()
-            // }
+            // MARK: - Daily Song Pill (Your pick at top)
+            VStack {
+                if let mySong = myDailySong {
+                    DailySongPillView(
+                        albumArtUrl: mySong.albumArtUrl,
+                        trackName: mySong.trackName,
+                        artistName: mySong.artistName
+                    )
+                    .padding(.top, 60)
+                }
+                Spacer()
+            }
+
+            // MARK: - Vertical Action Bar (Right side - TikTok/IG Reels style)
+            if let share = currentShare {
+                HStack {
+                    Spacer()
+                    VerticalActionBar(
+                        likeCount: share.likeCount,
+                        commentCount: share.commentCount,
+                        sendCount: share.sendCount,
+                        isLiked: socialService.isLiked(share.id),
+                        onLikeTapped: {
+                            Task {
+                                try? await socialService.toggleLike(share.id)
+                            }
+                        },
+                        onCommentTapped: {
+                            selectedShareForComments = share
+                            showCommentSheet = true
+                        },
+                        onSendTapped: {
+                            onSendTapped(share)
+                        },
+                        onOpenTapped: {
+                            openInStreamingApp(share: share)
+                        },
+                        platformType: authState.currentUser?.resolvedPlatformType
+                    )
+                    .padding(.trailing, 12)
+                    .padding(.bottom, 180) // Above profile indicator + tab bar
+                }
+            }
 
             // Overlay: Action buttons + Profile indicator bar at bottom
             VStack(spacing: 20) {
@@ -885,9 +929,45 @@ struct PhlockCarouselView: View {
             // If already initialized and no track playing, preserve current state
 
         }
+        .sheet(isPresented: $showCommentSheet) {
+            if let share = selectedShareForComments {
+                CommentSheetView(share: share, isPresented: $showCommentSheet)
+            }
+        }
+        .task {
+            // Fetch like status for all daily songs on load
+            let shareIds = dailySongs.map { $0.id }
+            try? await socialService.fetchLikeStatus(for: shareIds)
+        }
     }
 
     // MARK: - Helpers
+
+    private func openInStreamingApp(share: Share) {
+        let musicItem = MusicItem(
+            id: share.trackId,
+            name: share.trackName,
+            artistName: share.artistName,
+            previewUrl: share.previewUrl,
+            albumArtUrl: share.albumArtUrl,
+            isrc: nil,
+            playedAt: nil,
+            spotifyId: share.trackId,
+            appleMusicId: nil,
+            popularity: nil,
+            followerCount: nil
+        )
+
+        guard let platformType = authState.currentUser?.resolvedPlatformType else {
+            // Fallback to Spotify web URL
+            if let webUrl = URL(string: "https://open.spotify.com/track/\(share.trackId)") {
+                UIApplication.shared.open(webUrl)
+            }
+            return
+        }
+
+        DeepLinkService.shared.openInNativeApp(track: musicItem, platform: platformType)
+    }
 
     private func isPlayingSlot(_ slot: PhlockSlot) -> Bool {
         guard let song = slot.song else { return false }
@@ -2227,6 +2307,7 @@ struct PhlockImmersiveLayout: View {
     let onEditAddTapped: () -> Void
     let onMenuTapped: () -> Void
     let onShareTapped: () -> Void
+    let onSendTapped: (Share) -> Void  // Send/share individual song
 
     var body: some View {
         // Check if user has picked their daily song
@@ -2255,7 +2336,8 @@ struct PhlockImmersiveLayout: View {
                 onEditRemoveTapped: onEditRemoveTapped,
                 onEditAddTapped: onEditAddTapped,
                 onMenuTapped: onMenuTapped,
-                onShareTapped: onShareTapped
+                onShareTapped: onShareTapped,
+                onSendTapped: onSendTapped
             )
         }
     }

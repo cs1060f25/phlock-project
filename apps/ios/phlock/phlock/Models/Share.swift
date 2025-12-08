@@ -24,6 +24,12 @@ struct Share: Codable, Identifiable, @unchecked Sendable {
     let selectedDate: Date?
     let previewUrl: String?
 
+    // Social engagement fields
+    var likeCount: Int
+    var commentCount: Int
+    var sendCount: Int
+    var isLikedByMe: Bool  // Client-side computed, not stored in DB
+
     enum CodingKeys: String, CodingKey {
         case id
         case senderId = "sender_id"
@@ -42,6 +48,9 @@ struct Share: Codable, Identifiable, @unchecked Sendable {
         case isDailySong = "is_daily_song"
         case selectedDate = "selected_date"
         case previewUrl = "preview_url"
+        case likeCount = "like_count"
+        case commentCount = "comment_count"
+        case sendCount = "send_count"
     }
 
     // Helper: Check if this is today's daily song
@@ -78,6 +87,12 @@ struct Share: Codable, Identifiable, @unchecked Sendable {
         status = try container.decode(ShareStatus.self, forKey: .status)
         isDailySong = try container.decode(Bool.self, forKey: .isDailySong)
         previewUrl = try container.decodeIfPresent(String.self, forKey: .previewUrl)
+
+        // Social engagement fields (default to 0 if not present for backwards compatibility)
+        likeCount = try container.decodeIfPresent(Int.self, forKey: .likeCount) ?? 0
+        commentCount = try container.decodeIfPresent(Int.self, forKey: .commentCount) ?? 0
+        sendCount = try container.decodeIfPresent(Int.self, forKey: .sendCount) ?? 0
+        isLikedByMe = false  // Set separately after fetching likes
 
         // Custom date decoding to handle various formats
         // Note: For date-only strings (yyyy-MM-dd), we use local timezone to ensure
@@ -160,7 +175,11 @@ extension Share {
         savedAt: Date? = nil,
         isDailySong: Bool = false,
         selectedDate: Date? = nil,
-        previewUrl: String? = nil
+        previewUrl: String? = nil,
+        likeCount: Int = 0,
+        commentCount: Int = 0,
+        sendCount: Int = 0,
+        isLikedByMe: Bool = false
     ) {
         self.id = id
         self.senderId = senderId
@@ -179,5 +198,9 @@ extension Share {
         self.isDailySong = isDailySong
         self.selectedDate = selectedDate
         self.previewUrl = previewUrl
+        self.likeCount = likeCount
+        self.commentCount = commentCount
+        self.sendCount = sendCount
+        self.isLikedByMe = isLikedByMe
     }
 }

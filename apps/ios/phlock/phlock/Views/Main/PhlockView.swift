@@ -131,6 +131,10 @@ struct PhlockView: View {
     @State private var showProfileSheet = false
     @State private var selectedProfileUser: User?
 
+    // Quick send bar state (for individual song sharing)
+    @State private var showQuickSendBar = false
+    @State private var selectedShareToSend: Share?
+
     // Helper struct to organize phlock items
     struct PhlockItem: Identifiable {
         let id: UUID
@@ -287,6 +291,11 @@ struct PhlockView: View {
                         },
                         onShareTapped: {
                             generateAndShareCard()
+                        },
+                        onSendTapped: { share in
+                            // Open the QuickSendBar for this specific song
+                            selectedShareToSend = share
+                            showQuickSendBar = true
                         }
                     )
                     .ignoresSafeArea(edges: .top)

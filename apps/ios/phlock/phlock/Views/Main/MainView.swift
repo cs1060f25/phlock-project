@@ -76,6 +76,16 @@ struct MainView: View {
                     // Navigation state handles storage automatically via init()
                 }
 
+                // MARK: - Tab Bar Progress Overlay (TikTok/IG Reels style)
+                // Shows playback progress at the top edge of the tab bar when on Phlock tab
+                if navigationState.selectedTab == 0 {
+                    TabBarProgressOverlay(
+                        playbackService: playbackService,
+                        isOnPhlockTab: navigationState.selectedTab == 0
+                    )
+                    .zIndex(0.5) // Below mini player but above tab bar content
+                }
+
                 // Mini Player sits above tab bar
                 // Show on all tabs except Phlock tab (which has its own playback UI)
                 if shouldShowMiniPlayer && !playbackService.isShareOverlayPresented {
