@@ -430,7 +430,9 @@ class PlaybackService: ObservableObject {
 
         // Get duration on background thread to avoid blocking main thread
         // Then seek if needed
-        Task { [weak self] in
+        // Capture seekToPosition as a local constant to avoid Swift 6 concurrency warning
+        let savedPosition = seekToPosition
+        Task { @MainActor [weak self] in
             guard let self = self else { return }
             let loadedDuration = try? await playerItem.asset.load(.duration)
 
@@ -439,7 +441,7 @@ class PlaybackService: ObservableObject {
             }
 
             // Seek to saved position if provided (must happen after player is ready)
-            if let position = seekToPosition, position > 0 {
+            if let position = savedPosition, position > 0 {
                 let cmTime = CMTime(seconds: position, preferredTimescale: 600)
                 await self.player?.seek(to: cmTime)
                 // currentTime already set above, but update again to be safe

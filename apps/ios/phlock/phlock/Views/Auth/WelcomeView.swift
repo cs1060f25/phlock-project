@@ -134,7 +134,26 @@ struct WelcomeView: View {
         case .success(let authorization):
             if let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential {
                 do {
-                    let (_, isNewUser) = try await AuthServiceV3.shared.signInWithApple(credential: appleIDCredential)
+                    // Use timeout and retry for resilience against network issues
+                    let (_, isNewUser) = try await withTimeoutAndRetry(
+                        timeoutSeconds: 30,
+                        retryConfig: RetryConfiguration(
+                            maxAttempts: 2,
+                            baseDelay: 1.0,
+                            maxDelay: 5.0,
+                            shouldRetry: { error in
+                                // Retry on timeout and network errors, not on auth errors
+                                if error is TimeoutError { return true }
+                                let nsError = error as NSError
+                                return nsError.domain == NSURLErrorDomain &&
+                                    (nsError.code == NSURLErrorTimedOut ||
+                                     nsError.code == NSURLErrorNetworkConnectionLost ||
+                                     nsError.code == NSURLErrorNotConnectedToInternet)
+                            }
+                        )
+                    ) {
+                        try await AuthServiceV3.shared.signInWithApple(credential: appleIDCredential)
+                    }
 
                     // Fetch the user to update currentUser
                     let user = try await AuthServiceV3.shared.currentUser
@@ -177,9 +196,16 @@ struct WelcomeView: View {
                         authState.isAuthenticated = true
                     }
 
+                } catch is TimeoutError {
+                    await MainActor.run {
+                        errorMessage = "Request timed out. Please try again."
+                        showError = true
+                    }
                 } catch {
                     await MainActor.run {
-                        errorMessage = error.localizedDescription
+                        // Convert to AppError for better error messages
+                        let appError = AppError.from(error)
+                        errorMessage = appError.localizedDescription
                         showError = true
                     }
                 }
@@ -239,10 +265,29 @@ struct WelcomeView: View {
             }
             let accessToken = result.user.accessToken.tokenString
 
-            let (_, isNewUser) = try await AuthServiceV3.shared.signInWithGoogle(
-                idToken: idToken,
-                accessToken: accessToken
-            )
+            // Use timeout and retry for resilience against network issues
+            let (_, isNewUser) = try await withTimeoutAndRetry(
+                timeoutSeconds: 30,
+                retryConfig: RetryConfiguration(
+                    maxAttempts: 2,
+                    baseDelay: 1.0,
+                    maxDelay: 5.0,
+                    shouldRetry: { error in
+                        // Retry on timeout and network errors, not on auth errors
+                        if error is TimeoutError { return true }
+                        let nsError = error as NSError
+                        return nsError.domain == NSURLErrorDomain &&
+                            (nsError.code == NSURLErrorTimedOut ||
+                             nsError.code == NSURLErrorNetworkConnectionLost ||
+                             nsError.code == NSURLErrorNotConnectedToInternet)
+                    }
+                )
+            ) {
+                try await AuthServiceV3.shared.signInWithGoogle(
+                    idToken: idToken,
+                    accessToken: accessToken
+                )
+            }
 
             // Fetch the user to update currentUser
             let user = try await AuthServiceV3.shared.currentUser
@@ -288,9 +333,16 @@ struct WelcomeView: View {
         } catch let error as GIDSignInError where error.code == .canceled {
             // User cancelled - don't show error
             print("Google Sign-In cancelled by user")
+        } catch is TimeoutError {
+            await MainActor.run {
+                errorMessage = "Request timed out. Please try again."
+                showError = true
+            }
         } catch {
             await MainActor.run {
-                errorMessage = error.localizedDescription
+                // Convert to AppError for better error messages
+                let appError = AppError.from(error)
+                errorMessage = appError.localizedDescription
                 showError = true
             }
         }

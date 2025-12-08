@@ -101,32 +101,95 @@ enum AppError: Error, LocalizedError, Identifiable {
         // Check for common error patterns
         let nsError = error as NSError
 
-        // Network errors
+        // URL/Network errors - be SPECIFIC about which codes indicate connectivity issues
         if nsError.domain == NSURLErrorDomain {
             switch nsError.code {
+            // Timeout errors
             case NSURLErrorTimedOut:
                 return .timeout
+
+            // Actual connectivity/network errors - device has no internet or lost connection
             case NSURLErrorNotConnectedToInternet,
                  NSURLErrorNetworkConnectionLost,
-                 NSURLErrorCannotConnectToHost:
+                 NSURLErrorDataNotAllowed,           // Cellular data is off
+                 NSURLErrorInternationalRoamingOff:  // Roaming is off
                 return .network(underlying: error)
+
+            // DNS/Host resolution failures - likely network issue
+            case NSURLErrorCannotFindHost,
+                 NSURLErrorDNSLookupFailed:
+                return .network(underlying: error)
+
+            // Server unreachable - could be server down OR network issue
+            // Since we can't easily distinguish here, classify as server error
+            // The user's device is clearly trying to connect, so internet is likely working
+            // If truly offline, NWPathMonitor will show the OfflineBanner
+            case NSURLErrorCannotConnectToHost:
+                return .serverError(message: "Server is temporarily unavailable")
+
+            // SSL/TLS errors - these are NOT network connectivity issues
+            case NSURLErrorSecureConnectionFailed,
+                 NSURLErrorServerCertificateHasBadDate,
+                 NSURLErrorServerCertificateUntrusted,
+                 NSURLErrorServerCertificateHasUnknownRoot,
+                 NSURLErrorServerCertificateNotYetValid,
+                 NSURLErrorClientCertificateRejected,
+                 NSURLErrorClientCertificateRequired:
+                return .serverError(message: "Secure connection failed")
+
+            // HTTP errors embedded in URL errors
+            case NSURLErrorBadServerResponse:
+                return .serverError(message: nil)
+
+            // User cancelled - not an error to display
+            case NSURLErrorCancelled:
+                return .unknown(underlying: error)
+
+            // Resource errors - server-side issues
+            case NSURLErrorResourceUnavailable,
+                 NSURLErrorRedirectToNonExistentLocation,
+                 NSURLErrorZeroByteResource:
+                return .serverError(message: nil)
+
+            // All other URL errors - don't assume network issue
             default:
-                return .network(underlying: error)
+                return .unknown(underlying: error)
             }
         }
 
         // Check error message for common patterns
         let message = error.localizedDescription.lowercased()
+
+        // Auth errors
         if message.contains("unauthorized") || message.contains("401") {
             return .unauthorized
         }
+
+        // Not found errors
         if message.contains("not found") || message.contains("404") {
             return .notFound(item: "Resource")
         }
-        if message.contains("timeout") {
+
+        // Timeout patterns
+        if message.contains("timed out") || message.contains("timeout") {
             return .timeout
         }
-        if message.contains("network") || message.contains("connection") {
+
+        // Server errors (5xx) - check BEFORE network patterns
+        if message.contains("500") || message.contains("502") ||
+           message.contains("503") || message.contains("504") ||
+           message.contains("internal server error") ||
+           message.contains("bad gateway") ||
+           message.contains("service unavailable") {
+            return .serverError(message: nil)
+        }
+
+        // Network errors - be VERY specific to avoid false positives
+        // Only match patterns that clearly indicate the device has no internet
+        if message.contains("no internet") ||
+           message.contains("not connected to the internet") ||
+           message.contains("network connection was lost") ||
+           message.contains("offline") {
             return .network(underlying: error)
         }
 

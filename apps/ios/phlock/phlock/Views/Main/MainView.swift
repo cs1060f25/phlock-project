@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainView: View {
     @EnvironmentObject var authState: AuthenticationState
+    @EnvironmentObject var clipboardService: ClipboardService
     @StateObject private var playbackService = PlaybackService.shared
     @StateObject private var navigationState = NavigationState()
     @Environment(\.colorScheme) var colorScheme
@@ -203,11 +204,53 @@ struct MainView: View {
         .environment(\.miniPlayerBottomInset, miniPlayerInset)
         .environmentObject(playbackService)
         .environmentObject(navigationState)
+        .environmentObject(clipboardService)
         .animation(.spring(response: 0.4, dampingFraction: 0.88), value: navigationState.showFullPlayer)
+        .sheet(isPresented: $clipboardService.showSuggestionDialog) {
+            if let track = clipboardService.detectedTrack {
+                ClipboardSuggestionDialog(
+                    track: track,
+                    onShare: { note in
+                        // Share the track as daily song
+                        clipboardService.confirmSuggestion()
+                        Task {
+                            await shareDailySongFromClipboard(track: track, note: note)
+                        }
+                    },
+                    onDismiss: {
+                        clipboardService.dismissSuggestion()
+                    }
+                )
+                .presentationDetents([.height(520)])
+                .presentationDragIndicator(.visible)
+            }
+        }
+    }
+
+    /// Share the clipboard track as today's daily song
+    private func shareDailySongFromClipboard(track: MusicItem, note: String) async {
+        do {
+            guard let userId = authState.currentUser?.id else { return }
+
+            _ = try await ShareService.shared.selectDailySong(
+                track: track,
+                note: note.isEmpty ? nil : note,
+                userId: userId
+            )
+
+            // Mark as shared to avoid re-suggesting
+            clipboardService.markAsShared(trackId: track.spotifyId ?? track.id)
+            clipboardService.clearDetectedTrack()
+
+            print("✅ Daily song shared from clipboard: \(track.name)")
+        } catch {
+            print("❌ Failed to share daily song from clipboard: \(error)")
+        }
     }
 }
 
 #Preview {
     MainView()
         .environmentObject(AuthenticationState())
+        .environmentObject(ClipboardService())
 }

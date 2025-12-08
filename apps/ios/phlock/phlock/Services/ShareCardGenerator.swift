@@ -7,12 +7,55 @@ import CoreImage.CIFilterBuiltins
 @MainActor
 class ShareCardGenerator {
 
+    // MARK: - Image Cache
+
+    /// Shared image cache to avoid re-downloading album art
+    private static let imageCache = NSCache<NSString, UIImage>()
+
+    /// Reusable CIContext for color extraction (expensive to create)
+    private static let ciContext = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
+
     // MARK: - Public API
 
     /// Pre-processed card data that can be rendered to multiple formats
     struct CardData {
         let songs: [ShareCardSong]
         let gradientColors: [Color]
+    }
+
+    /// Pre-warms the image cache by downloading album art in the background
+    /// Call this when daily songs are loaded to ensure instant share card generation
+    static func preWarmCache(for shares: [Share]) {
+        let urls = shares.compactMap { $0.albumArtUrl }
+        guard !urls.isEmpty else { return }
+
+        Task.detached(priority: .utility) {
+            await withTaskGroup(of: Void.self) { group in
+                for urlString in urls {
+                    // Skip if already cached
+                    let cacheKey = urlString as NSString
+                    if await MainActor.run(body: { imageCache.object(forKey: cacheKey) }) != nil {
+                        continue
+                    }
+
+                    group.addTask {
+                        let upgradeUrl = await MainActor.run { highQualityUrl(urlString) }
+                        guard let url = URL(string: upgradeUrl) else { return }
+
+                        do {
+                            let (data, _) = try await URLSession.shared.data(from: url)
+                            if let image = UIImage(data: data) {
+                                await MainActor.run {
+                                    imageCache.setObject(image, forKey: urlString as NSString)
+                                }
+                            }
+                        } catch {
+                            // Silently fail - image will be loaded on demand if needed
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Prepares card data by loading images and extracting colors
@@ -128,34 +171,47 @@ class ShareCardGenerator {
 
     // MARK: - Image Loading
 
-    /// Loads images from URLs concurrently
+    /// Loads images from URLs concurrently, using cache when available
     private static func loadImages(from urls: [String]) async -> [String: UIImage] {
         var results: [String: UIImage] = [:]
+        var urlsToFetch: [(original: String, upgraded: String)] = []
 
-        // Pre-compute high quality URLs on main actor
-        let urlMappings = urls.map { ($0, highQualityUrl($0)) }
+        // Check cache first
+        for originalUrl in urls {
+            let cacheKey = originalUrl as NSString
+            if let cachedImage = imageCache.object(forKey: cacheKey) {
+                results[originalUrl] = cachedImage
+            } else {
+                urlsToFetch.append((originalUrl, highQualityUrl(originalUrl)))
+            }
+        }
 
-        await withTaskGroup(of: (String, UIImage?).self) { group in
-            for (originalUrl, upgradeUrl) in urlMappings {
-                group.addTask {
-                    guard let url = URL(string: upgradeUrl) else {
-                        return (originalUrl, nil)
-                    }
+        // Fetch missing images concurrently
+        if !urlsToFetch.isEmpty {
+            await withTaskGroup(of: (String, UIImage?).self) { group in
+                for (originalUrl, upgradeUrl) in urlsToFetch {
+                    group.addTask {
+                        guard let url = URL(string: upgradeUrl) else {
+                            return (originalUrl, nil)
+                        }
 
-                    do {
-                        let (data, _) = try await URLSession.shared.data(from: url)
-                        let image = UIImage(data: data)
-                        return (originalUrl, image)
-                    } catch {
-                        print("ShareCardGenerator: Failed to load image from \(originalUrl): \(error)")
-                        return (originalUrl, nil)
+                        do {
+                            let (data, _) = try await URLSession.shared.data(from: url)
+                            let image = UIImage(data: data)
+                            return (originalUrl, image)
+                        } catch {
+                            print("ShareCardGenerator: Failed to load image from \(originalUrl): \(error)")
+                            return (originalUrl, nil)
+                        }
                     }
                 }
-            }
 
-            for await (urlString, image) in group {
-                if let image = image {
-                    results[urlString] = image
+                for await (urlString, image) in group {
+                    if let image = image {
+                        // Cache the downloaded image
+                        imageCache.setObject(image, forKey: urlString as NSString)
+                        results[urlString] = image
+                    }
                 }
             }
         }
@@ -218,11 +274,10 @@ class ShareCardGenerator {
             return nil
         }
 
-        // Read single pixel to get average color
+        // Read single pixel to get average color (reuse shared context)
         var bitmap = [UInt8](repeating: 0, count: 4)
-        let context = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
 
-        context.render(
+        ciContext.render(
             outputImage,
             toBitmap: &bitmap,
             rowBytes: 4,

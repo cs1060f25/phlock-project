@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var authState: AuthenticationState
+    @EnvironmentObject var clipboardService: ClipboardService
     @State private var showSplashScreen = true
     @State private var splashScreenComplete = false
     @State private var canDismissSplash = false
@@ -66,6 +67,10 @@ struct ContentView: View {
                 } else {
                     // Fully onboarded - show main app
                     MainView()
+                        .onAppear {
+                            // Enable clipboard checking only when user is fully onboarded
+                            clipboardService.isEnabled = true
+                        }
                 }
             } else if !showSplashScreen {
                 // Not authenticated and splash is done - show welcome screen
@@ -159,6 +164,8 @@ struct ContentView: View {
                 // Ensure splash is hidden so WelcomeView shows
                 showSplashScreen = false
                 isInitialLaunch = false
+                // Disable clipboard checking when signed out
+                clipboardService.isEnabled = false
             }
         }
         .dismissKeyboardOnTouch()
@@ -182,4 +189,5 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .environmentObject(AuthenticationState())
+        .environmentObject(ClipboardService())
 }

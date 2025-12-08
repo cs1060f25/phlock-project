@@ -81,11 +81,13 @@ struct FullScreenPlayerView: View {
                         let horizontalAmount = abs(gesture.translation.width)
                         let verticalAmount = abs(gesture.translation.height)
 
-                        // Need significant movement to determine direction
-                        if horizontalAmount > 15 || verticalAmount > 15 {
-                            if verticalAmount > horizontalAmount && gesture.translation.height > 0 {
+                        // Need significant movement to determine direction (30pt for more reliable detection)
+                        if horizontalAmount > 30 || verticalAmount > 30 {
+                            // Favor vertical dismiss - only need 70% vertical dominance for downward swipes
+                            if gesture.translation.height > 0 && verticalAmount >= horizontalAmount * 0.7 {
                                 activeGesture = .vertical
-                            } else if horizontalAmount > verticalAmount {
+                            } else if horizontalAmount > verticalAmount * 1.5 {
+                                // Require 1.5x horizontal dominance for track skip
                                 activeGesture = .horizontal
                             }
                         }
@@ -330,7 +332,8 @@ struct FullScreenPlayerView: View {
                     let horizontalAmount = abs(gesture.translation.width)
                     let verticalAmount = abs(gesture.translation.height)
 
-                    if horizontalAmount > verticalAmount && !isSkipping {
+                    // Require 1.5x horizontal dominance to trigger track skip (bias toward dismiss)
+                    if horizontalAmount > verticalAmount * 1.5 && !isSkipping {
                         // Mark as horizontal gesture
                         if activeGesture == .none {
                             activeGesture = .horizontal
@@ -353,10 +356,12 @@ struct FullScreenPlayerView: View {
                     guard activeGesture != .vertical else { return }
 
                     let swipeThreshold: CGFloat = 80
-                    let velocityThreshold: CGFloat = 300
+                    let velocityThreshold: CGFloat = 500
 
+                    // Only count velocity if it's predominantly horizontal (1.5x ratio)
+                    let isVelocityHorizontal = abs(gesture.velocity.width) > abs(gesture.velocity.height) * 1.5
                     let shouldTrigger = abs(gesture.translation.width) > swipeThreshold ||
-                                       abs(gesture.velocity.width) > velocityThreshold
+                                       (abs(gesture.velocity.width) > velocityThreshold && isVelocityHorizontal)
 
                     if shouldTrigger && !isSkipping {
                         if gesture.translation.width > 0 && canSkipBackward {

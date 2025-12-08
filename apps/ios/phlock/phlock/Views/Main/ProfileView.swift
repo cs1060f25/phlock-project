@@ -1183,36 +1183,37 @@ struct TopArtistsSentCard: View {
                 }
             } else {
                 ForEach(Array(artists.enumerated()), id: \.element.id) { index, artist in
-                    HStack(spacing: 10) {
-                        Text("\(index + 1).")
-                            .font(.lora(size: 14))
-                            .foregroundColor(.secondary)
-                            .frame(width: 24, alignment: .leading)
+                    Button {
+                        artistToOpen = artist
+                        showPlatformSheet = true
+                    } label: {
+                        HStack(spacing: 10) {
+                            Text("\(index + 1).")
+                                .font(.lora(size: 14))
+                                .foregroundColor(.secondary)
+                                .frame(width: 24, alignment: .leading)
 
-                        Text(artist.name)
-                            .font(.lora(size: 15))
-                            .lineLimit(1)
-                            .foregroundColor(.primary)
+                            Text(artist.name)
+                                .font(.lora(size: 15))
+                                .lineLimit(1)
+                                .foregroundColor(.primary)
 
-                        Spacer()
+                            Spacer()
 
-                        HStack(spacing: 12) {
-                            Button {
-                                artistToOpen = artist
-                                showPlatformSheet = true
-                            } label: {
+                            HStack(spacing: 12) {
                                 Image(systemName: "arrow.up.forward.square")
                                     .font(.lora(size: 14))
                                     .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
 
-                            Text("\(artist.count)")
-                                .font(.lora(size: 14))
-                                .foregroundColor(.secondary)
+                                Text("\(artist.count)")
+                                    .font(.lora(size: 14))
+                                    .foregroundColor(.secondary)
+                            }
                         }
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
                     }
-                    .padding(.vertical, 6)
+                    .buttonStyle(.plain)
 
                     if index < artists.count - 1 {
                         Divider()
@@ -1235,7 +1236,7 @@ struct TopArtistsSentCard: View {
                     openArtistInSpotify(artist: artist)
                 }
                 Button("Apple Music") {
-                    openArtistInAppleMusic(name: artist.name)
+                    openArtistInAppleMusic(artist: artist)
                 }
             }
             Button("Cancel", role: .cancel) { artistToOpen = nil }
@@ -1275,21 +1276,92 @@ struct TopArtistsSentCard: View {
             }
         }
 
-        // Fall back to search if no ID available
+        // Fall back to edge function lookup (same approach as ArtistsGridView)
         let artistName = primaryArtistName(from: artist.name)
-        let encoded = artistName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? artistName
-        if let url = URL(string: "https://open.spotify.com/search/artist%3A\(encoded)") {
-            UIApplication.shared.open(url)
+        Task {
+            await openArtistInSpotifyViaSearch(artistName: artistName)
         }
     }
 
-    private func openArtistInAppleMusic(name: String) {
-        // Note: Apple Music requires their own artist ID for direct links
-        // Since we only store Spotify artist IDs, we fall back to search
-        let artistName = primaryArtistName(from: name)
-        let encoded = artistName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? artistName
-        if let url = URL(string: "https://music.apple.com/us/search?term=\(encoded)") {
-            UIApplication.shared.open(url)
+    private func openArtistInSpotifyViaSearch(artistName: String) async {
+        do {
+            struct SearchResponse: Decodable {
+                let spotifyId: String?
+            }
+
+            let supabase = PhlockSupabaseClient.shared.client
+            let response: SearchResponse = try await supabase.functions.invoke(
+                "search-spotify-artist",
+                options: FunctionInvokeOptions(body: ["artistName": artistName])
+            )
+
+            if let spotifyId = response.spotifyId {
+                let artistURL = "https://open.spotify.com/artist/\(spotifyId)"
+                await MainActor.run {
+                    if let url = URL(string: artistURL) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+            } else {
+                await openSpotifySearch(artistName: artistName)
+            }
+        } catch {
+            await openSpotifySearch(artistName: artistName)
+        }
+    }
+
+    private func openSpotifySearch(artistName: String) async {
+        let searchQuery = artistName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? artistName
+        let spotifyURL = "https://open.spotify.com/search/\(searchQuery)"
+        await MainActor.run {
+            if let url = URL(string: spotifyURL) {
+                UIApplication.shared.open(url)
+            }
+        }
+    }
+
+    private func openArtistInAppleMusic(artist: ArtistSendStat) {
+        let artistName = primaryArtistName(from: artist.name)
+        Task {
+            await openArtistInAppleMusicViaSearch(artistName: artistName)
+        }
+    }
+
+    private func openArtistInAppleMusicViaSearch(artistName: String) async {
+        do {
+            struct SearchResponse: Decodable {
+                let appleMusicId: String?
+                let artistName: String?
+            }
+
+            let supabase = PhlockSupabaseClient.shared.client
+            let response: SearchResponse = try await supabase.functions.invoke(
+                "search-apple-music-artist",
+                options: FunctionInvokeOptions(body: ["artistName": artistName])
+            )
+
+            if let appleMusicId = response.appleMusicId {
+                let artistURL = "https://music.apple.com/us/artist/\(appleMusicId)"
+                await MainActor.run {
+                    if let url = URL(string: artistURL) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+            } else {
+                await openAppleMusicSearch(artistName: artistName)
+            }
+        } catch {
+            await openAppleMusicSearch(artistName: artistName)
+        }
+    }
+
+    private func openAppleMusicSearch(artistName: String) async {
+        let searchQuery = artistName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? artistName
+        let appleMusicURL = "https://music.apple.com/us/search?term=\(searchQuery)"
+        await MainActor.run {
+            if let url = URL(string: appleMusicURL) {
+                UIApplication.shared.open(url)
+            }
         }
     }
 }
@@ -1393,9 +1465,9 @@ struct EditableMusicStatsSection: View {
     @EnvironmentObject var playbackService: PlaybackService
 
     private let columns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12)
+        GridItem(.flexible(), spacing: 12, alignment: .top),
+        GridItem(.flexible(), spacing: 12, alignment: .top),
+        GridItem(.flexible(), spacing: 12, alignment: .top)
     ]
 
     // Get current tracks, padded to 6 slots
@@ -1492,28 +1564,31 @@ struct EmptyFavoriteSlot: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 6) {
-                ZStack {
-                    if type == .artist {
-                        Circle()
-                            .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6]))
-                            .foregroundColor(.gray.opacity(0.4))
-                    } else {
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6]))
-                            .foregroundColor(.gray.opacity(0.4))
-                    }
+            VStack(spacing: type == .artist ? 8 : 6) {
+                GeometryReader { geometry in
+                    ZStack {
+                        if type == .artist {
+                            Circle()
+                                .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6]))
+                                .foregroundColor(.gray.opacity(0.4))
+                        } else {
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6]))
+                                .foregroundColor(.gray.opacity(0.4))
+                        }
 
-                    Image(systemName: "plus")
-                        .font(.system(size: 24))
-                        .foregroundColor(.gray.opacity(0.5))
+                        Image(systemName: "plus")
+                            .font(.system(size: 24))
+                            .foregroundColor(.gray.opacity(0.5))
+                    }
+                    .frame(width: geometry.size.width, height: geometry.size.width)
                 }
-                .frame(maxWidth: .infinity)
                 .aspectRatio(1, contentMode: .fit)
 
                 Text("add")
                     .font(.lora(size: 12))
                     .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
         }
         .buttonStyle(.plain)
@@ -1620,43 +1695,47 @@ struct EditableArtistCell: View {
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 8) {
-                ZStack {
-                    if let artworkUrl = item.albumArtUrl, let url = URL(string: artworkUrl) {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                            case .failure, .empty:
-                                artistPlaceholder
-                            @unknown default:
-                                artistPlaceholder
+                // Use GeometryReader to ensure consistent sizing across all cells
+                GeometryReader { geometry in
+                    ZStack {
+                        if let artworkUrl = item.albumArtUrl, let url = URL(string: artworkUrl) {
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                case .failure, .empty:
+                                    artistPlaceholder
+                                @unknown default:
+                                    artistPlaceholder
+                                }
                             }
+                        } else {
+                            artistPlaceholder
                         }
-                    } else {
-                        artistPlaceholder
-                    }
 
-                    // Edit overlay for editable mode
-                    if isEditable {
-                        Circle()
-                            .fill(Color.black.opacity(0.3))
-                            .frame(width: 36, height: 36)
-                        Image(systemName: "pencil")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white)
+                        // Edit overlay for editable mode
+                        if isEditable {
+                            Circle()
+                                .fill(Color.black.opacity(0.3))
+                                .frame(width: 36, height: 36)
+                            Image(systemName: "pencil")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
                     }
+                    .frame(width: geometry.size.width, height: geometry.size.width)
+                    .clipShape(Circle())
                 }
-                .frame(maxWidth: .infinity)
                 .aspectRatio(1, contentMode: .fit)
-                .clipShape(Circle())
 
                 Text(item.name)
                     .font(.lora(size: 12))
                     .foregroundColor(.primary)
                     .lineLimit(1)
-                    .multilineTextAlignment(.center)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
         }
         .buttonStyle(.plain)

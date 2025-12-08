@@ -114,9 +114,10 @@ class SearchService {
         }
 
         let request = TrackSearchRequest(query: query, limit: 20)
-        let response: TrackSearchResponse = try await supabase.functions.invoke(
-            "search-spotify-tracks",
-            options: FunctionInvokeOptions(body: request)
+
+        let response: TrackSearchResponse = try await invokeWithRetry(
+            function: "search-spotify-tracks",
+            body: request
         )
 
         return response.tracks.map { track in
@@ -133,6 +134,86 @@ class SearchService {
                 popularity: track.popularity
             )
         }
+    }
+
+    /// Extract user-friendly error message from edge function errors
+    private func extractEdgeFunctionError(_ error: FunctionsError) -> Error? {
+        switch error {
+        case .httpError(_, let data):
+            // Try to decode the error message from the response body
+            struct ErrorResponse: Decodable {
+                let error: String
+            }
+            if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
+                return NSError(
+                    domain: "SearchService",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: errorResponse.error]
+                )
+            }
+            return nil
+        case .relayError:
+            return NSError(
+                domain: "SearchService",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Search service is temporarily unavailable"]
+            )
+        }
+    }
+
+    /// Invoke an edge function with automatic retry on transient failures
+    private func invokeWithRetry<Request: Encodable, Response: Decodable>(
+        function: String,
+        body: Request,
+        maxRetries: Int = 2
+    ) async throws -> Response {
+        var lastError: Error?
+
+        for attempt in 0...maxRetries {
+            do {
+                let response: Response = try await supabase.functions.invoke(
+                    function,
+                    options: FunctionInvokeOptions(body: body)
+                )
+                return response
+            } catch let error as FunctionsError {
+                lastError = error
+
+                // Check if this is a retryable error
+                let shouldRetry: Bool
+                switch error {
+                case .httpError(let code, let data):
+                    // Retry on 5xx errors (server issues) and 429 (rate limit)
+                    // Don't retry on 4xx client errors (except 429)
+                    if code >= 500 || code == 429 {
+                        shouldRetry = true
+                        // Check if the error message indicates a retryable condition
+                        if let errorStr = String(data: data, encoding: .utf8) {
+                            print("⚠️ Edge function \(function) attempt \(attempt + 1) failed (\(code)): \(errorStr)")
+                        }
+                    } else {
+                        shouldRetry = false
+                    }
+                case .relayError:
+                    // Relay errors are typically transient
+                    shouldRetry = true
+                }
+
+                guard shouldRetry && attempt < maxRetries else {
+                    throw extractEdgeFunctionError(error) ?? error
+                }
+
+                // Exponential backoff: 500ms, 1000ms
+                let delay = 0.5 * Double(attempt + 1)
+                print("⏳ Retrying \(function) in \(delay)s...")
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            } catch {
+                // Non-FunctionsError - don't retry
+                throw error
+            }
+        }
+
+        throw lastError ?? NSError(domain: "SearchService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Search failed"])
     }
 
     private func searchSpotifyArtists(query: String) async throws -> [MusicItem] {
@@ -157,9 +238,10 @@ class SearchService {
         }
 
         let request = SearchRequest(artistName: query)
-        let response: ArtistSearchResponse = try await supabase.functions.invoke(
-            "search-spotify-artist",
-            options: FunctionInvokeOptions(body: request)
+
+        let response: ArtistSearchResponse = try await invokeWithRetry(
+            function: "search-spotify-artist",
+            body: request
         )
 
         return response.artists.map { artist in
@@ -212,9 +294,9 @@ class SearchService {
         let request = BrowseRequest(genre: genre, limit: limit)
         print("🎵 SearchService: Calling browse-artists-by-genre for \(genre)")
 
-        let response: BrowseResponse = try await supabase.functions.invoke(
-            "browse-artists-by-genre",
-            options: FunctionInvokeOptions(body: request)
+        let response: BrowseResponse = try await invokeWithRetry(
+            function: "browse-artists-by-genre",
+            body: request
         )
 
         print("🎵 SearchService: Got \(response.artists.count) artists from edge function")

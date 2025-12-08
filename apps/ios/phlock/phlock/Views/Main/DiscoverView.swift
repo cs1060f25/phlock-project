@@ -21,6 +21,7 @@ enum SearchFilter: String, CaseIterable {
 }
 
 enum BrowseTab: String, CaseIterable {
+    case suggested = "Suggested"
     case recent = "Recent"
     case viral = "Viral"
     case new = "New"
@@ -30,6 +31,7 @@ enum BrowseTab: String, CaseIterable {
 struct DiscoverView: View {
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var navigationState: NavigationState
+    @EnvironmentObject var clipboardService: ClipboardService
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) var colorScheme
     @Binding var navigationPath: NavigationPath
@@ -85,12 +87,29 @@ struct DiscoverView: View {
 
     // Available tabs based on whether streaming platform with API access is connected
     private var availableTabs: [BrowseTab] {
-        hasStreamingPlatformWithAPI ? [.recent, .viral, .new, .charts] : [.viral, .new, .charts]
+        var tabs: [BrowseTab] = []
+
+        // Add Suggested tab first if clipboard track exists
+        if clipboardService.detectedTrack != nil {
+            tabs.append(.suggested)
+        }
+
+        // Add platform-specific tabs
+        if hasStreamingPlatformWithAPI {
+            tabs.append(contentsOf: [.recent, .viral, .new, .charts])
+        } else {
+            tabs.append(contentsOf: [.viral, .new, .charts])
+        }
+
+        return tabs
     }
 
-    // Default tab based on streaming platform
+    // Default tab based on clipboard/streaming platform
     private var defaultTab: BrowseTab {
-        hasStreamingPlatformWithAPI ? .recent : .viral
+        if clipboardService.detectedTrack != nil {
+            return .suggested
+        }
+        return hasStreamingPlatformWithAPI ? .recent : .viral
     }
 
     var body: some View {
@@ -254,6 +273,14 @@ struct DiscoverView: View {
                 // Reload when user's music platform changes (e.g., after connecting)
                 selectedBrowseTab = defaultTab
                 loadRecentlyPlayedTracks()
+            }
+            .onChange(of: clipboardService.detectedTrack) { newTrack in
+                // Auto-select Suggested tab when clipboard track is detected
+                if newTrack != nil {
+                    withAnimation {
+                        selectedBrowseTab = .suggested
+                    }
+                }
             }
             .onChange(of: refreshTrigger) { newValue in
                 Task {
@@ -498,6 +525,8 @@ struct DiscoverView: View {
     @ViewBuilder
     private func browseContentForTab(_ tab: BrowseTab) -> some View {
         switch tab {
+        case .suggested:
+            suggestedTrackSection
         case .recent:
             recentlyPlayedSection
         case .viral:
@@ -506,6 +535,92 @@ struct DiscoverView: View {
             curatedPlaylistSection(tracks: newReleaseTracks, title: "what's new", isLoading: isLoadingCuratedPlaylists)
         case .charts:
             curatedPlaylistSection(tracks: chartsTracks, title: "today's top hits", isLoading: isLoadingCuratedPlaylists)
+        }
+    }
+
+    // MARK: - Suggested Track Section (from clipboard)
+
+    @ViewBuilder
+    private var suggestedTrackSection: some View {
+        if let track = clipboardService.detectedTrack {
+            VStack(spacing: 20) {
+                Text("from your clipboard")
+                    .font(.lora(size: 14))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 20)
+
+                // Large track card
+                Button {
+                    selectDailySong(track)
+                } label: {
+                    VStack(spacing: 16) {
+                        // Album Art
+                        if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
+                            AsyncImage(url: url) { image in
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            } placeholder: {
+                                Color.gray.opacity(0.2)
+                            }
+                            .frame(width: 200, height: 200)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 4)
+                        }
+
+                        // Track info
+                        VStack(spacing: 6) {
+                            Text(track.name)
+                                .font(.lora(size: 20, weight: .semiBold))
+                                .foregroundColor(.primary)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.center)
+
+                            Text(track.artistName ?? "Unknown Artist")
+                                .font(.lora(size: 16))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        // Selection indicator
+                        if selectedDailyTrackId == track.id {
+                            HStack(spacing: 6) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.accentColor)
+                                Text("selected")
+                                    .font(.lora(size: 14, weight: .medium))
+                                    .foregroundColor(.accentColor)
+                            }
+                        } else {
+                            Text("tap to select")
+                                .font(.lora(size: 14))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+
+                // Dismiss button
+                Button {
+                    clipboardService.clearDetectedTrack()
+                    // Switch to next available tab
+                    if let firstNonSuggested = availableTabs.first(where: { $0 != .suggested }) {
+                        selectedBrowseTab = firstNonSuggested
+                    }
+                } label: {
+                    Text("dismiss suggestion")
+                        .font(.lora(size: 14))
+                        .foregroundColor(.secondary)
+                        .padding(.vertical, 8)
+                }
+
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+        } else {
+            // Fallback - should not happen but handle gracefully
+            Text("No suggested track")
+                .foregroundColor(.secondary)
         }
     }
 

@@ -43,11 +43,6 @@ struct UserProfileView: View {
     // Feedback dialog (only for @woon)
     @State private var showFeedbackDialog = false
 
-    // Mini player state (for when presented as sheet)
-    @State private var showFullPlayer = false
-    @State private var showMiniPlayerShareSheet = false
-    @State private var miniPlayerTrackToShare: MusicItem? = nil
-
     // Computed property to check if we can see the profile content
     private var canViewProfile: Bool {
         // Can always view if not private
@@ -57,8 +52,7 @@ struct UserProfileView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            ScrollView {
+        ScrollView {
                 VStack(spacing: 24) {
                     // Profile Header
                     VStack(alignment: .leading, spacing: 12) {
@@ -274,26 +268,6 @@ struct UserProfileView: View {
                     Spacer(minLength: MiniPlayerView.Layout.height + 20)
                 }
             }
-        }
-
-            // Mini Player overlay
-            if playbackService.currentTrack != nil {
-                MiniPlayerView(
-                    playbackService: playbackService,
-                    showFullPlayer: $showFullPlayer,
-                    showShareSheet: $showMiniPlayerShareSheet,
-                    trackToShare: $miniPlayerTrackToShare
-                )
-                .environmentObject(authState)
-                .padding(.bottom, 8)
-            }
-        }
-        .fullScreenCover(isPresented: $showFullPlayer) {
-            FullScreenPlayerView(
-                playbackService: playbackService,
-                isPresented: $showFullPlayer
-            )
-            .environmentObject(authState)
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

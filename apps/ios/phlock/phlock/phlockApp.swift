@@ -69,6 +69,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 struct phlockApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var authState = AuthenticationState()
+    @StateObject private var clipboardService = ClipboardService()
+    @Environment(\.scenePhase) private var scenePhase
 
     // DEBUG: Set to true to force clear session on launch (for testing onboarding)
     private static let forceSignOutOnLaunch = false
@@ -119,6 +121,7 @@ struct phlockApp: App {
             ContentView()
                 .preferredColorScheme(.light)
                 .environmentObject(authState)
+                .environmentObject(clipboardService)
                 .onOpenURL { url in
                     // Try Google Sign-In first
                     if GIDSignIn.sharedInstance.handle(url) {
@@ -133,6 +136,16 @@ struct phlockApp: App {
                             print("✅ OAuth callback handled: \(url)")
                         } catch {
                             print("❌ Failed to handle OAuth callback: \(error)")
+                        }
+                    }
+                }
+                .onChange(of: scenePhase) { newPhase in
+                    if newPhase == .active {
+                        // Only check clipboard when user is fully signed in (not during splash/onboarding)
+                        if authState.isAuthenticated && !authState.isLoading {
+                            Task {
+                                await clipboardService.checkClipboard(userId: authState.currentUser?.id)
+                            }
                         }
                     }
                 }

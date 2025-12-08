@@ -571,8 +571,8 @@ struct RecentTrackCard: View {
     @EnvironmentObject var navigationState: NavigationState
     @Environment(\.colorScheme) var colorScheme
 
-    // Track if user is scrolling to prevent accidental taps
-    @GestureState private var isDragging = false
+    // Local state for immediate visual feedback when tapped
+    @State private var isSelectedForPlayback = false
 
     init(
         track: MusicItem,
@@ -606,10 +606,17 @@ struct RecentTrackCard: View {
         selectedDailyTrackId == track.id
     }
 
+    // Show border if this track is selected (immediate) or currently playing
+    var showSelectionBorder: Bool {
+        isSelectedForPlayback || isCurrentTrack
+    }
+
     private func handleTap() {
         if isCurrentTrack {
             playbackService.isPlaying ? playbackService.pause() : playbackService.resume()
         } else {
+            // Show border immediately for visual feedback
+            isSelectedForPlayback = true
             let startIndex = allTracks.firstIndex(where: { $0.id == track.id }) ?? index
             playbackService.startQueue(
                 tracks: allTracks,
@@ -621,65 +628,73 @@ struct RecentTrackCard: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            // Main Card Button
-            Button {
-                handleTap()
-            } label: {
-                VStack(alignment: .leading, spacing: 6) {
-                    // Album Art with Play Overlay
-                    ZStack {
-                        if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
-                            AsyncImage(url: url) { phase in
-                                switch phase {
-                                case .success(let image):
-                                    image
-                                        .resizable()
-                                        .scaledToFill()
-                                case .failure, .empty:
-                                    Color.gray.opacity(0.2)
-                                @unknown default:
-                                    Color.gray.opacity(0.2)
-                                }
+            // Main Card - play button is only in the center, not the whole card
+            VStack(alignment: .leading, spacing: 6) {
+                // Album Art with Play Button overlay
+                ZStack {
+                    if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            case .failure, .empty:
+                                Color.gray.opacity(0.2)
+                            @unknown default:
+                                Color.gray.opacity(0.2)
                             }
-                        } else {
-                            Color.gray.opacity(0.2)
                         }
-
-                        // Play icon overlay (center)
-                        Circle()
-                            .fill(Color.black.opacity(isPlaying ? 0.5 : 0.3))
-                            .frame(width: 36, height: 36)
-
-                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white)
+                    } else {
+                        Color.gray.opacity(0.2)
                     }
-                    .frame(maxWidth: .infinity)
-                    .aspectRatio(1, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .padding(2) // Make room for border
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(isCurrentTrack ? Color.primary : Color.clear, lineWidth: 2)
-                    )
 
-                    // Track name
-                    Text(track.name)
-                        .font(.lora(size: 12))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
+                    // Play button - only this circle is tappable for playback
+                    Button {
+                        handleTap()
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(Color.black.opacity(isPlaying ? 0.5 : 0.3))
+                                .frame(width: 44, height: 44)
 
-                    // Artist name
-                    if let artist = track.artistName {
-                        Text(artist)
-                            .font(.lora(size: 11))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
+                            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
+                        .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .padding(2) // Make room for border
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(showSelectionBorder ? Color.primary : Color.clear, lineWidth: 2)
+                )
+                .onChange(of: playbackService.currentTrack?.id) { newTrackId in
+                    // Reset local selection state when a different track becomes current
+                    if newTrackId != track.id {
+                        isSelectedForPlayback = false
                     }
                 }
-                .contentShape(Rectangle())
+
+                // Track name
+                Text(track.name)
+                    .font(.lora(size: 12))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+
+                // Artist name
+                if let artist = track.artistName {
+                    Text(artist)
+                        .font(.lora(size: 11))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
             }
-            .buttonStyle(.plain)
 
             // Top-right action: daily select button
             // Placed as an overlay to be independent of the main button

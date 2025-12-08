@@ -450,10 +450,14 @@ struct PhlockView: View {
             .animation(.easeInOut(duration: 0.25), value: showFriendPicker)
         }
         .toast(isPresented: $showToast, message: toastMessage, type: toastType)
-        .sheet(isPresented: $showShareSheet) {
+        .fullScreenCover(isPresented: $showShareSheet) {
             if let image = generatedShareCardImages[.story] {
-                let message = "hey cutie, this is my phlock today - join me at https://phlock.app so i can add you too"
-                ActivityViewController(activityItems: [message, image])
+                let message = "hey cutie, this is my phlock today - join me so i can add you too https://phlock.app"
+                ActivityViewController(image: image, message: message) {
+                    showShareSheet = false
+                }
+                .background(ClearBackgroundView())
+                .ignoresSafeArea()
             }
         }
         .sheet(isPresented: $showProfileSheet) {
@@ -789,6 +793,13 @@ struct PhlockView: View {
                     }
 
                     self.hasLoadedPhlockOnce = true
+
+                    // Pre-warm share card image cache in background
+                    var allSongs = songs
+                    if let myPick = self.myDailySong {
+                        allSongs.insert(myPick, at: 0)
+                    }
+                    ShareCardGenerator.preWarmCache(for: allSongs)
                 }
                 print("✅ Loaded \(songs.count) daily songs from \(members.count) phlock members")
             }
@@ -818,6 +829,8 @@ struct PhlockView: View {
             myDailySong = try await ShareService.shared.getTodaysDailySong(for: userId)
             if let song = myDailySong {
                 print("🎵 PhlockView: Found my daily song: \(song.trackName)")
+                // Pre-warm share card cache for my pick
+                ShareCardGenerator.preWarmCache(for: [song])
             } else {
                 print("🎵 PhlockView: No daily song found for me")
             }

@@ -1,4 +1,5 @@
 import SwiftUI
+import LinkPresentation
 
 /// Card format for different sharing destinations
 enum ShareCardFormat: CaseIterable {
@@ -392,19 +393,155 @@ struct ShareCardSheetLegacy: View {
     }
 }
 
-/// UIKit wrapper for UIActivityViewController
+// MARK: - Share Item Source with Custom Thumbnail and Preview Text
+
+/// Custom activity item source that shows the app icon as thumbnail AND preview text in the share sheet
+class ShareItemSource: NSObject, UIActivityItemSource {
+    let image: UIImage
+    let message: String
+
+    init(image: UIImage, message: String) {
+        self.image = image
+        self.message = message
+        super.init()
+    }
+
+    // Placeholder shown while loading
+    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
+        return image
+    }
+
+    // The actual item to share
+    func activityViewController(_ activityViewController: UIActivityViewController, itemForActivityType activityType: UIActivity.ActivityType?) -> Any? {
+        return image
+    }
+
+    // Subject line for email
+    func activityViewController(_ activityViewController: UIActivityViewController, subjectForActivityType activityType: UIActivity.ActivityType?) -> String {
+        return "my phlock today"
+    }
+
+    // Link metadata provides both the icon thumbnail AND preview text
+    func activityViewControllerLinkMetadata(_ activityViewController: UIActivityViewController) -> LPLinkMetadata? {
+        let metadata = LPLinkMetadata()
+        metadata.title = message
+
+        // Use app icon as the thumbnail
+        if let appIcon = UIImage(named: "AppIcon") {
+            metadata.iconProvider = NSItemProvider(object: appIcon)
+        }
+
+        return metadata
+    }
+}
+
+/// Custom activity item source for the message text
+class ShareMessageSource: NSObject, UIActivityItemSource {
+    let message: String
+
+    init(message: String) {
+        self.message = message
+        super.init()
+    }
+
+    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
+        return message
+    }
+
+    func activityViewController(_ activityViewController: UIActivityViewController, itemForActivityType activityType: UIActivity.ActivityType?) -> Any? {
+        return message
+    }
+}
+
+/// UIKit wrapper for UIActivityViewController - presents natively for compact appearance
 struct ActivityViewController: UIViewControllerRepresentable {
     let activityItems: [Any]
     let applicationActivities: [UIActivity]? = nil
+    let onDismiss: (() -> Void)?
 
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(
+    init(activityItems: [Any], onDismiss: (() -> Void)? = nil) {
+        self.activityItems = activityItems
+        self.onDismiss = onDismiss
+    }
+
+    /// Convenience initializer for image + message with app icon thumbnail
+    init(image: UIImage, message: String, onDismiss: (() -> Void)? = nil) {
+        let imageSource = ShareItemSource(image: image, message: message)
+        let messageSource = ShareMessageSource(message: message)
+        self.activityItems = [imageSource, messageSource]
+        self.onDismiss = onDismiss
+    }
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        // Return a clear hosting controller that will present the activity VC
+        let controller = ActivityHostingController(
+            activityItems: activityItems,
+            applicationActivities: applicationActivities,
+            onDismiss: onDismiss
+        )
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+}
+
+/// Hosting controller that presents UIActivityViewController natively
+class ActivityHostingController: UIViewController {
+    let activityItems: [Any]
+    let applicationActivities: [UIActivity]?
+    let onDismiss: (() -> Void)?
+    private var hasPresented = false
+
+    init(activityItems: [Any], applicationActivities: [UIActivity]?, onDismiss: (() -> Void)?) {
+        self.activityItems = activityItems
+        self.applicationActivities = applicationActivities
+        self.onDismiss = onDismiss
+        super.init(nibName: nil, bundle: nil)
+        self.view.backgroundColor = .clear
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+
+        guard !hasPresented else { return }
+        hasPresented = true
+
+        let activityVC = UIActivityViewController(
             activityItems: activityItems,
             applicationActivities: applicationActivities
         )
+
+        activityVC.completionWithItemsHandler = { [weak self] _, _, _, _ in
+            self?.onDismiss?()
+        }
+
+        // Present from this controller
+        present(activityVC, animated: true)
+    }
+}
+
+/// Helper view to make fullScreenCover background transparent
+struct ClearBackgroundView: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = ClearBackgroundUIView()
+        DispatchQueue.main.async {
+            view.superview?.superview?.backgroundColor = .clear
+        }
+        return view
     }
 
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+    func updateUIView(_ uiView: UIView, context: Context) {}
+}
+
+class ClearBackgroundUIView: UIView {
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        superview?.superview?.backgroundColor = .clear
+    }
 }
 
 // MARK: - Preview

@@ -10,7 +10,14 @@ class PhlockSupabaseClient {
     private let keychain = Keychain(service: "com.phlock.app")
 
     private init() {
-        // Initialize Supabase client with secure session storage
+        // Create URLSession configuration with reasonable timeouts
+        let sessionConfig = URLSessionConfiguration.default
+        sessionConfig.timeoutIntervalForRequest = 30  // 30 seconds for individual requests
+        sessionConfig.timeoutIntervalForResource = 60 // 60 seconds total for a resource
+        sessionConfig.waitsForConnectivity = true     // Wait for network to become available
+        sessionConfig.requestCachePolicy = .reloadIgnoringLocalCacheData
+
+        // Initialize Supabase client with secure session storage and timeout configuration
         self.client = SupabaseClient(
             supabaseURL: Config.supabaseURL,
             supabaseKey: Config.supabaseAnonKey,
@@ -18,6 +25,9 @@ class PhlockSupabaseClient {
                 auth: .init(
                     storage: KeychainAuthStorage(keychain: keychain),
                     autoRefreshToken: true
+                ),
+                global: .init(
+                    session: URLSession(configuration: sessionConfig)
                 )
             )
         )
