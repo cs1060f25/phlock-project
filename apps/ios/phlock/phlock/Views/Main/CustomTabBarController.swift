@@ -84,14 +84,18 @@ struct CustomTabBarView: View {
             selectedTab: $selectedTab,
             onTabTapped: handleTabTap,
             playbackProgress: playbackProgress,
-            showProgressBar: shouldShowProgressBar
+            showProgressBar: shouldShowProgressBar,
+            onSeek: { progress in
+                let seekTime = progress * playbackService.duration
+                playbackService.seek(to: seekTime)
+            }
         )
         }
     }
 
-    // Progress bar should show only on Phlock tab when playing
+    // Progress bar should show on Phlock tab when a track is loaded (playing or paused)
     private var shouldShowProgressBar: Bool {
-        selectedTab == 0 && playbackService.isPlaying && playbackService.currentTrack != nil
+        selectedTab == 0 && playbackService.currentTrack != nil
     }
 
     private var playbackProgress: Double {
@@ -202,6 +206,25 @@ struct CustomTabBarView: View {
     }
 }
 
+// MARK: - Smooth Progress Bar Shape
+
+/// A shape that animates its width smoothly using animatableData
+private struct SmoothProgressBar: Shape {
+    var progress: Double
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let width = rect.width * CGFloat(min(max(progress, 0), 1))
+        path.addRect(CGRect(x: 0, y: 0, width: width, height: rect.height))
+        return path
+    }
+}
+
 // MARK: - Custom Tab Bar
 
 struct CustomTabBar: View {
@@ -209,26 +232,105 @@ struct CustomTabBar: View {
     let onTabTapped: (Int) -> Void
     var playbackProgress: Double = 0  // 0.0 to 1.0
     var showProgressBar: Bool = false  // Only show on Phlock tab when playing
+    var onSeek: ((Double) -> Void)? = nil  // Callback for scrubbing
     @EnvironmentObject var authState: AuthenticationState
     @Environment(\.colorScheme) var colorScheme
+
+    // Scrubbing state
+    @State private var isScrubbing = false
+    @State private var scrubProgress: Double = 0
+    @GestureState private var isDragging = false
+
+    // Animated progress for smooth transitions
+    @State private var animatedProgress: Double = 0
+
+    // Progress bar colors - adapt to color scheme
+    private var progressTrackColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.3) : Color.black.opacity(0.15)
+    }
+
+    private var progressFillColor: Color {
+        colorScheme == .dark ? Color.white : Color.black
+    }
+
+    // Display progress (use scrub value when scrubbing)
+    private var displayProgress: Double {
+        isScrubbing ? scrubProgress : animatedProgress
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             // Progress bar at top edge of tab bar (TikTok/IG Reels style)
-            if showProgressBar {
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        // Background track (subtle)
-                        Rectangle()
-                            .fill(Color.white.opacity(0.15))
+            // Visible progress bar (thin line)
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    // Background track
+                    Rectangle()
+                        .fill(showProgressBar ? progressTrackColor : Color.clear)
 
-                        // Progress fill
-                        Rectangle()
-                            .fill(Color.white)
-                            .frame(width: geometry.size.width * CGFloat(min(max(playbackProgress, 0), 1)))
+                    // Progress fill - using animatable shape for smooth interpolation
+                    SmoothProgressBar(progress: displayProgress)
+                        .fill(progressFillColor)
+                        .opacity(showProgressBar ? 1 : 0)
+
+                    // Scrub indicator (shows when scrubbing)
+                    if isScrubbing && showProgressBar {
+                        Circle()
+                            .fill(progressFillColor)
+                            .frame(width: 14, height: 14)
+                            .position(
+                                x: geometry.size.width * CGFloat(min(max(scrubProgress, 0), 1)),
+                                y: geometry.size.height / 2
+                            )
+                            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
                     }
                 }
-                .frame(height: 2)
+                // Invisible hit area overlay for scrubbing - extends above and below the thin bar
+                .overlay(
+                    Rectangle()
+                        .fill(Color.clear)
+                        .frame(height: 44)  // Large touch target
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    guard showProgressBar else { return }
+                                    if !isScrubbing {
+                                        isScrubbing = true
+                                        scrubProgress = animatedProgress
+                                        let impact = UIImpactFeedbackGenerator(style: .light)
+                                        impact.impactOccurred()
+                                    }
+                                    let progress = max(0, min(1, value.location.x / geometry.size.width))
+                                    scrubProgress = progress
+                                }
+                                .onEnded { value in
+                                    guard showProgressBar, isScrubbing else { return }
+                                    let progress = max(0, min(1, value.location.x / geometry.size.width))
+                                    onSeek?(progress)
+                                    // Update animated progress to match seek position
+                                    animatedProgress = progress
+                                    let impact = UIImpactFeedbackGenerator(style: .medium)
+                                    impact.impactOccurred()
+                                    isScrubbing = false
+                                }
+                        )
+                        .offset(y: -20),  // Center the hit area above the progress bar
+                    alignment: .top
+                )
+            }
+            .frame(height: isScrubbing ? 6 : 2)
+            .animation(.easeInOut(duration: 0.15), value: isScrubbing)
+            .onChange(of: playbackProgress) { newProgress in
+                // Smoothly animate to the new progress value
+                if !isScrubbing {
+                    withAnimation(.linear(duration: 0.1)) {
+                        animatedProgress = newProgress
+                    }
+                }
+            }
+            .onAppear {
+                animatedProgress = playbackProgress
             }
 
             HStack(spacing: 0) {

@@ -451,6 +451,7 @@ struct PhlockCarouselView: View {
     let onMenuTapped: () -> Void  // Open phlock manager sheet
     let onShareTapped: () -> Void  // Share phlock card
     let onSendTapped: (Share) -> Void  // Send/share individual song
+    var isGeneratingShareCard: Bool = false  // Loading state for send button
 
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
@@ -589,8 +590,7 @@ struct PhlockCarouselView: View {
             }
 
             // MARK: - Vertical Action Bar (Right side - TikTok/IG Reels style)
-            // Positioned so the bottom "Open" button aligns with where the share button was
-            // (next to the profile indicator bar)
+            // Positioned so the bottom "Open" button center aligns with profile indicator bar center
             if let share = currentShare {
                 VStack {
                     Spacer()
@@ -601,6 +601,7 @@ struct PhlockCarouselView: View {
                             commentCount: share.commentCount,
                             sendCount: share.sendCount,
                             isLiked: socialService.isLiked(share.id),
+                            isSendLoading: isGeneratingShareCard,
                             onLikeTapped: {
                                 Task {
                                     try? await socialService.toggleLike(share.id)
@@ -611,7 +612,8 @@ struct PhlockCarouselView: View {
                                 showCommentSheet = true
                             },
                             onSendTapped: {
-                                // Trigger the existing share card generation
+                                // Trigger the share card generation
+                                // Loading state is managed by isGeneratingShareCard from parent
                                 onShareTapped()
                             },
                             onOpenTapped: {
@@ -621,10 +623,8 @@ struct PhlockCarouselView: View {
                         )
                         .padding(.trailing, 16)
                     }
-                    // Align bottom of action bar with the profile indicator bar
-                    // Profile indicator is at .padding(.bottom, 16), and the bar itself is ~60pt tall
-                    // So bottom of action bar should be at ~76pt from bottom
-                    .padding(.bottom, 76)
+                    // Align Open button with profile carousel circles
+                    .padding(.bottom, 22)
                 }
             }
 
@@ -1925,9 +1925,7 @@ struct PhlockCardView: View {
                 Spacer()
                     .frame(height: 20)
 
-                // Progress bar (keeps hit testing for scrubbing)
-                progressBar
-                    .padding(.horizontal, 40)
+                // Progress bar removed - now using tab bar progress indicator
 
                 // Username attribution (always shown) with optional message
                 let username = member.username ?? member.displayName
@@ -2256,6 +2254,7 @@ struct PhlockImmersiveLayout: View {
     let onMenuTapped: () -> Void
     let onShareTapped: () -> Void
     let onSendTapped: (Share) -> Void  // Send/share individual song
+    var isGeneratingShareCard: Bool = false  // Loading state for send button
 
     var body: some View {
         // Check if user has picked their daily song
@@ -2285,7 +2284,8 @@ struct PhlockImmersiveLayout: View {
                 onEditAddTapped: onEditAddTapped,
                 onMenuTapped: onMenuTapped,
                 onShareTapped: onShareTapped,
-                onSendTapped: onSendTapped
+                onSendTapped: onSendTapped,
+                isGeneratingShareCard: isGeneratingShareCard
             )
         }
     }

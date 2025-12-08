@@ -10,6 +10,7 @@ struct VerticalActionBar: View {
 
     // States
     let isLiked: Bool
+    var isSendLoading: Bool = false
 
     // Actions
     let onLikeTapped: () -> Void
@@ -40,10 +41,10 @@ struct VerticalActionBar: View {
                 action: onCommentTapped
             )
 
-            // Send button (paper airplane)
-            ActionButton(
-                icon: "paperplane",
+            // Send button (paper airplane) - shows spinner when loading
+            SendActionButton(
                 count: sendCount,
+                isLoading: isSendLoading,
                 action: onSendTapped
             )
 
@@ -60,6 +61,78 @@ struct VerticalActionBar: View {
     private var platformIcon: String {
         // Use a generic "open" icon since we can't use platform logos as SF Symbols
         "arrow.up.right.square"
+    }
+}
+
+// MARK: - Send Action Button (with loading state)
+
+private struct SendActionButton: View {
+    let count: Int
+    let isLoading: Bool
+    let action: () -> Void
+
+    @State private var isPressed = false
+
+    var body: some View {
+        Button(action: {
+            guard !isLoading else { return }
+
+            // Haptic feedback
+            let impact = UIImpactFeedbackGenerator(style: .medium)
+            impact.impactOccurred()
+
+            // Scale animation
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                isPressed = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    isPressed = false
+                }
+            }
+
+            action()
+        }) {
+            VStack(spacing: 2) {
+                // Show spinner when loading, otherwise show paper airplane
+                if isLoading {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(1.2)
+                        .frame(width: 28, height: 28)
+                        .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 1)
+                } else {
+                    Image(systemName: "paperplane")
+                        .font(.system(size: 28, weight: .light))
+                        .foregroundColor(.white)
+                        .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 1)
+                        .scaleEffect(isPressed ? 1.2 : 1.0)
+                }
+
+                // Count label
+                Text(formatCount(count))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                    .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
+            }
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(isLoading)
+    }
+
+    private func formatCount(_ count: Int) -> String {
+        if count < 1000 {
+            return "\(count)"
+        } else if count < 10_000 {
+            let thousands = Double(count) / 1000.0
+            return String(format: "%.1fK", thousands)
+        } else if count < 1_000_000 {
+            let thousands = count / 1000
+            return "\(thousands)K"
+        } else {
+            let millions = Double(count) / 1_000_000.0
+            return String(format: "%.1fM", millions)
+        }
     }
 }
 
@@ -92,20 +165,13 @@ private struct ActionButton: View {
 
             action()
         }) {
-            VStack(spacing: 4) {
-                // Icon with glass background
-                ZStack {
-                    // Glass/translucent background
-                    Circle()
-                        .fill(.ultraThinMaterial)
-                        .frame(width: 48, height: 48)
-
-                    Image(systemName: icon)
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundColor(isActive ? activeColor : .white)
-                }
-                .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
-                .scaleEffect(isPressed ? 1.2 : 1.0)
+            VStack(spacing: 2) {
+                // Icon only - no circle background, thin weight
+                Image(systemName: icon)
+                    .font(.system(size: 28, weight: .light))
+                    .foregroundColor(isActive ? activeColor : .white)
+                    .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 1)
+                    .scaleEffect(isPressed ? 1.2 : 1.0)
 
                 // Count label (if provided)
                 if let count = count {

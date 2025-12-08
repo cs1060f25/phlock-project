@@ -296,7 +296,8 @@ struct PhlockView: View {
                             // Open the QuickSendBar for this specific song
                             selectedShareToSend = share
                             showQuickSendBar = true
-                        }
+                        },
+                        isGeneratingShareCard: isGeneratingShareCard
                     )
                     .ignoresSafeArea(edges: .top)
                 }
