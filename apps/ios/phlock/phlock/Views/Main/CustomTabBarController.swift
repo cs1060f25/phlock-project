@@ -14,6 +14,7 @@ struct CustomTabBarView: View {
     @Binding var scrollNotificationsToTopTrigger: Int
     @Binding var scrollProfileToTopTrigger: Int
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var playbackService: PlaybackService
 
     let feedView: AnyView
     let friendsView: AnyView
@@ -81,9 +82,21 @@ struct CustomTabBarView: View {
         // Custom Tab Bar (shows 4 visible tabs)
         CustomTabBar(
             selectedTab: $selectedTab,
-            onTabTapped: handleTabTap
+            onTabTapped: handleTabTap,
+            playbackProgress: playbackProgress,
+            showProgressBar: shouldShowProgressBar
         )
+        }
     }
+
+    // Progress bar should show only on Phlock tab when playing
+    private var shouldShowProgressBar: Bool {
+        selectedTab == 0 && playbackService.isPlaying && playbackService.currentTrack != nil
+    }
+
+    private var playbackProgress: Double {
+        guard playbackService.duration > 0 else { return 0 }
+        return playbackService.currentTime / playbackService.duration
     }
 
     private func handleTabTap(_ tappedTab: Int) {
@@ -194,11 +207,31 @@ struct CustomTabBarView: View {
 struct CustomTabBar: View {
     @Binding var selectedTab: Int
     let onTabTapped: (Int) -> Void
+    var playbackProgress: Double = 0  // 0.0 to 1.0
+    var showProgressBar: Bool = false  // Only show on Phlock tab when playing
     @EnvironmentObject var authState: AuthenticationState
     @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
-        HStack(spacing: 0) {
+        VStack(spacing: 0) {
+            // Progress bar at top edge of tab bar (TikTok/IG Reels style)
+            if showProgressBar {
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        // Background track (subtle)
+                        Rectangle()
+                            .fill(Color.white.opacity(0.15))
+
+                        // Progress fill
+                        Rectangle()
+                            .fill(Color.white)
+                            .frame(width: geometry.size.width * CGFloat(min(max(playbackProgress, 0), 1)))
+                    }
+                }
+                .frame(height: 2)
+            }
+
+            HStack(spacing: 0) {
             TabBarButton(
                 icon: "house",
                 selectedIcon: "house.fill",
@@ -243,8 +276,9 @@ struct CustomTabBar: View {
                     )
                 )
             )
+            }
+            .frame(height: 49)
         }
-        .frame(height: 49)
         .background(Color.bar(for: colorScheme))
     }
 }

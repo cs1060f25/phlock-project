@@ -589,33 +589,42 @@ struct PhlockCarouselView: View {
             }
 
             // MARK: - Vertical Action Bar (Right side - TikTok/IG Reels style)
+            // Positioned so the bottom "Open" button aligns with where the share button was
+            // (next to the profile indicator bar)
             if let share = currentShare {
-                HStack {
+                VStack {
                     Spacer()
-                    VerticalActionBar(
-                        likeCount: share.likeCount,
-                        commentCount: share.commentCount,
-                        sendCount: share.sendCount,
-                        isLiked: socialService.isLiked(share.id),
-                        onLikeTapped: {
-                            Task {
-                                try? await socialService.toggleLike(share.id)
-                            }
-                        },
-                        onCommentTapped: {
-                            selectedShareForComments = share
-                            showCommentSheet = true
-                        },
-                        onSendTapped: {
-                            onSendTapped(share)
-                        },
-                        onOpenTapped: {
-                            openInStreamingApp(share: share)
-                        },
-                        platformType: authState.currentUser?.resolvedPlatformType
-                    )
-                    .padding(.trailing, 12)
-                    .padding(.bottom, 180) // Above profile indicator + tab bar
+                    HStack {
+                        Spacer()
+                        VerticalActionBar(
+                            likeCount: share.likeCount,
+                            commentCount: share.commentCount,
+                            sendCount: share.sendCount,
+                            isLiked: socialService.isLiked(share.id),
+                            onLikeTapped: {
+                                Task {
+                                    try? await socialService.toggleLike(share.id)
+                                }
+                            },
+                            onCommentTapped: {
+                                selectedShareForComments = share
+                                showCommentSheet = true
+                            },
+                            onSendTapped: {
+                                // Trigger the existing share card generation
+                                onShareTapped()
+                            },
+                            onOpenTapped: {
+                                openInStreamingApp(share: share)
+                            },
+                            platformType: authState.currentUser?.resolvedPlatformType
+                        )
+                        .padding(.trailing, 16)
+                    }
+                    // Align bottom of action bar with the profile indicator bar
+                    // Profile indicator is at .padding(.bottom, 16), and the bar itself is ~60pt tall
+                    // So bottom of action bar should be at ~76pt from bottom
+                    .padding(.bottom, 76)
                 }
             }
 
@@ -1314,39 +1323,7 @@ struct ProfileIndicatorBar: View {
             }
             .offset(x: -52) // Position to the left of the pill with 12pt gap
         }
-        .overlay(alignment: .trailing) {
-            // Share button positioned to the right of the pill
-            Button(action: {
-                let impact = UIImpactFeedbackGenerator(style: .medium)
-                impact.impactOccurred()
-                onShareTapped()
-            }) {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(colorScheme == .dark ? .white : .black)
-                    .frame(width: 40, height: 40)
-                    .background {
-                        if #available(iOS 26.0, *) {
-                            Circle()
-                                .fill(.clear)
-                                .glassEffect(.regular.interactive())
-                        } else {
-                            Group {
-                                if colorScheme == .dark {
-                                    Circle()
-                                        .fill(Color.black.opacity(0.3))
-                                        .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
-                                } else {
-                                    Circle()
-                                        .fill(.ultraThinMaterial)
-                                        .shadow(color: Color.black.opacity(0.15), radius: 10, y: 4)
-                                }
-                            }
-                        }
-                    }
-            }
-            .offset(x: 52) // Position to the right of the pill with 12pt gap
-        }
+        // Note: Share button removed - now part of VerticalActionBar on the right side
     }
 }
 
@@ -1974,39 +1951,10 @@ struct PhlockCardView: View {
                         .allowsHitTesting(false)
                 }
 
-                Spacer()
-                    .frame(height: 20)
-
-                // Action buttons (keep hit testing for button taps)
-                HStack(spacing: 40) {
-                    // Open in streaming app
-                    Button(action: { openInStreamingApp(song: song) }) {
-                        VStack(spacing: 6) {
-                            Image(systemName: "arrow.up.right.square")
-                                .font(.system(size: 24))
-                            Text("Open")
-                                .font(.system(size: 11))
-                        }
-                        .foregroundColor(iconColor)
-                    }
-
-                    // Save to library - only show if user can save to library
-                    if authState.currentUser?.canSaveToLibrary ?? false {
-                        Button(action: { isSaved ? onRemoveFromLibrary() : onAddToLibrary() }) {
-                            VStack(spacing: 6) {
-                                Image(systemName: isSaved ? "heart.fill" : "heart")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(isSaved ? .red : iconColor)
-                                Text(isSaved ? "Saved" : "Save")
-                                    .font(.system(size: 11))
-                            }
-                            .foregroundColor(iconColor)
-                        }
-                    }
-                }
+                // Action buttons removed - now in VerticalActionBar on right side
 
                 Spacer()
-                    .frame(height: 160) // Room for profile indicator + tab bar
+                    .frame(height: 140) // Room for profile indicator + tab bar
             }
         }
     }
