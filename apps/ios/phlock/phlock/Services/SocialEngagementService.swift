@@ -13,6 +13,25 @@ final class SocialEngagementService: ObservableObject {
     /// Set of share IDs that the current user has liked
     @Published private(set) var likedShareIds: Set<UUID> = []
 
+    /// Adjustments to like counts (tracks delta from original count)
+    /// Positive = added likes, Negative = removed likes
+    @Published private(set) var likeCountAdjustments: [UUID: Int] = [:]
+
+    /// Adjustments to comment counts (tracks delta from original count)
+    @Published private(set) var commentCountAdjustments: [UUID: Int] = [:]
+
+    /// Get the adjusted like count for a share
+    func adjustedLikeCount(for shareId: UUID, originalCount: Int) -> Int {
+        let adjustment = likeCountAdjustments[shareId] ?? 0
+        return max(0, originalCount + adjustment)
+    }
+
+    /// Get the adjusted comment count for a share
+    func adjustedCommentCount(for shareId: UUID, originalCount: Int) -> Int {
+        let adjustment = commentCountAdjustments[shareId] ?? 0
+        return max(0, originalCount + adjustment)
+    }
+
     // MARK: - Like Model
 
     struct ShareLike: Codable, Identifiable {
@@ -33,16 +52,44 @@ final class SocialEngagementService: ObservableObject {
 
     private init() {}
 
+    // MARK: - User ID Helper
+
+    /// Get the current user's users.id (not auth.uid())
+    /// The users table has auth_user_id which maps to auth.uid()
+    private func getCurrentUserId() async throws -> UUID {
+        guard let authUserId = try? await supabase.auth.session.user.id else {
+            throw SocialEngagementError.notAuthenticated
+        }
+
+        // Fetch the users.id that corresponds to this auth.uid()
+        struct UserIdResult: Codable {
+            let id: UUID
+        }
+
+        let result: [UserIdResult] = try await supabase
+            .from("users")
+            .select("id")
+            .eq("auth_user_id", value: authUserId.uuidString)
+            .limit(1)
+            .execute()
+            .value
+
+        guard let userId = result.first?.id else {
+            throw SocialEngagementError.notAuthenticated
+        }
+
+        return userId
+    }
+
     // MARK: - Like Operations
 
     /// Like a share
     func likeShare(_ shareId: UUID) async throws {
-        guard let userId = try? await supabase.auth.session.user.id else {
-            throw SocialEngagementError.notAuthenticated
-        }
+        let userId = try await getCurrentUserId()
 
-        // Optimistic update
+        // Optimistic update for heart icon state and count
         likedShareIds.insert(shareId)
+        likeCountAdjustments[shareId, default: 0] += 1
 
         do {
             try await supabase
@@ -57,6 +104,7 @@ final class SocialEngagementService: ObservableObject {
         } catch {
             // Rollback on failure
             likedShareIds.remove(shareId)
+            likeCountAdjustments[shareId, default: 0] -= 1
             print("❌ Failed to like share: \(error)")
             throw SocialEngagementError.likeFailed(error)
         }
@@ -64,12 +112,11 @@ final class SocialEngagementService: ObservableObject {
 
     /// Unlike a share
     func unlikeShare(_ shareId: UUID) async throws {
-        guard let userId = try? await supabase.auth.session.user.id else {
-            throw SocialEngagementError.notAuthenticated
-        }
+        let userId = try await getCurrentUserId()
 
-        // Optimistic update
+        // Optimistic update for heart icon state and count
         likedShareIds.remove(shareId)
+        likeCountAdjustments[shareId, default: 0] -= 1
 
         do {
             try await supabase
@@ -83,6 +130,7 @@ final class SocialEngagementService: ObservableObject {
         } catch {
             // Rollback on failure
             likedShareIds.insert(shareId)
+            likeCountAdjustments[shareId, default: 0] += 1
             print("❌ Failed to unlike share: \(error)")
             throw SocialEngagementError.unlikeFailed(error)
         }
@@ -106,9 +154,7 @@ final class SocialEngagementService: ObservableObject {
     func fetchLikeStatus(for shareIds: [UUID]) async throws {
         guard !shareIds.isEmpty else { return }
 
-        guard let userId = try? await supabase.auth.session.user.id else {
-            throw SocialEngagementError.notAuthenticated
-        }
+        let userId = try await getCurrentUserId()
 
         let shareIdStrings = shareIds.map { $0.uuidString }
 
@@ -132,6 +178,38 @@ final class SocialEngagementService: ObservableObject {
         }
     }
 
+    // MARK: - Likers List
+
+    /// Fetch users who liked a specific share
+    func fetchLikersForShare(shareId: UUID) async throws -> [LikerInfo] {
+        do {
+            let response: [LikeWithUser] = try await supabase
+                .from("share_likes")
+                .select("id, user_id, created_at, user:users(id, username, display_name, profile_photo_url)")
+                .eq("share_id", value: shareId.uuidString)
+                .order("created_at", ascending: false)
+                .execute()
+                .value
+
+            let likers = response.map { like in
+                LikerInfo(
+                    id: like.id,
+                    userId: like.userId,
+                    username: like.user?.username,
+                    displayName: like.user?.displayName ?? "User",
+                    profilePhotoUrl: like.user?.profilePhotoUrl,
+                    likedAt: like.createdAt
+                )
+            }
+
+            print("👥 Fetched \(likers.count) likers for share: \(shareId)")
+            return likers
+        } catch {
+            print("❌ Failed to fetch likers: \(error)")
+            throw SocialEngagementError.fetchFailed(error)
+        }
+    }
+
     // MARK: - Comment Operations
 
     /// Fetch comments for a share
@@ -140,7 +218,7 @@ final class SocialEngagementService: ObservableObject {
             // Fetch comments with user data joined
             let response: [CommentWithUser] = try await supabase
                 .from("share_comments")
-                .select("*, user:users(id, username, profile_image_url)")
+                .select("*, user:users(id, username, profile_photo_url)")
                 .eq("share_id", value: shareId.uuidString)
                 .order("created_at", ascending: true)
                 .execute()
@@ -161,7 +239,7 @@ final class SocialEngagementService: ObservableObject {
                     comment.user = User.forComment(
                         id: userData.id,
                         username: userData.username,
-                        profileImageUrl: userData.profileImageUrl
+                        profileImageUrl: userData.profilePhotoUrl
                     )
                 }
                 return comment
@@ -177,9 +255,7 @@ final class SocialEngagementService: ObservableObject {
 
     /// Add a comment to a share
     func addComment(to shareId: UUID, text: String, parentCommentId: UUID? = nil) async throws -> ShareComment {
-        guard let userId = try? await supabase.auth.session.user.id else {
-            throw SocialEngagementError.notAuthenticated
-        }
+        let userId = try await getCurrentUserId()
 
         // Validate comment length
         guard text.count <= 280 else {
@@ -219,9 +295,8 @@ final class SocialEngagementService: ObservableObject {
 
     /// Delete a comment (only own comments)
     func deleteComment(_ commentId: UUID) async throws {
-        guard (try? await supabase.auth.session.user.id) != nil else {
-            throw SocialEngagementError.notAuthenticated
-        }
+        // Verify user is authenticated (RLS will enforce ownership)
+        _ = try await getCurrentUserId()
 
         do {
             try await supabase
@@ -263,11 +338,25 @@ final class SocialEngagementService: ObservableObject {
         return comments.filter { $0.parentCommentId == commentId }
     }
 
+    // MARK: - Count Adjustment Methods
+
+    /// Increment comment count for a share (called after successfully adding a comment)
+    func incrementCommentCount(for shareId: UUID) {
+        commentCountAdjustments[shareId, default: 0] += 1
+    }
+
+    /// Decrement comment count for a share (called after successfully deleting a comment)
+    func decrementCommentCount(for shareId: UUID) {
+        commentCountAdjustments[shareId, default: 0] -= 1
+    }
+
     // MARK: - Cache Management
 
     /// Clear cached like status (e.g., on sign out)
     func clearCache() {
         likedShareIds.removeAll()
+        likeCountAdjustments.removeAll()
+        commentCountAdjustments.removeAll()
     }
 }
 
@@ -333,12 +422,12 @@ private struct CommentWithUser: Codable {
 private struct CommentUserData: Codable {
     let id: UUID
     let username: String?
-    let profileImageUrl: String?
+    let profilePhotoUrl: String?
 
     enum CodingKeys: String, CodingKey {
         case id
         case username
-        case profileImageUrl = "profile_image_url"
+        case profilePhotoUrl = "profile_photo_url"
     }
 }
 
@@ -353,5 +442,48 @@ private extension User {
             profilePhotoUrl: profileImageUrl,
             username: username
         )
+    }
+}
+
+// MARK: - Liker Info Model
+
+/// Information about a user who liked a share
+struct LikerInfo: Identifiable {
+    let id: UUID
+    let userId: UUID
+    let username: String?
+    let displayName: String
+    let profilePhotoUrl: String?
+    let likedAt: Date
+}
+
+// MARK: - Like With User Data
+
+/// Like with joined user data from Supabase
+private struct LikeWithUser: Codable {
+    let id: UUID
+    let userId: UUID
+    let createdAt: Date
+    let user: LikerUserData?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case createdAt = "created_at"
+        case user
+    }
+}
+
+private struct LikerUserData: Codable {
+    let id: UUID
+    let username: String?
+    let displayName: String?
+    let profilePhotoUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case username
+        case displayName = "display_name"
+        case profilePhotoUrl = "profile_photo_url"
     }
 }

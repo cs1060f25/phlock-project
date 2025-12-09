@@ -1,18 +1,35 @@
 import SwiftUI
 
 /// A pill-shaped view showing the user's daily song selection
-/// Displayed at the top of the Phlock feed as a quick reference
+/// Tapping expands into a full-screen preview of how the song appears to others
 struct DailySongPillView: View {
-    let albumArtUrl: String?
-    let trackName: String
-    let artistName: String
+    let share: Share
+    @Binding var isExpanded: Bool
+
+    // Callback for playback
+    var onPlayTapped: ((Share) -> Void)?
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
+        pillContent
+            .onTapGesture {
+                let impact = UIImpactFeedbackGenerator(style: .medium)
+                impact.impactOccurred()
+
+                // Start playback when expanding
+                onPlayTapped?(share)
+
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    isExpanded = true
+                }
+            }
+    }
+
+    private var pillContent: some View {
         HStack(spacing: 10) {
             // Album artwork
-            AsyncImage(url: URL(string: albumArtUrl ?? "")) { phase in
+            AsyncImage(url: URL(string: share.albumArtUrl ?? "")) { phase in
                 switch phase {
                 case .success(let image):
                     image
@@ -31,11 +48,11 @@ struct DailySongPillView: View {
 
             // Track info
             VStack(alignment: .leading, spacing: 1) {
-                Text(trackName)
+                Text(share.trackName)
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
 
-                Text(artistName)
+                Text(share.artistName)
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
@@ -70,16 +87,21 @@ struct DailySongPillView: View {
     }
 }
 
-/// Container view that fetches and displays the user's daily song
+/// Container view that displays the pill (expanded view is handled separately)
 struct DailySongPillContainer: View {
     let myDailySong: Share?
+    @Binding var isExpanded: Bool
+
+    // Callbacks
+    var onSendTapped: (() -> Void)?
+    var onPlayTapped: ((Share) -> Void)?
 
     var body: some View {
         if let song = myDailySong {
             DailySongPillView(
-                albumArtUrl: song.albumArtUrl,
-                trackName: song.trackName,
-                artistName: song.artistName
+                share: song,
+                isExpanded: $isExpanded,
+                onPlayTapped: onPlayTapped
             )
             .transition(.move(edge: .top).combined(with: .opacity))
         }
@@ -88,25 +110,43 @@ struct DailySongPillContainer: View {
 
 // MARK: - Preview
 
-#Preview {
-    ZStack {
-        // Dark background to show glass effect
-        LinearGradient(
-            colors: [.purple, .blue],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .ignoresSafeArea()
+struct DailySongPillPreview: View {
+    @State private var isExpanded = false
 
-        VStack {
-            DailySongPillView(
-                albumArtUrl: nil,
-                trackName: "Espresso",
-                artistName: "Sabrina Carpenter"
+    var body: some View {
+        ZStack {
+            // Dark background to show glass effect
+            LinearGradient(
+                colors: [.purple, .blue],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
             )
+            .ignoresSafeArea()
 
-            Spacer()
+            VStack {
+                DailySongPillContainer(
+                    myDailySong: Share(
+                        senderId: UUID(),
+                        recipientId: UUID(),
+                        trackId: "test",
+                        trackName: "Espresso",
+                        artistName: "Sabrina Carpenter",
+                        isDailySong: true,
+                        selectedDate: Date(),
+                        likeCount: 12,
+                        commentCount: 3,
+                        sendCount: 1
+                    ),
+                    isExpanded: $isExpanded
+                )
+
+                Spacer()
+            }
+            .padding(.top, 60)
         }
-        .padding(.top, 60)
     }
+}
+
+#Preview {
+    DailySongPillPreview()
 }

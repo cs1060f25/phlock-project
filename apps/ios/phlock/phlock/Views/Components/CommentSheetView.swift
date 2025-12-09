@@ -5,6 +5,7 @@ struct CommentSheetView: View {
     let share: Share
     @Binding var isPresented: Bool
 
+    @EnvironmentObject private var authState: AuthenticationState
     @StateObject private var socialService = SocialEngagementService.shared
     @State private var comments: [ShareComment] = []
     @State private var isLoading = true
@@ -12,6 +13,9 @@ struct CommentSheetView: View {
     @State private var commentText = ""
     @State private var replyingTo: ShareComment?
     @State private var isSending = false
+    @State private var currentUserId: UUID?
+    @State private var showSendError = false
+    @State private var sendErrorMessage = ""
 
     @FocusState private var isInputFocused: Bool
 
@@ -47,7 +51,14 @@ struct CommentSheetView: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .task {
+            // Get current user ID from auth state
+            currentUserId = authState.currentUser?.id
             await loadComments()
+        }
+        .alert("Unable to Send Comment", isPresented: $showSendError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(sendErrorMessage)
         }
     }
 
@@ -102,25 +113,48 @@ struct CommentSheetView: View {
     }
 
     private var commentsList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    ForEach(rootComments) { comment in
-                        CommentRow(
-                            comment: comment,
-                            replies: getReplies(for: comment.id),
-                            currentUserId: getCurrentUserId(),
-                            onReply: { replyingTo = comment },
-                            onDelete: { deleteComment(comment) }
-                        )
-                        .id(comment.id)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 16) {
+                ForEach(rootComments) { comment in
+                    // Root comment
+                    ShareCommentRowView(
+                        comment: comment,
+                        isReply: false,
+                        currentUserId: currentUserId,
+                        onReply: {
+                            replyingTo = comment
+                            isInputFocused = true
+                        },
+                        onDelete: {
+                            deleteComment(comment)
+                        }
+                    )
+
+                    // Replies to this comment
+                    let replies = getReplies(for: comment.id)
+                    if !replies.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            ForEach(replies) { reply in
+                                ShareCommentRowView(
+                                    comment: reply,
+                                    isReply: true,
+                                    currentUserId: currentUserId,
+                                    onReply: {
+                                        // Reply to parent comment, not the reply itself
+                                        replyingTo = comment
+                                        isInputFocused = true
+                                    },
+                                    onDelete: {
+                                        deleteComment(reply)
+                                    }
+                                )
+                            }
+                        }
+                        .padding(.leading, 48)
                     }
                 }
-                .padding()
             }
-            .refreshable {
-                await loadComments()
-            }
+            .padding()
         }
     }
 
@@ -191,11 +225,6 @@ struct CommentSheetView: View {
         !commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private func getCurrentUserId() -> UUID? {
-        // This would ideally come from an auth service
-        // For now, we'll handle it in the row
-        nil
-    }
 
     // MARK: - Actions
 
@@ -219,14 +248,22 @@ struct CommentSheetView: View {
         let text = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
 
         do {
-            let newComment = try await socialService.addComment(
+            var newComment = try await socialService.addComment(
                 to: share.id,
                 text: text,
                 parentCommentId: replyingTo?.id
             )
 
+            // Populate user data from current user (the DB response doesn't include it)
+            if let currentUser = authState.currentUser {
+                newComment.user = currentUser
+            }
+
             // Add to local list
             comments.append(newComment)
+
+            // Update comment count in the social service
+            socialService.incrementCommentCount(for: share.id)
 
             // Clear input
             commentText = ""
@@ -238,7 +275,9 @@ struct CommentSheetView: View {
             impact.impactOccurred()
 
         } catch {
-            // Show error toast or alert
+            // Show error alert to user
+            sendErrorMessage = error.localizedDescription
+            showSendError = true
             print("Failed to send comment: \(error)")
         }
 
@@ -251,20 +290,25 @@ struct CommentSheetView: View {
                 try await socialService.deleteComment(comment.id)
                 comments.removeAll { $0.id == comment.id }
 
+                // Update comment count in the social service
+                socialService.decrementCommentCount(for: share.id)
+
                 let impact = UIImpactFeedbackGenerator(style: .light)
                 impact.impactOccurred()
             } catch {
+                sendErrorMessage = "Failed to delete comment: \(error.localizedDescription)"
+                showSendError = true
                 print("Failed to delete comment: \(error)")
             }
         }
     }
 }
 
-// MARK: - Comment Row
+// MARK: - Share Comment Row View
 
-private struct CommentRow: View {
+private struct ShareCommentRowView: View {
     let comment: ShareComment
-    let replies: [ShareComment]
+    let isReply: Bool
     let currentUserId: UUID?
     let onReply: () -> Void
     let onDelete: () -> Void
@@ -272,24 +316,6 @@ private struct CommentRow: View {
     @State private var showDeleteAlert = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Main comment
-            commentContent(comment, isReply: false)
-
-            // Replies
-            if !replies.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(replies) { reply in
-                        commentContent(reply, isReply: true)
-                    }
-                }
-                .padding(.leading, 44)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func commentContent(_ comment: ShareComment, isReply: Bool) -> some View {
         HStack(alignment: .top, spacing: 12) {
             // Avatar
             AsyncImage(url: URL(string: comment.user?.profilePhotoUrl ?? "")) { image in
@@ -324,26 +350,24 @@ private struct CommentRow: View {
                     .font(.system(size: isReply ? 13 : 14))
                     .fixedSize(horizontal: false, vertical: true)
 
-                // Actions
-                if !isReply {
-                    HStack(spacing: 16) {
-                        Button("Reply") {
-                            onReply()
+                // Action buttons
+                HStack(spacing: 16) {
+                    Button("Reply") {
+                        onReply()
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary)
+
+                    // Delete button (only for own comments)
+                    if comment.userId == currentUserId {
+                        Button("Delete") {
+                            showDeleteAlert = true
                         }
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.secondary)
-
-                        // Delete button (only for own comments)
-                        if comment.userId == currentUserId {
-                            Button("Delete") {
-                                showDeleteAlert = true
-                            }
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.red.opacity(0.8))
-                        }
+                        .foregroundColor(.red.opacity(0.8))
                     }
-                    .padding(.top, 4)
                 }
+                .padding(.top, 4)
             }
 
             Spacer(minLength: 0)

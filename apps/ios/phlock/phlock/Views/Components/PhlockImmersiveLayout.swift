@@ -451,7 +451,7 @@ struct PhlockCarouselView: View {
     let onMenuTapped: () -> Void  // Open phlock manager sheet
     let onShareTapped: () -> Void  // Share phlock card
     let onSendTapped: (Share) -> Void  // Send/share individual song
-    var isGeneratingShareCard: Bool = false  // Loading state for send button
+    @Binding var isGeneratingShareCard: Bool  // Loading state for send button
 
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
@@ -465,6 +465,8 @@ struct PhlockCarouselView: View {
     @State private var isEditMode: Bool = false  // Edit mode state
     @State private var showCommentSheet: Bool = false  // Comment sheet state
     @State private var selectedShareForComments: Share?  // Share to show comments for
+    @State private var isPillExpanded: Bool = false  // Daily song pill expansion state
+    @Namespace private var pillNamespace  // For pill expansion animation
     @Environment(\.colorScheme) var colorScheme
 
     // Consolidated carousel state to prevent race conditions between multiple flags
@@ -577,30 +579,62 @@ struct PhlockCarouselView: View {
             // items change without needing a forced rebuild.
 
             // MARK: - Daily Song Pill (Your pick at top)
-            VStack {
-                if let mySong = myDailySong {
-                    DailySongPillView(
-                        albumArtUrl: mySong.albumArtUrl,
-                        trackName: mySong.trackName,
-                        artistName: mySong.artistName
+            // Pill stays at the top - expanded view is a separate full-screen overlay
+            if !isPillExpanded {
+                VStack {
+                    DailySongPillContainer(
+                        myDailySong: myDailySong,
+                        isExpanded: $isPillExpanded,
+                        onSendTapped: {
+                            if let song = myDailySong {
+                                onSendTapped(song)
+                            }
+                        },
+                        onPlayTapped: { song in
+                            onPlayTapped(song, true, nil)
+                        }
                     )
                     .padding(.top, 60)
+                    Spacer()
                 }
-                Spacer()
+            }
+
+            // Expanded daily song overlay (full screen)
+            if isPillExpanded, let mySong = myDailySong {
+                ExpandedDailySongView(
+                    share: mySong,
+                    isExpanded: $isPillExpanded,
+                    namespace: pillNamespace,
+                    onSendTapped: {
+                        // Use same share flow as regular phlock cards
+                        onShareTapped()
+                    },
+                    onPlayTapped: { song in
+                        onPlayTapped(song, true, nil)
+                    }
+                )
+                .transition(.opacity)
+                .zIndex(10) // Above carousel
             }
 
             // MARK: - Vertical Action Bar (Right side - TikTok/IG Reels style)
             // Positioned so the bottom "Open" button center aligns with profile indicator bar center
-            if let share = currentShare {
+            // Hidden when daily song pill is expanded (expanded view has its own action bar)
+            if let share = currentShare, !isPillExpanded {
+                // Explicitly observe published properties to trigger re-render on like/comment changes
+                let isLiked = socialService.likedShareIds.contains(share.id)
+                let adjustedLikeCount = socialService.adjustedLikeCount(for: share.id, originalCount: share.likeCount)
+                let adjustedCommentCount = socialService.adjustedCommentCount(for: share.id, originalCount: share.commentCount)
+
                 VStack {
                     Spacer()
                     HStack {
                         Spacer()
                         VerticalActionBar(
-                            likeCount: share.likeCount,
-                            commentCount: share.commentCount,
+                            likeCount: adjustedLikeCount,
+                            commentCount: adjustedCommentCount,
                             sendCount: share.sendCount,
-                            isLiked: socialService.isLiked(share.id),
+                            isLiked: isLiked,
                             isSendLoading: isGeneratingShareCard,
                             onLikeTapped: {
                                 Task {
@@ -612,8 +646,6 @@ struct PhlockCarouselView: View {
                                 showCommentSheet = true
                             },
                             onSendTapped: {
-                                // Trigger the share card generation
-                                // Loading state is managed by isGeneratingShareCard from parent
                                 onShareTapped()
                             },
                             onOpenTapped: {
@@ -629,25 +661,27 @@ struct PhlockCarouselView: View {
             }
 
             // Overlay: Action buttons + Profile indicator bar at bottom
-            VStack(spacing: 20) {
-                Spacer()
+            // Hidden when daily song pill is expanded
+            if !isPillExpanded {
+                VStack(spacing: 20) {
+                    Spacer()
 
-                // Waiting card action buttons (nudge/swap)
-                if let currentSlot = extendedMembers[safe: currentIndex],
-                   currentSlot.type == .waiting,
-                   let member = currentSlot.member {
-                    WaitingCardActionButtons(
-                        member: member,
-                        isNudged: nudgedUserIds.contains(member.id),
-                        onNudgeTapped: { onNudgeTapped(member) },
-                        onSwapTapped: { onSwapTapped(member) }
-                    )
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
+                    // Waiting card action buttons (nudge/swap)
+                    if let currentSlot = extendedMembers[safe: currentIndex],
+                       currentSlot.type == .waiting,
+                       let member = currentSlot.member {
+                        WaitingCardActionButtons(
+                            member: member,
+                            isNudged: nudgedUserIds.contains(member.id),
+                            onNudgeTapped: { onNudgeTapped(member) },
+                            onSwapTapped: { onSwapTapped(member) }
+                        )
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    }
 
-                // Use baseMembers for indicator (real slots only, not phantom)
-                // and realIndex for highlighting correct dot
-                ProfileIndicatorBar(
+                    // Use baseMembers for indicator (real slots only, not phantom)
+                    // and realIndex for highlighting correct dot
+                    ProfileIndicatorBar(
                     slots: baseMembers,
                     currentIndex: realIndex,
                     isEditMode: isEditMode,
@@ -692,8 +726,9 @@ struct PhlockCarouselView: View {
                     onShareTapped: onShareTapped
                 )
                 .padding(.bottom, 16) // Just above tab bar
-            }
-            .animation(.easeInOut(duration: 0.25), value: currentIndex)
+                }
+                .animation(.easeInOut(duration: 0.25), value: currentIndex)
+            } // end if !isPillExpanded
         }
         .onChange(of: currentIndex) { newIndex in
             // DEBUG: Track all currentIndex changes
@@ -2254,7 +2289,7 @@ struct PhlockImmersiveLayout: View {
     let onMenuTapped: () -> Void
     let onShareTapped: () -> Void
     let onSendTapped: (Share) -> Void  // Send/share individual song
-    var isGeneratingShareCard: Bool = false  // Loading state for send button
+    @Binding var isGeneratingShareCard: Bool  // Loading state for send button
 
     var body: some View {
         // Check if user has picked their daily song
@@ -2285,7 +2320,7 @@ struct PhlockImmersiveLayout: View {
                 onMenuTapped: onMenuTapped,
                 onShareTapped: onShareTapped,
                 onSendTapped: onSendTapped,
-                isGeneratingShareCard: isGeneratingShareCard
+                isGeneratingShareCard: $isGeneratingShareCard
             )
         }
     }

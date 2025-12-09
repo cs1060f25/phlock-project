@@ -189,23 +189,19 @@ struct MainView: View {
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: navigationState.showShareSheet)
                 .ignoresSafeArea(.keyboard, edges: .bottom)
             }
-            // Full Screen Player Overlay
-            if navigationState.showFullPlayer {
-                FullScreenPlayerView(
-                    playbackService: playbackService,
-                    isPresented: $navigationState.showFullPlayer
-                )
-                .environmentObject(authState)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .zIndex(100)
-            }
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
+        .fullScreenCover(isPresented: $navigationState.showFullPlayer) {
+            FullScreenPlayerView(
+                playbackService: playbackService,
+                isPresented: $navigationState.showFullPlayer
+            )
+            .environmentObject(authState)
+        }
         .environment(\.miniPlayerBottomInset, miniPlayerInset)
         .environmentObject(playbackService)
         .environmentObject(navigationState)
         .environmentObject(clipboardService)
-        .animation(.spring(response: 0.4, dampingFraction: 0.88), value: navigationState.showFullPlayer)
         .sheet(isPresented: $clipboardService.showSuggestionDialog) {
             if let track = clipboardService.detectedTrack {
                 ClipboardSuggestionDialog(

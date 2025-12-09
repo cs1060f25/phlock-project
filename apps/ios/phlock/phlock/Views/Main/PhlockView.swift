@@ -123,17 +123,11 @@ struct PhlockView: View {
     @State private var showPhlockManagerSheet = false
 
     // Share card state
-    @State private var isGeneratingShareCard = false
-    @State private var generatedShareCardImages: [ShareCardFormat: UIImage] = [:]
-    @State private var showShareSheet = false
+    @State private var showOptionsSheet = false
 
     // Profile sheet state
     @State private var showProfileSheet = false
     @State private var selectedProfileUser: User?
-
-    // Quick send bar state (for individual song sharing)
-    @State private var showQuickSendBar = false
-    @State private var selectedShareToSend: Share?
 
     // Helper struct to organize phlock items
     struct PhlockItem: Identifiable {
@@ -292,12 +286,11 @@ struct PhlockView: View {
                         onShareTapped: {
                             generateAndShareCard()
                         },
-                        onSendTapped: { share in
-                            // Open the QuickSendBar for this specific song
-                            selectedShareToSend = share
-                            showQuickSendBar = true
+                        onSendTapped: { _ in
+                            // Use unified share sheet for all sharing
+                            generateAndShareCard()
                         },
-                        isGeneratingShareCard: isGeneratingShareCard
+                        isGeneratingShareCard: .constant(false)
                     )
                     .ignoresSafeArea(edges: .top)
                 }
@@ -460,14 +453,13 @@ struct PhlockView: View {
             .animation(.easeInOut(duration: 0.25), value: showFriendPicker)
         }
         .toast(isPresented: $showToast, message: toastMessage, type: toastType)
-        .fullScreenCover(isPresented: $showShareSheet) {
-            if let image = generatedShareCardImages[.story] {
-                let message = "hey cutie, this is my phlock today - join me so i can add you too https://phlock.app"
-                ActivityViewController(image: image, message: message) {
-                    showShareSheet = false
-                }
-                .background(ClearBackgroundView())
-                .ignoresSafeArea()
+        .sheet(isPresented: $showOptionsSheet) {
+            if let userId = authState.currentUser?.id {
+                UnifiedShareSheet(userId: userId)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            } else {
+                ProgressView()
             }
         }
         .sheet(isPresented: $showProfileSheet) {
@@ -1317,6 +1309,8 @@ struct PhlockView: View {
 
     // MARK: - Share Card Generation
 
+    // MARK: - Share Card Generation
+
     private func generateAndShareCard() {
         // Need at least one song to share
         let hasContent = myDailySong != nil || !dailySongs.isEmpty
@@ -1326,30 +1320,9 @@ struct PhlockView: View {
             showToast = true
             return
         }
-
-        isGeneratingShareCard = true
-
-        Task {
-            // Generate all formats at once (more efficient - loads images once)
-            let images = await ShareCardGenerator.generateAllFormats(
-                myPick: myDailySong,
-                phlockSongs: dailySongs,
-                members: phlockMembers
-            )
-
-            await MainActor.run {
-                isGeneratingShareCard = false
-
-                if !images.isEmpty {
-                    generatedShareCardImages = images
-                    showShareSheet = true
-                } else {
-                    toastMessage = "Failed to create share card"
-                    toastType = .error
-                    showToast = true
-                }
-            }
-        }
+        
+        // Present the options sheet instead of immediately generating card
+        showOptionsSheet = true
     }
 
     // MARK: - Playback Methods

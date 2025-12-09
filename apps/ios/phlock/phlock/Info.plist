@@ -4,6 +4,8 @@
 <dict>
 	<key>APPLE_MUSIC_DEVELOPER_TOKEN</key>
 	<string>$(APPLE_MUSIC_DEVELOPER_TOKEN)</string>
+	<key>FacebookAppID</key>
+	<string>1391713479244312</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -36,6 +38,16 @@
 				<string>$(GOOGLE_REVERSED_CLIENT_ID)</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.phlock.facebook</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>fb1391713479244312</string>
+			</array>
+		</dict>
 	</array>
 	<key>GOOGLE_CLIENT_ID</key>
 	<string>$(GOOGLE_CLIENT_ID)</string>
@@ -64,5 +76,11 @@
 	<string>Phlock needs access to Apple Music to search for songs and create your daily picks.</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>Phlock sends notifications when friends pick their daily songs and when someone adds you to their phlock.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>instagram</string>
+		<string>instagram-stories</string>
+		<string>whatsapp</string>
+	</array>
 </dict>
 </plist>

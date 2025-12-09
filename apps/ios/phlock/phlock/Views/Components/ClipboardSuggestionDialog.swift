@@ -13,8 +13,20 @@ struct ClipboardSuggestionDialog: View {
     let onDismiss: () -> Void
 
     @State private var note: String = ""
+    @State private var isLoadingPreview: Bool = false
     @FocusState private var isNoteFocused: Bool
     @Environment(\.colorScheme) var colorScheme
+    @ObservedObject private var playbackService = PlaybackService.shared
+
+    /// Check if this track is currently playing
+    private var isThisTrackPlaying: Bool {
+        playbackService.currentTrack?.id == track.id && playbackService.isPlaying
+    }
+
+    /// Check if this track is loaded (playing or paused)
+    private var isThisTrackLoaded: Bool {
+        playbackService.currentTrack?.id == track.id
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,7 +37,13 @@ struct ClipboardSuggestionDialog: View {
 
                 Spacer()
 
-                Button(action: onDismiss) {
+                Button(action: {
+                    // Stop playback when dismissing
+                    if isThisTrackLoaded {
+                        playbackService.stopPlayback()
+                    }
+                    onDismiss()
+                }) {
                     Image(systemName: "xmark")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundColor(.secondary)
@@ -38,31 +56,53 @@ struct ClipboardSuggestionDialog: View {
             .padding(.top, 20)
             .padding(.bottom, 16)
 
-            // Album Art
-            if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .failure:
-                        albumArtPlaceholder
-                    case .empty:
-                        albumArtPlaceholder
-                            .overlay(ProgressView())
-                    @unknown default:
-                        albumArtPlaceholder
+            // Album Art with Play/Pause Overlay
+            ZStack {
+                if let artworkUrl = track.albumArtUrl, let url = URL(string: artworkUrl) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        case .failure:
+                            albumArtPlaceholder
+                        case .empty:
+                            albumArtPlaceholder
+                                .overlay(ProgressView())
+                        @unknown default:
+                            albumArtPlaceholder
+                        }
+                    }
+                } else {
+                    albumArtPlaceholder
+                }
+
+                // Play/Pause Button Overlay
+                Button(action: togglePlayback) {
+                    ZStack {
+                        // Semi-transparent background
+                        Circle()
+                            .fill(Color.black.opacity(0.4))
+                            .frame(width: 56, height: 56)
+
+                        if isLoadingPreview {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(1.2)
+                        } else {
+                            Image(systemName: isThisTrackPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 24, weight: .medium))
+                                .foregroundColor(.white)
+                                .offset(x: isThisTrackPlaying ? 0 : 2) // Optical centering for play icon
+                        }
                     }
                 }
-                .frame(width: 180, height: 180)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 4)
-            } else {
-                albumArtPlaceholder
-                    .frame(width: 180, height: 180)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                .disabled(isLoadingPreview)
             }
+            .frame(width: 180, height: 180)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 4)
 
             // Track Info
             VStack(spacing: 6) {
@@ -105,7 +145,13 @@ struct ClipboardSuggestionDialog: View {
 
             // Action Buttons
             VStack(spacing: 12) {
-                Button(action: { onShare(note) }) {
+                Button(action: {
+                    // Stop playback when sharing
+                    if isThisTrackLoaded {
+                        playbackService.stopPlayback()
+                    }
+                    onShare(note)
+                }) {
                     Text("share as today's song")
                         .font(.lora(size: 16, weight: .semiBold))
                         .foregroundColor(.white)
@@ -117,7 +163,13 @@ struct ClipboardSuggestionDialog: View {
 
                 // Hide "not now" when keyboard is shown to save space
                 if !isNoteFocused {
-                    Button(action: onDismiss) {
+                    Button(action: {
+                        // Stop playback when dismissing
+                        if isThisTrackLoaded {
+                            playbackService.stopPlayback()
+                        }
+                        onDismiss()
+                    }) {
                         Text("not now")
                             .font(.lora(size: 15))
                             .foregroundColor(.secondary)
@@ -130,6 +182,36 @@ struct ClipboardSuggestionDialog: View {
             .padding(.bottom, 24)
         }
         .background(Color(uiColor: .systemBackground))
+        .onDisappear {
+            // Clean up playback if dialog disappears
+            if isThisTrackLoaded {
+                playbackService.stopPlayback()
+            }
+        }
+    }
+
+    // MARK: - Playback
+
+    private func togglePlayback() {
+        if isThisTrackLoaded {
+            // Track is already loaded - toggle play/pause
+            if isThisTrackPlaying {
+                playbackService.pause()
+            } else {
+                playbackService.resume()
+            }
+        } else {
+            // Load and play the track
+            // Don't show mini player for this preview context
+            playbackService.play(
+                track: track,
+                sourceId: "clipboard-suggestion",
+                showMiniPlayer: false,
+                resetQueue: true,
+                allowSameSourceToggle: true,
+                autoPlay: true
+            )
+        }
     }
 
     private var albumArtPlaceholder: some View {

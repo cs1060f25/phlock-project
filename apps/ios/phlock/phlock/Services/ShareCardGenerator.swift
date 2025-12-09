@@ -33,12 +33,11 @@ class ShareCardGenerator {
             await withTaskGroup(of: Void.self) { group in
                 for urlString in urls {
                     // Skip if already cached
-                    let cacheKey = urlString as NSString
-                    if await MainActor.run(body: { imageCache.object(forKey: cacheKey) }) != nil {
+                    if await MainActor.run(body: { imageCache.object(forKey: urlString as NSString) }) != nil {
                         continue
                     }
 
-                    group.addTask {
+                    group.addTask { [urlString] in
                         let upgradeUrl = await MainActor.run { highQualityUrl(urlString) }
                         guard let url = URL(string: upgradeUrl) else { return }
 
@@ -335,9 +334,13 @@ extension ShareCardGenerator {
             return false
         }
 
+        // Get Facebook App ID from Info.plist (required for Instagram Stories sharing)
+        let facebookAppID = Bundle.main.object(forInfoDictionaryKey: "FacebookAppID") as? String ?? ""
+
         // Set the image on the pasteboard for Instagram
         let pasteboardItems: [[String: Any]] = [[
-            "com.instagram.sharedSticker.backgroundImage": imageData
+            "com.instagram.sharedSticker.backgroundImage": imageData,
+            "com.facebook.sharedSticker.appID": facebookAppID
         ]]
 
         let pasteboardOptions: [UIPasteboard.OptionsKey: Any] = [
@@ -347,7 +350,7 @@ extension ShareCardGenerator {
         UIPasteboard.general.setItems(pasteboardItems, options: pasteboardOptions)
 
         // Open Instagram Stories
-        guard let url = URL(string: "instagram-stories://share?source_application=com.phlock.app") else {
+        guard let url = URL(string: "instagram-stories://share?source_application=\(facebookAppID)") else {
             return false
         }
 

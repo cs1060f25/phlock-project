@@ -1,0 +1,657 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock.xcodeproj -scheme phlock -destination "platform=iOS Simulator,name=iPhone 17 Pro" build
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  GoogleUtilities: https://github.com/google/GoogleUtilities.git @ 8.1.0
+  GTMAppAuth: https://github.com/google/GTMAppAuth.git @ 5.0.0
+  AppAuth: https://github.com/openid/AppAuth-iOS.git @ 2.0.0
+  Promises: https://github.com/google/promises.git @ 2.4.0
+  GoogleSignIn: https://github.com/google/GoogleSignIn-iOS @ 9.0.0
+  swift-concurrency-extras: https://github.com/pointfreeco/swift-concurrency-extras @ 1.3.2
+  GTMSessionFetcher: https://github.com/google/gtm-session-fetcher.git @ 3.5.0
+  AppCheck: https://github.com/google/app-check.git @ 11.2.0
+  xctest-dynamic-overlay: https://github.com/pointfreeco/xctest-dynamic-overlay @ 1.7.0
+  swift-crypto: https://github.com/apple/swift-crypto.git @ 4.0.0
+  swift-clocks: https://github.com/pointfreeco/swift-clocks @ 1.0.6
+  KeychainAccess: https://github.com/kishikawakatsumi/KeychainAccess @ master (e0c7eeb)
+  swift-http-types: https://github.com/apple/swift-http-types.git @ 1.5.1
+  Lottie: https://github.com/airbnb/lottie-spm.git @ 4.5.2
+  swift-asn1: https://github.com/apple/swift-asn1.git @ 1.5.0
+  Supabase: https://github.com/supabase/supabase-swift @ 2.36.0
+
+2025-11-29 04:05:43.874 xcodebuild[55188:6893807] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (63 targets)
+    Target 'phlock' in project 'phlock'
+        ➜ Explicit dependency on target 'Supabase' in project 'Supabase'
+        ➜ Explicit dependency on target 'Lottie' in project 'Lottie'
+        ➜ Explicit dependency on target 'Storage' in project 'Supabase'
+        ➜ Explicit dependency on target 'KeychainAccess' in project 'KeychainAccess'
+        ➜ Explicit dependency on target 'Realtime' in project 'Supabase'
+        ➜ Explicit dependency on target 'PostgREST' in project 'Supabase'
+        ➜ Explicit dependency on target 'Auth' in project 'Supabase'
+        ➜ Explicit dependency on target 'GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignInSwift' in project 'GoogleSignIn'
+    Target 'GoogleSignInSwift' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignInSwift' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn_GoogleSignInSwift' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+    Target 'GoogleSignInSwift' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn_GoogleSignInSwift' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+    Target 'GoogleSignIn_GoogleSignInSwift' in project 'GoogleSignIn' (no dependencies)
+    Target 'GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn_GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+    Target 'GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn_GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+    Target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMAppAuth_GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+    Target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMAppAuth_GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+    Target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'GTMSessionFetcher_GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+    Target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'GTMSessionFetcher_GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+    Target 'GTMSessionFetcher_GTMSessionFetcherCore' in project 'GTMSessionFetcher' (no dependencies)
+    Target 'GTMAppAuth_GTMAppAuth' in project 'GTMAppAuth' (no dependencies)
+    Target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'FBLPromises' in project 'Promises'
+        ➜ Explicit dependency on target 'GULEnvironment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULUserDefaults' in project 'GoogleUtilities'
+    Target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'FBLPromises' in project 'Promises'
+        ➜ Explicit dependency on target 'GULEnvironment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULUserDefaults' in project 'GoogleUtilities'
+    Target 'GULUserDefaults' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-UserDefaults' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-UserDefaults' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Logger' in project 'GoogleUtilities'
+    Target 'GoogleUtilities-UserDefaults' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-UserDefaults' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Logger' in project 'GoogleUtilities'
+    Target 'GoogleUtilities-Logger' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-Logger' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
+    Target 'GoogleUtilities_GoogleUtilities-Logger' in project 'GoogleUtilities' (no dependencies)
+    Target 'GoogleUtilities_GoogleUtilities-UserDefaults' in project 'GoogleUtilities' (no dependencies)
+    Target 'GULEnvironment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
+    Target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
+    Target 'third-party-IsAppEncrypted' in project 'GoogleUtilities' (no dependencies)
+    Target 'GoogleUtilities_GoogleUtilities-Environment' in project 'GoogleUtilities' (no dependencies)
+    Target 'FBLPromises' in project 'Promises'
+        ➜ Explicit dependency on target 'FBLPromises' in project 'Promises'
+        ➜ Explicit dependency on target 'Promises_FBLPromises' in project 'Promises'
+    Target 'FBLPromises' in project 'Promises'
+        ➜ Explicit dependency on target 'Promises_FBLPromises' in project 'Promises'
+    Target 'Promises_FBLPromises' in project 'Promises' (no dependencies)
+    Target 'AppAuthCore' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuth_AppAuthCore' in project 'AppAuth'
+    Target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuth_AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+    Target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuth_AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+    Target 'AppAuthCore' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuth_AppAuthCore' in project 'AppAuth'
+    Target 'AppAuth_AppAuthCore' in project 'AppAuth' (no dependencies)
+    Target 'AppAuth_AppAuth' in project 'AppAuth' (no dependencies)
+    Target 'GoogleSignIn_GoogleSignIn' in project 'GoogleSignIn' (no dependencies)
+    Target 'Auth' in project 'Supabase'
+        ➜ Explicit dependency on target 'Auth' in project 'Supabase'
+        ➜ Explicit dependency on target 'Helpers' in project 'Supabase'
+        ➜ Explicit dependency on target 'ConcurrencyExtras' in project 'swift-concurrency-extras'
+        ➜ Explicit dependency on target 'HTTPTypes' in project 'swift-http-types'
+        ➜ Explicit dependency on target 'Clocks' in project 'swift-clocks'
+        ➜ Explicit dependency on target 'XCTestDynamicOverlay' in project 'xctest-dynamic-overlay'
+        ➜ Explicit dependency on target 'Crypto' in project 'swift-crypto'
+    Target 'PostgREST' in project 'Supabase'
+        ➜ Explicit dependency on target 'PostgREST' in project 'Supabase'
+        ➜ Explicit dependency on target 'Helpers' in project 'Supabase'
+        ➜ Explicit dependency on target 'ConcurrencyExtras' in project 'swift-concurrency-extras'
+        ➜ Explicit dependency on target 'HTTPTypes' in project 'swift-http-types'
+        ➜ Explicit dependency on target 'Clocks' in project 'swift-clocks'
+        ➜ Explicit dependency on target 'XCTestDynamicOverlay' in project 'xctest-dynamic-overlay'
+    Target 'Realtime' in project 'Supabase'
+        ➜ Explicit dependency on target 'Realtime' in project 'Supabase'
+        ➜ Explicit dependency on target 'Helpers' in project 'Supabase'
+        ➜ Explicit dependency on target 'ConcurrencyExtras' in project 'swift-concurrency-extras'
+        ➜ Explicit dependency on target 'HTTPTypes' in project 'swift-http-types'
+        ➜ Explicit dependency on target 'Clocks' in project 'swift-clocks'
+        ➜ Explicit dependency on target 'XCTestDynamicOverlay' in project 'xctest-dynamic-overlay'
+        ➜ Explicit dependency on target 'IssueReporting' in project 'xctest-dynamic-overlay'
+    Target 'KeychainAccess' in project 'KeychainAccess'
+        ➜ Explicit dependency on target 'KeychainAccess' in project 'KeychainAccess'
+    Target 'KeychainAccess' in project 'KeychainAccess' (no dependencies)
+    Target 'Storage' in project 'Supabase'
+        ➜ Explicit dependency on target 'Storage' in project 'Supabase'
+        ➜ Explicit dependency on target 'Helpers' in project 'Supabase'
+        ➜ Explicit dependency on target 'ConcurrencyExtras' in project 'swift-concurrency-extras'
+        ➜ Explicit dependency on target 'HTTPTypes' in project 'swift-http-types'
+        ➜ Explicit dependency on target 'Clocks' in project 'swift-clocks'
+        ➜ Explicit dependency on target 'XCTestDynamicOverlay' in project 'xctest-dynamic-overlay'
+    Target 'Lottie' in project 'Lottie'
+        ➜ Explicit dependency on target '_LottieStub' in project 'Lottie'
+    Target '_LottieStub' in project 'Lottie' (no dependencies)
+    Target 'Supabase' in project 'Supabase'
+        ➜ Explicit dependency on target 'Supabase' in project 'Supabase'
+        ➜ Explicit dependency on target 'Functions' in project 'Supabase'
+        ➜ Explicit dependency on target 'PostgREST' in project 'Supabase'
+        ➜ Explicit dependency on target 'Auth' in project 'Supabase'
+        ➜ Explicit dependency on target 'Realtime' in project 'Supabase'
+        ➜ Explicit dependency on target 'Storage' in project 'Supabase'
+        ➜ Explicit dependency on target 'Helpers' in project 'Supabase'
+        ➜ Explicit dependency on target 'ConcurrencyExtras' in project 'swift-concurrency-extras'
+        ➜ Explicit dependency on target 'HTTPTypes' in project 'swift-http-types'
+        ➜ Explicit dependency on target 'Clocks' in project 'swift-clocks'
+        ➜ Explicit dependency on target 'XCTestDynamicOverlay' in project 'xctest-dynamic-overlay'
+        ➜ Explicit dependency on target 'Crypto' in project 'swift-crypto'
+        ➜ Explicit dependency on target 'IssueReporting' in project 'xctest-dynamic-overlay'
+    Target 'Supabase' in project 'Supabase'
+        ➜ Explicit dependency on target 'Helpers' in project 'Supabase'
+        ➜ Explicit dependency on target 'Auth' in project 'Supabase'
+        ➜ Explicit dependency on target 'Functions' in project 'Supabase'
+        ➜ Explicit dependency on target 'PostgREST' in project 'Supabase'
+        ➜ Explicit dependency on target 'Realtime' in project 'Supabase'
+        ➜ Explicit dependency on target 'Storage' in project 'Supabase'
+        ➜ Explicit dependency on target 'ConcurrencyExtras' in project 'swift-concurrency-extras'
+        ➜ Explicit dependency on target 'HTTPTypes' in project 'swift-http-types'
+        ➜ Explicit dependency on target 'Clocks' in project 'swift-clocks'
+        ➜ Explicit dependency on target 'XCTestDynamicOverlay' in project 'xctest-dynamic-overlay'
+        ➜ Explicit dependency on target 'Crypto' in project 'swift-crypto'
+        ➜ Explicit dependency on target 'IssueReporting' in project 'xctest-dynamic-overlay'
+    Target 'Storage' in project 'Supabase'
+        ➜ Explicit dependency on target 'Helpers' in project 'Supabase'
+        ➜ Explicit dependency on target 'ConcurrencyExtras' in project 'swift-concurrency-extras'
+        ➜ Explicit dependency on target 'HTTPTypes' in project 'swift-http-types'
+        ➜ Explicit dependency on target 'Clocks' in project 'swift-clocks'
+        ➜ Explicit dependency on target 'XCTestDynamicOverlay' in project 'xctest-dynamic-overlay'
+    Target 'Realtime' in project 'Supabase'
+        ➜ Explicit dependency on target 'Helpers' in project 'Supabase'
+        ➜ Explicit dependency on target 'ConcurrencyExtras' in project 'swift-concurrency-extras'
+        ➜ Explicit dependency on target 'HTTPTypes' in project 'swift-http-types'
+        ➜ Explicit dependency on target 'Clocks' in project 'swift-clocks'
+        ➜ Explicit dependency on target 'XCTestDynamicOverlay' in project 'xctest-dynamic-overlay'
+        ➜ Explicit dependency on target 'IssueReporting' in project 'xctest-dynamic-overlay'
+    Target 'PostgREST' in project 'Supabase'
+        ➜ Explicit dependency on target 'Helpers' in project 'Supabase'
+        ➜ Explicit dependency on target 'ConcurrencyExtras' in project 'swift-concurrency-extras'
+        ➜ Explicit dependency on target 'HTTPTypes' in project 'swift-http-types'
+        ➜ Explicit dependency on target 'Clocks' in project 'swift-clocks'
+        ➜ Explicit dependency on target 'XCTestDynamicOverlay' in project 'xctest-dynamic-overlay'
+    Target 'Functions' in project 'Supabase'
+        ➜ Explicit dependency on target 'Helpers' in project 'Supabase'
+        ➜ Explicit dependency on target 'ConcurrencyExtras' in project 'swift-concurrency-extras'
+        ➜ Explicit dependency on target 'HTTPTypes' in project 'swift-http-types'
+        ➜ Explicit dependency on target 'Clocks' in project 'swift-clocks'
+        ➜ Explicit dependency on target 'XCTestDynamicOverlay' in project 'xctest-dynamic-overlay'
+    Target 'Auth' in project 'Supabase'
+        ➜ Explicit dependency on target 'Helpers' in project 'Supabase'
+        ➜ Explicit dependency on target 'ConcurrencyExtras' in project 'swift-concurrency-extras'
+        ➜ Explicit dependency on target 'HTTPTypes' in project 'swift-http-types'
+        ➜ Explicit dependency on target 'Clocks' in project 'swift-clocks'
+        ➜ Explicit dependency on target 'XCTestDynamicOverlay' in project 'xctest-dynamic-overlay'
+        ➜ Explicit dependency on target 'Crypto' in project 'swift-crypto'
+    Target 'Crypto' in project 'swift-crypto'
+        ➜ Explicit dependency on target 'Crypto' in project 'swift-crypto'
+        ➜ Explicit dependency on target 'swift-crypto_Crypto' in project 'swift-crypto'
+    Target 'Crypto' in project 'swift-crypto'
+        ➜ Explicit dependency on target 'swift-crypto_Crypto' in project 'swift-crypto'
+    Target 'swift-crypto_Crypto' in project 'swift-crypto' (no dependencies)
+    Target 'Helpers' in project 'Supabase'
+        ➜ Explicit dependency on target 'ConcurrencyExtras' in project 'swift-concurrency-extras'
+        ➜ Explicit dependency on target 'HTTPTypes' in project 'swift-http-types'
+        ➜ Explicit dependency on target 'Clocks' in project 'swift-clocks'
+        ➜ Explicit dependency on target 'XCTestDynamicOverlay' in project 'xctest-dynamic-overlay'
+    Target 'XCTestDynamicOverlay' in project 'xctest-dynamic-overlay'
+        ➜ Explicit dependency on target 'XCTestDynamicOverlay' in project 'xctest-dynamic-overlay'
+        ➜ Explicit dependency on target 'IssueReportingPackageSupport' in project 'xctest-dynamic-overlay'
+        ➜ Explicit dependency on target 'IssueReporting' in project 'xctest-dynamic-overlay'
+    Target 'XCTestDynamicOverlay' in project 'xctest-dynamic-overlay'
+        ➜ Explicit dependency on target 'IssueReportingPackageSupport' in project 'xctest-dynamic-overlay'
+        ➜ Explicit dependency on target 'IssueReporting' in project 'xctest-dynamic-overlay'
+    Target 'Clocks' in project 'swift-clocks'
+        ➜ Explicit dependency on target 'Clocks' in project 'swift-clocks'
+        ➜ Explicit dependency on target 'ConcurrencyExtras' in project 'swift-concurrency-extras'
+        ➜ Explicit dependency on target 'IssueReporting' in project 'xctest-dynamic-overlay'
+    Target 'Clocks' in project 'swift-clocks'
+        ➜ Explicit dependency on target 'ConcurrencyExtras' in project 'swift-concurrency-extras'
+        ➜ Explicit dependency on target 'IssueReporting' in project 'xctest-dynamic-overlay'
+    Target 'IssueReporting' in project 'xctest-dynamic-overlay'
+        ➜ Explicit dependency on target 'IssueReporting' in project 'xctest-dynamic-overlay'
+        ➜ Explicit dependency on target 'IssueReportingPackageSupport' in project 'xctest-dynamic-overlay'
+    Target 'IssueReporting' in project 'xctest-dynamic-overlay'
+        ➜ Explicit dependency on target 'IssueReportingPackageSupport' in project 'xctest-dynamic-overlay'
+    Target 'IssueReportingPackageSupport' in project 'xctest-dynamic-overlay' (no dependencies)
+    Target 'HTTPTypes' in project 'swift-http-types'
+        ➜ Explicit dependency on target 'HTTPTypes' in project 'swift-http-types'
+    Target 'HTTPTypes' in project 'swift-http-types' (no dependencies)
+    Target 'ConcurrencyExtras' in project 'swift-concurrency-extras'
+        ➜ Explicit dependency on target 'ConcurrencyExtras' in project 'swift-concurrency-extras'
+    Target 'ConcurrencyExtras' in project 'swift-concurrency-extras' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -x objective-c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+ReadFileContents /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/share/docc/features.json
+
+Build description signature: 2f01746d96f66afeadc45df2604a3ed0
+Build description path: /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/XCBuildData/2f01746d96f66afeadc45df2604a3ed0.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk /Users/woonlee/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.0-23A339-26257891a6c027eb51374368541b8346.sdkstatcache
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock.xcodeproj
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -o /Users/woonlee/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.0-23A339-26257891a6c027eb51374368541b8346.sdkstatcache
+
+ProcessInfoPlistFile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/swift-crypto_Crypto.bundle/Info.plist /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/swift-crypto.build/Debug-iphonesimulator/swift-crypto_Crypto.build/empty-swift-crypto_Crypto.plist (in target 'swift-crypto_Crypto' from project 'swift-crypto')
+    cd /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/swift-crypto
+    builtin-infoPlistUtility /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/swift-crypto.build/Debug-iphonesimulator/swift-crypto_Crypto.build/empty-swift-crypto_Crypto.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/swift-crypto_Crypto.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-UserDefaults.bundle/Info.plist /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-UserDefaults.build/empty-GoogleUtilities_GoogleUtilities-UserDefaults.plist (in target 'GoogleUtilities_GoogleUtilities-UserDefaults' from project 'GoogleUtilities')
+    cd /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/GoogleUtilities
+    builtin-infoPlistUtility /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-UserDefaults.build/empty-GoogleUtilities_GoogleUtilities-UserDefaults.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-UserDefaults.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Logger.bundle/Info.plist /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Logger.build/empty-GoogleUtilities_GoogleUtilities-Logger.plist (in target 'GoogleUtilities_GoogleUtilities-Logger' from project 'GoogleUtilities')
+    cd /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/GoogleUtilities
+    builtin-infoPlistUtility /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Logger.build/empty-GoogleUtilities_GoogleUtilities-Logger.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Logger.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/Promises_FBLPromises.bundle/Info.plist /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/Promises.build/Debug-iphonesimulator/Promises_FBLPromises.build/empty-Promises_FBLPromises.plist (in target 'Promises_FBLPromises' from project 'Promises')
+    cd /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/promises
+    builtin-infoPlistUtility /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/Promises.build/Debug-iphonesimulator/Promises_FBLPromises.build/empty-Promises_FBLPromises.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/Promises_FBLPromises.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Environment.bundle/Info.plist /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Environment.build/empty-GoogleUtilities_GoogleUtilities-Environment.plist (in target 'GoogleUtilities_GoogleUtilities-Environment' from project 'GoogleUtilities')
+    cd /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/GoogleUtilities
+    builtin-infoPlistUtility /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Environment.build/empty-GoogleUtilities_GoogleUtilities-Environment.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Environment.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/GoogleSignIn_GoogleSignInSwift.bundle/Info.plist /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GoogleSignIn.build/Debug-iphonesimulator/GoogleSignIn_GoogleSignInSwift.build/empty-GoogleSignIn_GoogleSignInSwift.plist (in target 'GoogleSignIn_GoogleSignInSwift' from project 'GoogleSignIn')
+    cd /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/GoogleSignIn-iOS
+    builtin-infoPlistUtility /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GoogleSignIn.build/Debug-iphonesimulator/GoogleSignIn_GoogleSignInSwift.build/empty-GoogleSignIn_GoogleSignInSwift.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/GoogleSignIn_GoogleSignInSwift.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/GoogleSignIn_GoogleSignIn.bundle/Info.plist /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GoogleSignIn.build/Debug-iphonesimulator/GoogleSignIn_GoogleSignIn.build/empty-GoogleSignIn_GoogleSignIn.plist (in target 'GoogleSignIn_GoogleSignIn' from project 'GoogleSignIn')
+    cd /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/GoogleSignIn-iOS
+    builtin-infoPlistUtility /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GoogleSignIn.build/Debug-iphonesimulator/GoogleSignIn_GoogleSignIn.build/empty-GoogleSignIn_GoogleSignIn.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/GoogleSignIn_GoogleSignIn.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/GTMSessionFetcher_GTMSessionFetcherCore.bundle/Info.plist /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GTMSessionFetcher.build/Debug-iphonesimulator/GTMSessionFetcher_GTMSessionFetcherCore.build/empty-GTMSessionFetcher_GTMSessionFetcherCore.plist (in target 'GTMSessionFetcher_GTMSessionFetcherCore' from project 'GTMSessionFetcher')
+    cd /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/gtm-session-fetcher
+    builtin-infoPlistUtility /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GTMSessionFetcher.build/Debug-iphonesimulator/GTMSessionFetcher_GTMSessionFetcherCore.build/empty-GTMSessionFetcher_GTMSessionFetcherCore.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/GTMSessionFetcher_GTMSessionFetcherCore.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/GTMAppAuth_GTMAppAuth.bundle/Info.plist /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GTMAppAuth.build/Debug-iphonesimulator/GTMAppAuth_GTMAppAuth.build/empty-GTMAppAuth_GTMAppAuth.plist (in target 'GTMAppAuth_GTMAppAuth' from project 'GTMAppAuth')
+    cd /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/GTMAppAuth
+    builtin-infoPlistUtility /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GTMAppAuth.build/Debug-iphonesimulator/GTMAppAuth_GTMAppAuth.build/empty-GTMAppAuth_GTMAppAuth.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/GTMAppAuth_GTMAppAuth.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/AppAuth_AppAuthCore.bundle/Info.plist /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/AppAuth.build/Debug-iphonesimulator/AppAuth_AppAuthCore.build/empty-AppAuth_AppAuthCore.plist (in target 'AppAuth_AppAuthCore' from project 'AppAuth')
+    cd /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/AppAuth-iOS
+    builtin-infoPlistUtility /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/AppAuth.build/Debug-iphonesimulator/AppAuth_AppAuthCore.build/empty-AppAuth_AppAuthCore.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/AppAuth_AppAuthCore.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/AppAuth_AppAuth.bundle/Info.plist /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/AppAuth.build/Debug-iphonesimulator/AppAuth_AppAuth.build/empty-AppAuth_AppAuth.plist (in target 'AppAuth_AppAuth' from project 'AppAuth')
+    cd /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/AppAuth-iOS
+    builtin-infoPlistUtility /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/AppAuth.build/Debug-iphonesimulator/AppAuth_AppAuth.build/empty-AppAuth_AppAuth.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/AppAuth_AppAuth.bundle/Info.plist
+
+SwiftDriver phlock normal arm64 com.apple.xcode.tools.swift.compiler (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name phlock -Onone -enforce-exclusivity\=checked @/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/phlock.SwiftFileList -DDEBUG -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppAuth.modulemap -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppAuthCore.modulemap -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-Logger.modulemap -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-Environment.modulemap -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/third-party-IsAppEncrypted.modulemap -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-UserDefaults.modulemap -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppCheckCore.modulemap -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GTMSessionFetcherCore.modulemap -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleSignIn.modulemap -default-isolation\=MainActor -enable-bare-slash-regex -enable-upcoming-feature DisableOutwardActorInference -enable-upcoming-feature InferSendableFromCaptures -enable-upcoming-feature GlobalActorIsolatedTypesUsability -enable-upcoming-feature MemberImportVisibility -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -target arm64-apple-ios16.0-simulator -g -module-cache-path /Users/woonlee/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator -emit-localized-strings -emit-localized-strings-path /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64 -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/woonlee/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.0-23A339-26257891a6c027eb51374368541b8346.sdkstatcache -output-file-map /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/phlock-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/woonlee/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/woonlee/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/phlock.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/woonlee/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/phlock_const_extract_protocols.json -Xcc -iquote -Xcc /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/phlock-generated-files.hmap -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/phlock-own-target-headers.hmap -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/phlock-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock-807633917bee8abd1333497eec9e5ab5-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/phlock-project-headers.hmap -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/AppAuth-iOS/Sources/AppAuth -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/AppAuth-iOS/Sources/AppAuthCore -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/promises/Sources/FBLPromises/include -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/Logger/Public -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/Environment/Public -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/GoogleUtilities/third_party/IsAppEncrypted/Public -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/UserDefaults/Public -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/app-check/AppCheckCore/Sources/Public -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/gtm-session-fetcher/Sources/Core/Public -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/GoogleSignIn-iOS/GoogleSignIn/Sources/Public -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/DerivedSources-normal/arm64 -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/DerivedSources/arm64 -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/phlock-Swift.h -working-directory /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock -experimental-emit-module-separately -disable-cmo
+
+ProcessInfoPlistFile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/phlock.app/Info.plist /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Info.plist (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    builtin-infoPlistUtility /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Info.plist -producttype com.apple.product-type.application -genpkginfo /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/phlock.app/PkgInfo -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/assetcatalog_generated_info.plist -scanforprivacyfile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/phlock.app/AppAuth_AppAuth.bundle -scanforprivacyfile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/phlock.app/AppAuth_AppAuthCore.bundle -scanforprivacyfile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/phlock.app/Frameworks/Lottie.framework -scanforprivacyfile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/phlock.app/GTMAppAuth_GTMAppAuth.bundle -scanforprivacyfile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/phlock.app/GTMSessionFetcher_GTMSessionFetcherCore.bundle -scanforprivacyfile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/phlock.app/GoogleSignIn_GoogleSignIn.bundle -scanforprivacyfile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/phlock.app/GoogleSignIn_GoogleSignInSwift.bundle -scanforprivacyfile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/phlock.app/GoogleUtilities_GoogleUtilities-Environment.bundle -scanforprivacyfile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/phlock.app/GoogleUtilities_GoogleUtilities-Logger.bundle -scanforprivacyfile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/phlock.app/GoogleUtilities_GoogleUtilities-UserDefaults.bundle -scanforprivacyfile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/phlock.app/Promises_FBLPromises.bundle -scanforprivacyfile /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/phlock.app/swift-crypto_Crypto.bundle -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/phlock.app/Info.plist
+
+SwiftCompile normal arm64 Compiling\ SupabaseClient.swift,\ UserService.swift,\ Logger.swift,\ MiniPlayerEnvironment.swift,\ AuthenticationState.swift,\ NavigationState.swift,\ MusicPlatformConnectionView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/SupabaseClient.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/UserService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Utilities/Logger.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Utilities/MiniPlayerEnvironment.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/ViewModels/AuthenticationState.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/ViewModels/NavigationState.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/MusicPlatformConnectionView.swift (in target 'phlock' from project 'phlock')
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/SupabaseClient.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/UserService.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Utilities/Logger.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Utilities/MiniPlayerEnvironment.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/ViewModels/AuthenticationState.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/ViewModels/NavigationState.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/MusicPlatformConnectionView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 Compiling\ PhlockService.swift,\ PlaybackService.swift,\ PushNotificationService.swift,\ SearchService.swift,\ ShareService.swift,\ SongRecognitionManager.swift,\ SpotifyService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/PhlockService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/PlaybackService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/PushNotificationService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/SearchService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/ShareService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/SongRecognitionManager.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/SpotifyService.swift (in target 'phlock' from project 'phlock')
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/PhlockService.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/PlaybackService.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/PushNotificationService.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/SearchService.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/ShareService.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/SongRecognitionManager.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/SpotifyService.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 Compiling\ OnboardingAddFriendsView.swift,\ OnboardingContactsPermissionView.swift,\ OnboardingInviteFriendsView.swift,\ OnboardingNameView.swift,\ OnboardingNotificationsView.swift,\ OnboardingUsernameView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingAddFriendsView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingContactsPermissionView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingInviteFriendsView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingNameView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingNotificationsView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingUsernameView.swift (in target 'phlock' from project 'phlock')
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingAddFriendsView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingContactsPermissionView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingInviteFriendsView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingNameView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingNotificationsView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingUsernameView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 Compiling\ PhlockButton.swift,\ PhlockImmersiveLayout.swift,\ PhlockNetworkView.swift,\ PhlockStatsView.swift,\ PhlockTextField.swift,\ PhlockTimelineView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockButton.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockImmersiveLayout.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockNetworkView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockStatsView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockTextField.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockTimelineView.swift (in target 'phlock' from project 'phlock')
+Failed frontend command:
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend -frontend -c /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Extensions/Color+Theme.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Extensions/Date+RelativeTime.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Extensions/Font+Lora.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Extensions/View+DismissKeyboard.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Extensions/View+HideRefreshControl.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Helpers/CrossPlatformHelper.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Helpers/FriendRankingEngine.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Models/Follow.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Models/Friendship.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Models/NotificationItem.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Models/Phlock.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Models/PhlockLayoutMode.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Models/PhlockNode.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Models/PlatformToken.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Models/Share.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Models/ShareComment.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Models/User.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/AppleMusicService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/AuthService_v2.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/AuthService_v3.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/Config.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/ContactsService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/DeepLinkService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/FollowService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/NotificationService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/PhlockService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/PlaybackService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/PushNotificationService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/SearchService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/ShareService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/SongRecognitionManager.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/SpotifyService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/SupabaseClient.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/UserService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Utilities/Logger.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Utilities/MiniPlayerEnvironment.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/ViewModels/AuthenticationState.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/ViewModels/NavigationState.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/MusicPlatformConnectionView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingAddFriendsView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingContactsPermissionView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingInviteFriendsView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingNameView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingNotificationsView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/OnboardingUsernameView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/PlatformSelectionView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/SignInView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/SplashScreenView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/UsernameSelectionView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/WelcomeView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/AnimatedPlayingIndicator.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/CompactTrackInfoRow.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/CustomRefreshView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/FriendSelectorBar.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/FullScreenPlayerView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/FullScreenSwipeBack.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/LoadingView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/MarqueeText.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/MiniPlayerView.swift -primary-file /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockButton.swift -primary-file /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockImmersiveLayout.swift -primary-file /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockNetworkView.swift -primary-file /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockStatsView.swift -primary-file /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockTextField.swift -primary-file /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockTimelineView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/QuickSendBar.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/RemoteImage.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/ShareOptionsSheet.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/ShareToast.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/SongRecognitionFab.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/StreakBadge.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/WaveformLoadingView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/ArtistDetailView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/ConversationView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/CustomTabBarController.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/DiscoverView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/EditProfileView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/FollowersListView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/FriendsView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/MainView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/NotificationsView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/PhlockView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/ProfileView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/SearchResultsView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/SettingsView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/UserProfileView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/ContentView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/phlockApp.swift /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/DerivedSources/GeneratedAssetSymbols.swift -supplementary-output-file-map /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/supplementaryOutputs-6 -emit-localized-strings -emit-localized-strings-path /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64 -target arm64-apple-ios16.0-simulator -module-can-import-version DeveloperToolsSupport 23.0.4 23.0.4 -module-can-import-version SwiftUI 7.0.84.1 7.0.84 -module-can-import-version UIKit 9088.1.113 9088.1.113 -disable-cross-import-overlay-search -swift-module-cross-import AuthenticationServices /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Cryptexes/OS/System/Library/Frameworks/AuthenticationServices.framework/Modules/AuthenticationServices.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import AuthenticationServices /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk/System/Library/Frameworks/AuthenticationServices.framework/Modules/AuthenticationServices.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import MusicKit /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk/System/Library/Frameworks/MusicKit.framework/Modules/MusicKit.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import PhotosUI /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/PhotosUI.framework/Modules/PhotosUI.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import PhotosUI /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/PhotosUI.framework/Modules/PhotosUI.swiftcrossimport/WidgetKit.swiftoverlay -swift-module-cross-import PhotosUI /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk/System/Library/Frameworks/PhotosUI.framework/Modules/PhotosUI.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import PhotosUI /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk/System/Library/Frameworks/PhotosUI.framework/Modules/PhotosUI.swiftcrossimport/WidgetKit.swiftoverlay -swift-module-cross-import StoreKit /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/StoreKit.framework/Modules/StoreKit.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import StoreKit /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk/System/Library/Frameworks/StoreKit.framework/Modules/StoreKit.swiftcrossimport/SwiftUI.swiftoverlay -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libFoundationMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#FoundationMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libObservationMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#ObservationMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libPreviewsMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#PreviewsMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libSwiftMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#SwiftMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libSwiftUIMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#SwiftUIMacros -disable-implicit-swift-modules -Xcc -fno-implicit-modules -Xcc -fno-implicit-module-maps -explicit-swift-module-map-file /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/phlock-dependencies-1.json -Xllvm -aarch64-use-tbi -enable-objc-interop -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -I /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator -no-color-diagnostics -Xcc -fno-color-diagnostics -enable-testing -g -debug-info-format\=dwarf -dwarf-version\=4 -module-cache-path /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -profile-generate -profile-coverage-mapping -swift-version 5 -enforce-exclusivity\=checked -Onone -D DEBUG -serialize-debugging-options -const-gather-protocols-file /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/phlock_const_extract_protocols.json -enable-upcoming-feature DisableOutwardActorInference -enable-upcoming-feature InferSendableFromCaptures -enable-upcoming-feature GlobalActorIsolatedTypesUsability -enable-upcoming-feature MemberImportVisibility -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-experimental-feature DebugDescriptionMacro -enable-bare-slash-regex -default-isolation\=MainActor -empty-abi-descriptor -validate-clang-modules-once -clang-build-session-file /Users/woonlee/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -working-directory -Xcc /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock -enable-anonymous-context-mangled-names -file-compilation-dir /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppAuth.modulemap -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppAuthCore.modulemap -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-Logger.modulemap -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-Environment.modulemap -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/third-party-IsAppEncrypted.modulemap -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-UserDefaults.modulemap -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppCheckCore.modulemap -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GTMSessionFetcherCore.modulemap -Xcc -fmodule-map-file\=/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleSignIn.modulemap -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -Xcc -ivfsstatcache -Xcc /Users/woonlee/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.0-23A339-26257891a6c027eb51374368541b8346.sdkstatcache -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/swift-overrides.hmap -Xcc -iquote -Xcc /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/phlock-generated-files.hmap -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/phlock-own-target-headers.hmap -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/phlock-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock-807633917bee8abd1333497eec9e5ab5-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/phlock-project-headers.hmap -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/AppAuth-iOS/Sources/AppAuth -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/AppAuth-iOS/Sources/AppAuthCore -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/promises/Sources/FBLPromises/include -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/Logger/Public -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/Environment/Public -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/GoogleUtilities/third_party/IsAppEncrypted/Public -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/UserDefaults/Public -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/app-check/AppCheckCore/Sources/Public -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/gtm-session-fetcher/Sources/Core/Public -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/SourcePackages/checkouts/GoogleSignIn-iOS/GoogleSignIn/Sources/Public -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/DerivedSources-normal/arm64 -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/DerivedSources/arm64 -Xcc -I/Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/DerivedSources -Xcc -DDEBUG\=1 -no-auto-bridging-header-chaining -module-name phlock -frontend-parseable-output -disable-clang-spi -target-sdk-version 26.0 -target-sdk-name iphonesimulator26.0 -clang-target arm64-apple-ios26.0-simulator -in-process-plugin-server-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/libSwiftInProcPluginServer.dylib -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/PhlockButton.o -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/PhlockImmersiveLayout.o -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/PhlockNetworkView.o -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/PhlockStatsView.o -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/PhlockTextField.o -o /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/PhlockTimelineView.o -index-unit-output-path /phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/PhlockButton.o -index-unit-output-path /phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/PhlockImmersiveLayout.o -index-unit-output-path /phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/PhlockNetworkView.o -index-unit-output-path /phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/PhlockStatsView.o -index-unit-output-path /phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/PhlockTextField.o -index-unit-output-path /phlock.build/Debug-iphonesimulator/phlock.build/Objects-normal/arm64/PhlockTimelineView.o -index-store-path /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Index.noindex/DataStore -index-system-modules
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockButton.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockImmersiveLayout.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+/Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockImmersiveLayout.swift:188:47: error: value of type 'User' has no member 'avatarUrl'
+                    if let avatarUrl = member.avatarUrl {
+                                       ~~~~~~ ^~~~~~~~~
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockNetworkView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockStatsView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockTextField.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockTimelineView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 Compiling\ FollowersListView.swift,\ FriendsView.swift,\ MainView.swift,\ NotificationsView.swift,\ PhlockView.swift,\ ProfileView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/FollowersListView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/FriendsView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/MainView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/NotificationsView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/PhlockView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/ProfileView.swift (in target 'phlock' from project 'phlock')
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/FollowersListView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/FriendsView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/MainView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/NotificationsView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/PhlockView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/ProfileView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 Compiling\ SearchResultsView.swift,\ SettingsView.swift,\ UserProfileView.swift,\ ContentView.swift,\ phlockApp.swift,\ GeneratedAssetSymbols.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/SearchResultsView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/SettingsView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/UserProfileView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/ContentView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/phlockApp.swift /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/DerivedSources/GeneratedAssetSymbols.swift (in target 'phlock' from project 'phlock')
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/SearchResultsView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/SettingsView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/UserProfileView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/ContentView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/phlockApp.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Library/Developer/Xcode/DerivedData/phlock-cpinjyttjlysqxbujxukctiouojg/Build/Intermediates.noindex/phlock.build/Debug-iphonesimulator/phlock.build/DerivedSources/GeneratedAssetSymbols.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 Compiling\ AuthService_v2.swift,\ AuthService_v3.swift,\ Config.swift,\ ContactsService.swift,\ DeepLinkService.swift,\ FollowService.swift,\ NotificationService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/AuthService_v2.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/AuthService_v3.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/Config.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/ContactsService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/DeepLinkService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/FollowService.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/NotificationService.swift (in target 'phlock' from project 'phlock')
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/AuthService_v2.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/AuthService_v3.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/Config.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/ContactsService.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/DeepLinkService.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/FollowService.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Services/NotificationService.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ phlock (in target 'phlock' from project 'phlock')
+
+EmitSwiftModule normal arm64 (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 Compiling\ WaveformLoadingView.swift,\ ArtistDetailView.swift,\ ConversationView.swift,\ CustomTabBarController.swift,\ DiscoverView.swift,\ EditProfileView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/WaveformLoadingView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/ArtistDetailView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/ConversationView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/CustomTabBarController.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/DiscoverView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/EditProfileView.swift (in target 'phlock' from project 'phlock')
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/WaveformLoadingView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/ArtistDetailView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/ConversationView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/CustomTabBarController.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/DiscoverView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Main/EditProfileView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 Compiling\ QuickSendBar.swift,\ RemoteImage.swift,\ ShareOptionsSheet.swift,\ ShareToast.swift,\ SongRecognitionFab.swift,\ StreakBadge.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/QuickSendBar.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/RemoteImage.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/ShareOptionsSheet.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/ShareToast.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/SongRecognitionFab.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/StreakBadge.swift (in target 'phlock' from project 'phlock')
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/QuickSendBar.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/RemoteImage.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/ShareOptionsSheet.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/ShareToast.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/SongRecognitionFab.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/StreakBadge.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 Compiling\ PlatformSelectionView.swift,\ SignInView.swift,\ SplashScreenView.swift,\ UsernameSelectionView.swift,\ WelcomeView.swift,\ MiniPlayerView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/PlatformSelectionView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/SignInView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/SplashScreenView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/UsernameSelectionView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/WelcomeView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/MiniPlayerView.swift (in target 'phlock' from project 'phlock')
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/PlatformSelectionView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/SignInView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/SplashScreenView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/UsernameSelectionView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Auth/WelcomeView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/MiniPlayerView.swift (in target 'phlock' from project 'phlock')
+    cd /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling SupabaseClient.swift, UserService.swift, Logger.swift, MiniPlayerEnvironment.swift, AuthenticationState.swift, NavigationState.swift, MusicPlatformConnectionView.swift (in target 'phlock' from project 'phlock')
+
+SwiftCompile normal arm64 Compiling\ FriendSelectorBar.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/FriendSelectorBar.swift (in target 'phlock' from project 'phlock')
+
+** BUILD FAILED **
+
+
+The following build commands failed:
+	SwiftCompile normal arm64 Compiling\ PhlockButton.swift,\ PhlockImmersiveLayout.swift,\ PhlockNetworkView.swift,\ PhlockStatsView.swift,\ PhlockTextField.swift,\ PhlockTimelineView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockButton.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockImmersiveLayout.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockNetworkView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockStatsView.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockTextField.swift /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockTimelineView.swift (in target 'phlock' from project 'phlock')
+	SwiftCompile normal arm64 /Users/woonlee/Desktop/Phlock/phlock-dev/apps/ios/phlock/phlock/Views/Components/PhlockImmersiveLayout.swift (in target 'phlock' from project 'phlock')
+	Building project phlock with scheme phlock
+(3 failures)

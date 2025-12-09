@@ -129,6 +129,16 @@ struct ShareOptionsSheet: View {
                     }
                 }
         )
+        .sheet(isPresented: $showViralShare) {
+            if let userId = currentUserId {
+                UnifiedShareSheet(userId: userId)
+            } else {
+                ProgressView()
+            }
+        }
+        .task {
+            currentUserId = await AuthServiceV2.shared.currentUserId
+        }
     }
 
     private var horizontalPadding: CGFloat {
@@ -163,14 +173,26 @@ struct ShareOptionsSheet: View {
         colorScheme == .dark ? Color.white.opacity(0.2) : Color.black.opacity(0.08)
     }
 
+    @State private var showViralShare = false
+    @State private var currentUserId: UUID?
+
     private var options: [Option] {
-        [
+        var items = [
             Option(title: "Copy Link", subtitle: nil, systemImage: "link") { copyLink() },
             Option(title: "Messages", subtitle: "Share via SMS/iMessage", systemImage: "message.fill") { openMessages() },
             Option(title: "WhatsApp", subtitle: nil, systemImage: "bubble.left.and.bubble.right.fill") { openWhatsApp() },
             Option(title: "Instagram", subtitle: "Share with friends", systemImage: "camera.fill") { openInstagram() },
             Option(title: "Add to Story", subtitle: "Instagram stories", systemImage: "sparkles.rectangle.stack") { openInstagramStory() }
         ]
+        
+        // Add Viral Share option
+        items.append(
+            Option(title: "Share Daily Recap", subtitle: "Create a viral artifact", systemImage: "star.fill") {
+                showViralShare = true
+            }
+        )
+        
+        return items
     }
 
     private func copyLink() {

@@ -360,6 +360,29 @@ class ShareService {
         try await recordEngagement(shareId: shareId, userId: userId, action: "dismissed")
     }
 
+    /// Update the message on a share (for editing daily song message)
+    /// - Parameters:
+    ///   - shareId: The share's ID
+    ///   - message: New message text (empty string to clear)
+    func updateShareMessage(shareId: UUID, message: String) async throws {
+        // Validate message length
+        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedMessage.count <= 280 else {
+            throw ShareError.messageTooLong
+        }
+
+        // Use AnyJSON to properly encode empty string or null
+        let messageValue: AnyJSON = trimmedMessage.isEmpty ? .null : .string(trimmedMessage)
+
+        try await supabase
+            .from("shares")
+            .update(["message": messageValue])
+            .eq("id", value: shareId.uuidString)
+            .execute()
+
+        print("✏️ Updated share message for \(shareId)")
+    }
+
     // MARK: - Forward Shares
 
     /// Forward an existing share to new recipients
@@ -947,6 +970,56 @@ class ShareService {
         print("🗑️ Deleted all daily songs for user \(userId) on \(todayString)")
     }
 
+    // MARK: - Viral Sharing Data
+
+    /// Get aggregated data for viral sharing artifacts
+    /// - Parameter userId: The current user's ID
+    /// - Returns: ViralShareData containing user's song and friends' songs
+    func getViralShareData(for userId: UUID) async throws -> ViralShareData {
+        // 1. Get user's daily song
+        guard let userShare = try await getTodaysDailySong(for: userId) else {
+            throw ShareError.shareNotFound
+        }
+        
+        // 2. Get friends' daily songs
+        let friendIds = try await UserService.shared.getFriends(for: userId).map { $0.id }
+        let friendShares = try await getDailySongs(from: friendIds)
+        
+        // 3. Map to ViralShareData
+        let userTrack = MusicItem(
+            id: userShare.trackId,
+            name: userShare.trackName,
+            artistName: userShare.artistName,
+            artistSpotifyId: userShare.artistId,
+            previewUrl: userShare.previewUrl,
+            albumArtUrl: userShare.albumArtUrl,
+            spotifyId: userShare.trackId
+        )
+        
+        // Fetch usernames for friends (Optimization: This should ideally be a join query)
+        var enrichedFriendsTracks: [ViralShareData.FriendTrack] = []
+        for share in friendShares {
+            let profile = try? await UserService.shared.getUser(userId: share.senderId)
+            enrichedFriendsTracks.append(ViralShareData.FriendTrack(
+                username: profile?.username ?? "friend",
+                trackName: share.trackName,
+                artistName: share.artistName,
+                albumArtUrl: share.albumArtUrl
+            ))
+        }
+        
+        // Fetch the current user's username
+        let currentUserProfile = try? await UserService.shared.getUser(userId: userId)
+        let userName = currentUserProfile?.username ?? "you"
+
+        return ViralShareData(
+            userTrack: userTrack,
+            userName: userName,
+            date: Date(),
+            friendsTracks: enrichedFriendsTracks
+        )
+    }
+
     // MARK: - Date Helper
 
     /// Get date-only string in yyyy-MM-dd format for the user's local timezone
@@ -986,6 +1059,7 @@ enum ShareServiceError: LocalizedError {
 
 enum ShareError: LocalizedError {
     case commentTooLong
+    case messageTooLong
     case shareNotFound
     case commentCreationFailed
     case customError(String)
@@ -994,6 +1068,8 @@ enum ShareError: LocalizedError {
         switch self {
         case .commentTooLong:
             return "Comment must be 280 characters or less"
+        case .messageTooLong:
+            return "Message must be 280 characters or less"
         case .shareNotFound:
             return "Share not found"
         case .commentCreationFailed:

@@ -18,6 +18,9 @@ struct VerticalActionBar: View {
     let onSendTapped: () -> Void
     let onOpenTapped: () -> Void
 
+    // Optional: separate action for tapping like count (e.g., to show likers list)
+    var onLikeCountTapped: (() -> Void)?
+
     // Platform for "Open" button
     var platformType: PlatformType?
 
@@ -25,14 +28,23 @@ struct VerticalActionBar: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            // Like button
-            ActionButton(
-                icon: isLiked ? "heart.fill" : "heart",
-                count: likeCount,
-                isActive: isLiked,
-                activeColor: .red,
-                action: onLikeTapped
-            )
+            // Like button - with optional separate count tap
+            if let countAction = onLikeCountTapped {
+                LikeActionButtonWithCountTap(
+                    likeCount: likeCount,
+                    isLiked: isLiked,
+                    onIconTapped: onLikeTapped,
+                    onCountTapped: countAction
+                )
+            } else {
+                ActionButton(
+                    icon: isLiked ? "heart.fill" : "heart",
+                    count: likeCount,
+                    isActive: isLiked,
+                    activeColor: .red,
+                    action: onLikeTapped
+                )
+            }
 
             // Comment button
             ActionButton(
@@ -239,6 +251,74 @@ struct AnimatedLikeButton: View {
                     .transition(.scale.combined(with: .opacity))
                     .offset(y: -50)
             }
+        }
+    }
+}
+
+// MARK: - Like Action Button with Separate Count Tap
+
+/// Like button with separate tap targets for icon (toggle like) and count (show likers)
+private struct LikeActionButtonWithCountTap: View {
+    let likeCount: Int
+    let isLiked: Bool
+    let onIconTapped: () -> Void
+    let onCountTapped: () -> Void
+
+    @State private var isPressed = false
+
+    var body: some View {
+        VStack(spacing: 2) {
+            // Heart icon - tappable to toggle like
+            Button(action: {
+                let impact = UIImpactFeedbackGenerator(style: .medium)
+                impact.impactOccurred()
+
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    isPressed = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                        isPressed = false
+                    }
+                }
+
+                onIconTapped()
+            }) {
+                Image(systemName: isLiked ? "heart.fill" : "heart")
+                    .font(.system(size: 28, weight: .light))
+                    .foregroundColor(isLiked ? .red : .white)
+                    .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 1)
+                    .scaleEffect(isPressed ? 1.2 : 1.0)
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            // Count label - tappable to show likers list
+            Button(action: {
+                let impact = UIImpactFeedbackGenerator(style: .light)
+                impact.impactOccurred()
+                onCountTapped()
+            }) {
+                Text(formatCount(likeCount))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                    .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+
+    private func formatCount(_ count: Int) -> String {
+        if count < 1000 {
+            return "\(count)"
+        } else if count < 10_000 {
+            let thousands = Double(count) / 1000.0
+            return String(format: "%.1fK", thousands)
+        } else if count < 1_000_000 {
+            let thousands = count / 1000
+            return "\(thousands)K"
+        } else {
+            let millions = Double(count) / 1_000_000.0
+            return String(format: "%.1fM", millions)
         }
     }
 }
