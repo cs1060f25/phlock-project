@@ -165,6 +165,7 @@ class AuthServiceV3 {
     // MARK: - User Record Management
 
     /// Create user record in public.users table
+    /// Note: Username is NOT set here - user will be prompted to create one during onboarding
     private func createUserRecord(
         authUserId: UUID,
         email: String,

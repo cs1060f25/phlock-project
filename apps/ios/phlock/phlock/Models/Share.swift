@@ -12,7 +12,7 @@ struct Share: Codable, Identifiable, @unchecked Sendable {
     let artistName: String
     let artistId: String?  // Spotify/Apple Music artist ID for direct profile linking
     let albumArtUrl: String?
-    let message: String?
+    var message: String?
     var status: ShareStatus
     let createdAt: Date
     let updatedAt: Date?

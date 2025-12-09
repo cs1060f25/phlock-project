@@ -474,6 +474,7 @@ class AuthServiceV2 {
     // MARK: - User Creation
 
     /// Create new user in users table linked to Supabase Auth
+    /// Note: Username is NOT set here - user will be prompted to create one during onboarding
     private func createUser(
         authUserId: UUID,
         email: String,

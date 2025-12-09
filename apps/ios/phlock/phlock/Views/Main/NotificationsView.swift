@@ -246,6 +246,9 @@ struct NotificationsView: View {
             onListenTap: {
                 markAsRead(notification)
                 navigationState.selectedTab = 0
+            },
+            onAlbumArtTap: { tappedNotification in
+                handleAlbumArtTap(tappedNotification)
             }
         )
         .environmentObject(authState)
@@ -278,6 +281,36 @@ struct NotificationsView: View {
         }
     }
 
+    private func handleAlbumArtTap(_ notification: NotificationItem) {
+        markAsRead(notification)
+
+        guard let shareId = notification.shareId else {
+            // No shareId, just navigate to phlock tab
+            navigationState.selectedTab = 0
+            return
+        }
+
+        // Determine if this is the user's own pick by checking if they're the sender
+        // For now, we'll check in PhlockView - we set isOwnPick to false and let PhlockView figure it out
+        let sheetType: NotificationNavigation.NotificationSheetType
+        switch notification.type {
+        case .shareCommented:
+            sheetType = .comments
+        case .shareLiked, .commentLiked:
+            sheetType = .likers
+        default:
+            sheetType = .none
+        }
+
+        // Set up the pending navigation and switch to phlock tab
+        navigationState.pendingNotificationNavigation = NotificationNavigation(
+            shareId: shareId,
+            sheetType: sheetType,
+            isOwnPick: false  // Will be determined by PhlockView
+        )
+        navigationState.selectedTab = 0
+    }
+
     private func markAllAsRead() async {
         let unreadIds = notifications.enumerated()
             .filter { !$0.element.isRead }
@@ -291,6 +324,9 @@ struct NotificationsView: View {
                 notifications[index].isRead = true
             }
         }
+
+        // Clear the unread badge on the tab bar
+        await NotificationService.shared.clearUnreadCount()
 
         // Batch update to backend
         let ids = unreadIds.map { $0.id }
@@ -420,6 +456,7 @@ private struct NotificationRowView: View {
     let onProfileTap: (User) -> Void
     let onPickSong: () -> Void
     let onListenTap: () -> Void
+    let onAlbumArtTap: (NotificationItem) -> Void
 
     @State private var relationshipStatus: RelationshipStatus?
     @State private var isLoadingRelationship = true
@@ -454,8 +491,12 @@ private struct NotificationRowView: View {
 
             Spacer()
 
-            // Action button on right
-            actionButton
+            // Action button OR album art thumbnail on right (Instagram-style)
+            if notification.type == .shareLiked || notification.type == .shareCommented || notification.type == .commentLiked {
+                albumArtThumbnail
+            } else {
+                actionButton
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -463,6 +504,39 @@ private struct NotificationRowView: View {
         .task {
             await loadRelationshipIfNeeded()
         }
+    }
+
+    // MARK: - Album Art Thumbnail (Instagram-style, tappable)
+
+    @ViewBuilder
+    private var albumArtThumbnail: some View {
+        Button {
+            onAlbumArtTap(notification)
+        } label: {
+            if let urlString = notification.albumArtUrl, let url = URL(string: urlString) {
+                AsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.gray.opacity(0.2))
+                }
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+            } else {
+                // Fallback placeholder if no album art
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.gray.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Image(systemName: "music.note")
+                            .font(.system(size: 18))
+                            .foregroundColor(.secondary)
+                    )
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Notification Text (Instagram style)
@@ -488,7 +562,44 @@ private struct NotificationRowView: View {
                 songSavedText
             case .streakMilestone:
                 streakText
+            case .shareLiked:
+                shareLikedText
+            case .shareCommented:
+                shareCommentedText
+            case .commentLiked:
+                commentLikedText
             }
+        }
+    }
+
+    private var shareLikedText: some View {
+        HStack(spacing: 0) {
+            (boldText(actorNames) + regularText(" liked your pick. ") + timestampText)
+                .lineLimit(2)
+        }
+    }
+
+    private var shareCommentedText: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 0) {
+                (boldText(actorNames) + regularText(" commented on your pick. ") + timestampText)
+                    .lineLimit(2)
+            }
+            // Show comment preview if available
+            if let commentText = notification.commentText, !commentText.isEmpty {
+                Text("\"\(commentText)\"")
+                    .font(.lora(size: 12))
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                    .italic()
+            }
+        }
+    }
+
+    private var commentLikedText: some View {
+        HStack(spacing: 0) {
+            (boldText(actorNames) + regularText(" liked your comment. ") + timestampText)
+                .lineLimit(2)
         }
     }
 
@@ -631,7 +742,7 @@ private struct NotificationRowView: View {
     @ViewBuilder
     private var notificationIcon: some View {
         switch notification.type {
-        case .dailyNudge, .newFollower, .followRequestReceived, .followRequestAccepted, .friendJoined, .phlockSongReady:
+        case .dailyNudge, .newFollower, .followRequestReceived, .followRequestAccepted, .friendJoined, .phlockSongReady, .shareLiked, .shareCommented, .commentLiked:
             if let actor = primaryActor {
                 VStack(spacing: 0) {
                     if let urlString = actor.profilePhotoUrl, let url = URL(string: urlString) {
@@ -649,9 +760,9 @@ private struct NotificationRowView: View {
                             .frame(width: 44, height: 44)
                     }
 
-                    // Streak badge
-                    if actor.dailySongStreak > 0 {
-                        StreakBadge(streak: actor.dailySongStreak, size: .small)
+                    // Streak badge (use effectiveStreak to handle expired streaks)
+                    if actor.effectiveStreak > 0 {
+                        StreakBadge(streak: actor.effectiveStreak, size: .small)
                             .offset(y: -8)
                     }
                 }
@@ -736,7 +847,7 @@ private struct NotificationRowView: View {
             }
             .buttonStyle(.plain)
 
-        case .songPlayed, .songSaved, .streakMilestone:
+        case .songPlayed, .songSaved, .streakMilestone, .shareLiked, .shareCommented, .commentLiked:
             EmptyView()
         }
     }

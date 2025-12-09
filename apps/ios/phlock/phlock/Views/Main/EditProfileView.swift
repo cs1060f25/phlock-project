@@ -135,7 +135,7 @@ struct EditProfileView: View {
                         }
                 )
             }
-            .navigationTitle("Edit Profile")
+            .navigationTitle("edit profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

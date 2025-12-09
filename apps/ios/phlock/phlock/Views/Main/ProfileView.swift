@@ -97,7 +97,7 @@ struct ProfileView: View {
 
                                             // Camera overlay based on state
                                             // State 1: Has streak + No photo → Full circle camera overlay
-                                            if user.dailySongStreak > 0 && user.profilePhotoUrl == nil {
+                                            if user.effectiveStreak > 0 && user.profilePhotoUrl == nil {
                                                 Circle()
                                                     .fill(Color.black.opacity(0.5))
                                                     .frame(width: 90, height: 90)
@@ -110,7 +110,7 @@ struct ProfileView: View {
                                             // (no overlay needed)
 
                                             // State 3: No streak → Small camera badge at bottom center
-                                            if user.dailySongStreak == 0 {
+                                            if user.effectiveStreak == 0 {
                                                 VStack {
                                                     Spacer()
                                                     ZStack {
@@ -141,8 +141,8 @@ struct ProfileView: View {
                                     }
 
                                     // Streak badge overlapping the photo bottom (only when streak > 0)
-                                    if user.dailySongStreak > 0 {
-                                        StreakBadge(streak: user.dailySongStreak, size: .medium)
+                                    if user.effectiveStreak > 0 {
+                                        StreakBadge(streak: user.effectiveStreak, size: .medium)
                                             .offset(y: -10)
                                     }
                                 }
@@ -269,7 +269,7 @@ struct ProfileView: View {
                             onPickSong: {
                                 showSongPickerSheet = true
                             },
-                            streak: user.dailySongStreak
+                            streak: user.effectiveStreak
                         )
                         
                         // My Phlock
@@ -375,7 +375,9 @@ struct ProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                if let username = authState.currentUser?.username {
+                // Use refreshedUser if available, otherwise fall back to authState.currentUser
+                let user = refreshedUser ?? authState.currentUser
+                if let username = user?.username, !username.isEmpty {
                     Text("@\(username)")
                         .font(.lora(size: 20, weight: .bold))
                 }
@@ -2668,8 +2670,8 @@ struct PhlockMembersRow: View {
                                     }
 
                                     // Streak badge overlapping bottom
-                                    if member.user.dailySongStreak > 0 {
-                                        StreakBadge(streak: member.user.dailySongStreak, size: .small)
+                                    if member.user.effectiveStreak > 0 {
+                                        StreakBadge(streak: member.user.effectiveStreak, size: .small)
                                             .offset(y: 8)
                                     }
                                 }

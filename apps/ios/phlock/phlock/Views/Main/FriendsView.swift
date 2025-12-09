@@ -712,8 +712,8 @@ struct SuggestedUserRow: View {
                             .frame(width: 50, height: 50)
                     }
 
-                    if suggestion.user.dailySongStreak > 0 {
-                        StreakBadge(streak: suggestion.user.dailySongStreak, size: .small)
+                    if suggestion.user.effectiveStreak > 0 {
+                        StreakBadge(streak: suggestion.user.effectiveStreak, size: .small)
                             .offset(y: -8)
                     }
                 }
@@ -811,8 +811,8 @@ struct SearchResultRow: View {
                             .frame(width: 50, height: 50)
                     }
 
-                    if user.dailySongStreak > 0 {
-                        StreakBadge(streak: user.dailySongStreak, size: .small)
+                    if user.effectiveStreak > 0 {
+                        StreakBadge(streak: user.effectiveStreak, size: .small)
                             .offset(y: -8)
                     }
                 }
@@ -890,8 +890,8 @@ struct FollowRequestCard: View {
                         .frame(width: 60, height: 60)
                 }
 
-                if friendshipWithUser.user.dailySongStreak > 0 {
-                    StreakBadge(streak: friendshipWithUser.user.dailySongStreak, size: .small)
+                if friendshipWithUser.user.effectiveStreak > 0 {
+                    StreakBadge(streak: friendshipWithUser.user.effectiveStreak, size: .small)
                         .offset(y: -8)
                 }
             }
@@ -954,8 +954,8 @@ struct UserRow: View {
                         .frame(width: 48, height: 48)
                 }
 
-                if user.dailySongStreak > 0 {
-                    StreakBadge(streak: user.dailySongStreak, size: .small)
+                if user.effectiveStreak > 0 {
+                    StreakBadge(streak: user.effectiveStreak, size: .small)
                         .offset(y: -8)
                 }
             }

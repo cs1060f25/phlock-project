@@ -5,6 +5,7 @@ struct MainView: View {
     @EnvironmentObject var clipboardService: ClipboardService
     @StateObject private var playbackService = PlaybackService.shared
     @StateObject private var navigationState = NavigationState()
+    @ObservedObject private var notificationService = NotificationService.shared
     @Environment(\.colorScheme) var colorScheme
     @State private var showMiniPlayerShareSheet = false
     @State private var miniPlayerTrackToShare: MusicItem? = nil
@@ -72,8 +73,11 @@ struct MainView: View {
                         .environmentObject(playbackService)
                     )
                 )
-                .onAppear {
-                    // Navigation state handles storage automatically via init()
+                .task {
+                    // Fetch unread notification count on app launch
+                    if let userId = authState.currentUser?.id {
+                        await notificationService.fetchUnreadCount(for: userId)
+                    }
                 }
 
                 // Mini Player sits above tab bar

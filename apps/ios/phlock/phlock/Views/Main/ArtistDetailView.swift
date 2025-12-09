@@ -255,7 +255,7 @@ struct ArtistDetailView: View {
             }
         }
         .toast(isPresented: $showDailySongToast, message: dailySongToastMessage, type: .success, duration: 3.0)
-        .navigationTitle("Artist")
+        .navigationTitle("artist")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {

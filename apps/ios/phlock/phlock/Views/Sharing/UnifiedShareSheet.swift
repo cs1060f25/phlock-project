@@ -13,6 +13,7 @@ struct UnifiedShareSheet: View {
     // For sharing state
     @State private var isRendering = false
     @State private var preparedRenderData: ViralShareRenderData?
+    @State private var preRenderedImages: [ViralShareStyle: UIImage] = [:]
 
     var body: some View {
         ZStack {
@@ -68,9 +69,19 @@ struct UnifiedShareSheet: View {
         }
         .task {
             await loadData()
-            // Pre-load images and extract colors while user browses styles
+            // Pre-load images, extract colors, and pre-render all styles
             if let data = shareData {
-                preparedRenderData = await ViralShareRenderData.prepare(from: data)
+                let renderData = await ViralShareRenderData.prepare(from: data)
+                preparedRenderData = renderData
+
+                // Pre-render all styles in background for instant sharing
+                for style in ViralShareStyle.allCases {
+                    let viewToRender = RenderableArtifactFactory.view(for: style, renderData: renderData)
+                        .frame(width: 1080, height: 1920)
+                    if let image = ShareArtifactRenderer.render(view: viewToRender) {
+                        preRenderedImages[style] = image
+                    }
+                }
             }
         }
     }
@@ -111,25 +122,37 @@ struct UnifiedShareSheet: View {
 
     @MainActor
     private func shareArtifact(data: ViralShareData) async {
-        isRendering = true
-        defer { isRendering = false }
-
-        // Use pre-loaded data if available, otherwise prepare now (fallback)
-        let renderData: ViralShareRenderData
-        if let prepared = preparedRenderData {
-            renderData = prepared
+        // Try to use pre-rendered image first (instant)
+        let image: UIImage
+        if let preRendered = preRenderedImages[selectedStyle] {
+            image = preRendered
         } else {
-            renderData = await ViralShareRenderData.prepare(from: data)
+            // Fallback: render now if not pre-rendered
+            isRendering = true
+            defer { isRendering = false }
+
+            let renderData: ViralShareRenderData
+            if let prepared = preparedRenderData {
+                renderData = prepared
+            } else {
+                renderData = await ViralShareRenderData.prepare(from: data)
+            }
+
+            let viewToRender = RenderableArtifactFactory.view(for: selectedStyle, renderData: renderData)
+                .frame(width: 1080, height: 1920)
+
+            guard let rendered = ShareArtifactRenderer.render(view: viewToRender) else { return }
+            image = rendered
         }
 
-        let viewToRender = RenderableArtifactFactory.view(for: selectedStyle, renderData: renderData)
-            .frame(width: 1080, height: 1920)
-
-        guard let image = ShareArtifactRenderer.render(view: viewToRender) else { return }
-
         let message = "hey cutie, here's @myphlock - join so i can send you songs too https://phlock.app"
+
+        // Use custom share item sources for proper app icon in share sheet
+        let imageSource = ShareItemSource(image: image, message: message)
+        let messageSource = ShareMessageSource(message: message)
+
         let activityVC = UIActivityViewController(
-            activityItems: [image, message],
+            activityItems: [imageSource, messageSource],
             applicationActivities: nil
         )
 

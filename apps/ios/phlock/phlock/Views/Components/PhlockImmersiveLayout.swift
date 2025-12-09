@@ -451,6 +451,7 @@ struct PhlockCarouselView: View {
     let onMenuTapped: () -> Void  // Open phlock manager sheet
     let onShareTapped: () -> Void  // Share phlock card
     let onSendTapped: (Share) -> Void  // Send/share individual song
+    let onMyDailySongMessageUpdated: ((String?) -> Void)?  // Update myDailySong message
     @Binding var isGeneratingShareCard: Bool  // Loading state for send button
 
     @EnvironmentObject var playbackService: PlaybackService
@@ -611,6 +612,9 @@ struct PhlockCarouselView: View {
                     },
                     onPlayTapped: { song in
                         onPlayTapped(song, true, nil)
+                    },
+                    onMessageUpdated: { newMessage in
+                        onMyDailySongMessageUpdated?(newMessage)
                     }
                 )
                 .transition(.opacity)
@@ -1427,11 +1431,11 @@ struct ProfileIndicatorCircle: View {
         )
         .overlay(alignment: .bottom) {
             // Fire streak badge with number (only show if member has a streak)
-            if let member = slot.member, member.dailySongStreak > 0 {
+            if let member = slot.member, member.effectiveStreak > 0 {
                 HStack(spacing: 1) {
                     Text("🔥")
                         .font(.system(size: isActive ? 9 : 7))
-                    Text("\(member.dailySongStreak)")
+                    Text("\(member.effectiveStreak)")
                         .font(.system(size: isActive ? 9 : 7, weight: .bold))
                         .foregroundColor(.white)
                 }
@@ -2113,11 +2117,11 @@ struct PhlockCardView: View {
                 }
                 .overlay(alignment: .bottom) {
                     // Fire streak badge with number (centered at bottom)
-                    if member.dailySongStreak > 0 {
+                    if member.effectiveStreak > 0 {
                         HStack(spacing: 2) {
                             Text("🔥")
                                 .font(.system(size: 14))
-                            Text("\(member.dailySongStreak)")
+                            Text("\(member.effectiveStreak)")
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(.white)
                         }
@@ -2289,6 +2293,7 @@ struct PhlockImmersiveLayout: View {
     let onMenuTapped: () -> Void
     let onShareTapped: () -> Void
     let onSendTapped: (Share) -> Void  // Send/share individual song
+    var onMyDailySongMessageUpdated: ((String?) -> Void)? = nil  // Update myDailySong message
     @Binding var isGeneratingShareCard: Bool  // Loading state for send button
 
     var body: some View {
@@ -2320,6 +2325,7 @@ struct PhlockImmersiveLayout: View {
                 onMenuTapped: onMenuTapped,
                 onShareTapped: onShareTapped,
                 onSendTapped: onSendTapped,
+                onMyDailySongMessageUpdated: onMyDailySongMessageUpdated,
                 isGeneratingShareCard: $isGeneratingShareCard
             )
         }

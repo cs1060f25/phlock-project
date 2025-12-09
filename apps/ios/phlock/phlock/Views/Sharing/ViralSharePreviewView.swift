@@ -89,7 +89,7 @@ struct ViralSharePreviewView: View {
                     }
                 }
             }
-            .navigationTitle("Daily Recap")
+            .navigationTitle("daily recap")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -150,13 +150,28 @@ struct ViralSharePreviewView: View {
     }
 }
 
-// Helper for standard share sheet
+// Helper for standard share sheet with app icon
 struct ShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-    
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    let image: UIImage
+    let message: String
+
+    init(activityItems: [Any]) {
+        // Extract image from activity items for backwards compatibility
+        self.image = activityItems.compactMap { $0 as? UIImage }.first ?? UIImage()
+        self.message = "hey cutie, here's @myphlock - join so i can send you songs too https://phlock.app"
     }
-    
+
+    init(image: UIImage, message: String) {
+        self.image = image
+        self.message = message
+    }
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        // Use custom share item sources for proper app icon in share sheet
+        let imageSource = ShareItemSource(image: image, message: message)
+        let messageSource = ShareMessageSource(message: message)
+        return UIActivityViewController(activityItems: [imageSource, messageSource], applicationActivities: nil)
+    }
+
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

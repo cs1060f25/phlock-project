@@ -27,14 +27,34 @@ class AppleMusicService {
 
     // MARK: - Authentication
 
+    /// Check the current Apple Music authorization status without prompting
+    var currentAuthorizationStatus: MusicAuthorization.Status {
+        MusicAuthorization.currentStatus
+    }
+
+    /// Check if authorization was previously denied (user needs to go to Settings)
+    var isAuthorizationDenied: Bool {
+        MusicAuthorization.currentStatus == .denied
+    }
+
     /// Request Apple Music authorization and get user token
     func authenticate() async throws -> AppleMusicAuthResult {
         print("🎵 Requesting Apple Music authorization...")
 
+        // Check current status first
+        let currentStatus = MusicAuthorization.currentStatus
+        print("🎵 Current authorization status: \(currentStatus)")
+
+        // If previously denied, user must go to Settings - throw specific error
+        if currentStatus == .denied {
+            print("❌ Apple Music authorization was previously denied. User must enable in Settings.")
+            throw AppleMusicError.authorizationPreviouslyDenied
+        }
+
         // Request authorization
         let status = await MusicAuthorization.request()
 
-        print("🎵 Authorization status: \(status)")
+        print("🎵 Authorization status after request: \(status)")
 
         guard status == .authorized else {
             print("❌ Apple Music authorization denied. Status: \(status)")
@@ -570,6 +590,7 @@ struct AppleMusicArtist: Codable {
 
 enum AppleMusicError: LocalizedError {
     case authorizationDenied
+    case authorizationPreviouslyDenied
     case noUserToken
     case apiError(String)
 
@@ -577,10 +598,22 @@ enum AppleMusicError: LocalizedError {
         switch self {
         case .authorizationDenied:
             return "Apple Music authorization was denied"
+        case .authorizationPreviouslyDenied:
+            return "Apple Music access was previously denied. Please enable it in Settings."
         case .noUserToken:
             return "Could not retrieve Apple Music user token"
         case .apiError(let message):
             return "Apple Music API error: \(message)"
+        }
+    }
+
+    /// Whether this error requires the user to go to Settings to fix
+    var requiresSettingsRedirect: Bool {
+        switch self {
+        case .authorizationPreviouslyDenied:
+            return true
+        default:
+            return false
         }
     }
 }

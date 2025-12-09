@@ -3,10 +3,19 @@ import Supabase
 
 /// Service for fetching and creating user notifications
 /// Supports various notification types including follows, song picks, and engagement
-class NotificationService {
+@MainActor
+class NotificationService: ObservableObject {
     static let shared = NotificationService()
 
     private let supabase = PhlockSupabaseClient.shared.client
+
+    /// Number of unread notifications
+    @Published private(set) var unreadCount: Int = 0
+
+    /// Whether there are any unread notifications
+    var hasUnreadNotifications: Bool {
+        unreadCount > 0
+    }
 
     private init() {}
 
@@ -38,13 +47,19 @@ class NotificationService {
         let actorIds: [String]?
         let count: Int?
         let trackName: String?
+        let albumArtUrl: String?
         let streakDays: Int?
+        let shareId: String?
+        let commentText: String?
 
         enum CodingKeys: String, CodingKey {
             case actorIds = "actor_ids"
             case count
             case trackName = "track_name"
+            case albumArtUrl = "album_art_url"
             case streakDays = "streak_days"
+            case shareId = "share_id"
+            case commentText = "comment_text"
         }
 
         init(from decoder: Decoder) throws {
@@ -52,7 +67,10 @@ class NotificationService {
             actorIds = try container.decodeIfPresent([String].self, forKey: .actorIds)
             count = try container.decodeIfPresent(Int.self, forKey: .count)
             trackName = try container.decodeIfPresent(String.self, forKey: .trackName)
+            albumArtUrl = try container.decodeIfPresent(String.self, forKey: .albumArtUrl)
             streakDays = try container.decodeIfPresent(Int.self, forKey: .streakDays)
+            shareId = try container.decodeIfPresent(String.self, forKey: .shareId)
+            commentText = try container.decodeIfPresent(String.self, forKey: .commentText)
         }
     }
 
@@ -73,6 +91,33 @@ class NotificationService {
 
         struct TrackMetadata: Encodable {
             let track_name: String
+        }
+    }
+
+    private struct NotificationWithTrackAndArtInsert: Encodable {
+        let user_id: String
+        let actor_user_id: String
+        let type: String
+        let metadata: TrackAndArtMetadata
+
+        struct TrackAndArtMetadata: Encodable {
+            let track_name: String
+            let album_art_url: String?
+            let share_id: String?
+        }
+    }
+
+    private struct NotificationWithCommentInsert: Encodable {
+        let user_id: String
+        let actor_user_id: String
+        let type: String
+        let metadata: CommentMetadata
+
+        struct CommentMetadata: Encodable {
+            let track_name: String
+            let album_art_url: String?
+            let share_id: String?
+            let comment_text: String?
         }
     }
 
@@ -484,6 +529,113 @@ class NotificationService {
         await sendPushNotification(userId: userId, type: .followRequestReceived, message: "requested to follow you")
     }
 
+    // MARK: - Social Engagement Notifications
+
+    /// Notify user that someone liked their share
+    /// Does not notify if the liker is the same as the share owner
+    func createShareLikedNotification(shareOwnerId: UUID, likerId: UUID, shareId: UUID, trackName: String, albumArtUrl: String? = nil) async throws {
+        // Don't notify yourself
+        guard shareOwnerId != likerId else {
+            print("⏭️ Skipping like notification - user liked their own share")
+            return
+        }
+
+        print("🔔 Creating share_liked notification: owner=\(shareOwnerId), liker=\(likerId), track=\(trackName)")
+
+        let insertData = NotificationWithTrackAndArtInsert(
+            user_id: shareOwnerId.uuidString,
+            actor_user_id: likerId.uuidString,
+            type: NotificationType.shareLiked.rawValue,
+            metadata: .init(track_name: trackName, album_art_url: albumArtUrl, share_id: shareId.uuidString)
+        )
+
+        do {
+            try await supabase
+                .from("notifications")
+                .insert(insertData)
+                .execute()
+
+            print("✅ Share liked notification created successfully")
+            await sendPushNotification(userId: shareOwnerId, type: .shareLiked, message: "liked your song \"\(trackName)\"")
+        } catch {
+            print("❌ Failed to insert share_liked notification: \(error)")
+            throw error
+        }
+    }
+
+    /// Notify user that someone commented on their share
+    /// Does not notify if the commenter is the same as the share owner
+    func createShareCommentedNotification(shareOwnerId: UUID, commenterId: UUID, shareId: UUID, trackName: String, albumArtUrl: String? = nil, commentText: String? = nil, isReply: Bool = false) async throws {
+        // Don't notify yourself
+        guard shareOwnerId != commenterId else {
+            print("⏭️ Skipping comment notification - user commented on their own share")
+            return
+        }
+
+        print("🔔 Creating share_commented notification: owner=\(shareOwnerId), commenter=\(commenterId), track=\(trackName), isReply=\(isReply)")
+
+        // Truncate comment text to first 100 chars for preview
+        let truncatedComment: String? = commentText.map { text in
+            if text.count > 100 {
+                return String(text.prefix(100)) + "..."
+            }
+            return text
+        }
+
+        let insertData = NotificationWithCommentInsert(
+            user_id: shareOwnerId.uuidString,
+            actor_user_id: commenterId.uuidString,
+            type: NotificationType.shareCommented.rawValue,
+            metadata: .init(track_name: trackName, album_art_url: albumArtUrl, share_id: shareId.uuidString, comment_text: truncatedComment)
+        )
+
+        do {
+            try await supabase
+                .from("notifications")
+                .insert(insertData)
+                .execute()
+
+            print("✅ Share commented notification created successfully")
+            let action = isReply ? "replied to a comment on" : "commented on"
+            await sendPushNotification(userId: shareOwnerId, type: .shareCommented, message: "\(action) \"\(trackName)\"")
+        } catch {
+            print("❌ Failed to insert share_commented notification: \(error)")
+            throw error
+        }
+    }
+
+    /// Notify user that someone liked their comment
+    /// Does not notify if the liker is the same as the comment owner
+    func createCommentLikedNotification(commentOwnerId: UUID, likerId: UUID, shareId: UUID, trackName: String, albumArtUrl: String? = nil) async throws {
+        // Don't notify yourself
+        guard commentOwnerId != likerId else {
+            print("⏭️ Skipping comment like notification - user liked their own comment")
+            return
+        }
+
+        print("🔔 Creating comment_liked notification: owner=\(commentOwnerId), liker=\(likerId), track=\(trackName)")
+
+        let insertData = NotificationWithTrackAndArtInsert(
+            user_id: commentOwnerId.uuidString,
+            actor_user_id: likerId.uuidString,
+            type: NotificationType.commentLiked.rawValue,
+            metadata: .init(track_name: trackName, album_art_url: albumArtUrl, share_id: shareId.uuidString)
+        )
+
+        do {
+            try await supabase
+                .from("notifications")
+                .insert(insertData)
+                .execute()
+
+            print("✅ Comment liked notification created successfully")
+            await sendPushNotification(userId: commentOwnerId, type: .commentLiked, message: "liked your comment on \"\(trackName)\"")
+        } catch {
+            print("❌ Failed to insert comment_liked notification: \(error)")
+            throw error
+        }
+    }
+
     // MARK: - Push Notifications
 
     private struct PushNotificationPayload: Encodable {
@@ -526,6 +678,15 @@ class NotificationService {
             case .streakMilestone:
                 title = "Streak milestone!"
                 body = message ?? "You reached a new milestone"
+            case .shareLiked:
+                title = "Someone liked your song"
+                body = message ?? "Your pick got some love"
+            case .shareCommented:
+                title = "New comment"
+                body = message ?? "Someone commented on your pick"
+            case .commentLiked:
+                title = "Someone liked your comment"
+                body = message ?? "Your comment got some love"
             }
 
             let payload = PushNotificationPayload(
@@ -556,6 +717,9 @@ class NotificationService {
                 .limit(limit)
                 .execute()
                 .value
+
+            // Update unread count
+            unreadCount = records.filter { $0.readAt == nil }.count
 
             // Batch-load actors to avoid N+1 user lookups (include aggregated actor_ids)
             var actorIdsSet = Set<UUID>()
@@ -602,8 +766,11 @@ class NotificationService {
                     message: record.message,
                     isRead: record.readAt != nil,
                     trackName: record.metadata?.trackName,
+                    albumArtUrl: record.metadata?.albumArtUrl,
                     count: record.metadata?.count,
-                    streakDays: record.metadata?.streakDays
+                    streakDays: record.metadata?.streakDays,
+                    shareId: record.metadata?.shareId.flatMap { UUID(uuidString: $0) },
+                    commentText: record.metadata?.commentText
                 )
             }
 
@@ -612,6 +779,40 @@ class NotificationService {
             print("⚠️ Error fetching notifications: \(error)")
             return []
         }
+    }
+
+    /// Fetch just the unread count (lightweight query)
+    func fetchUnreadCount(for userId: UUID) async {
+        do {
+            struct IdOnly: Decodable {
+                let id: UUID
+            }
+
+            let results: [IdOnly] = try await supabase
+                .from("notifications")
+                .select("id")
+                .eq("user_id", value: userId.uuidString)
+                .is("read_at", value: nil)
+                .execute()
+                .value
+
+            unreadCount = results.count
+            print("📬 Unread notifications: \(unreadCount)")
+        } catch {
+            print("⚠️ Error fetching unread count: \(error)")
+        }
+    }
+
+    /// Decrement unread count when a notification is marked as read
+    func decrementUnreadCount() {
+        if unreadCount > 0 {
+            unreadCount -= 1
+        }
+    }
+
+    /// Set unread count to zero (e.g., when marking all as read)
+    func clearUnreadCount() {
+        unreadCount = 0
     }
 
     // MARK: - Mark as Read

@@ -117,7 +117,7 @@ struct DiscoverView: View {
             ZStack(alignment: .bottom) {
                 VStack(spacing: 0) {
                     // Daily Song Streak Banner
-                    if let user = authState.currentUser, user.dailySongStreak > 0 || !user.hasSelectedToday {
+                    if let user = authState.currentUser, user.effectiveStreak > 0 || !user.hasSelectedToday {
                         DailySongStreakBanner(
                             user: user,
                             todaysDailySong: todaysDailySong
@@ -913,8 +913,8 @@ struct DailySongStreakBanner: View {
                         Text("select your song for today")
                             .font(.lora(size: 20))
                             .foregroundColor(.primary)
-                        if user.dailySongStreak > 0 {
-                            Text("(\(user.streakEmoji) \(user.dailySongStreak))")
+                        if user.effectiveStreak > 0 {
+                            Text("(\(user.streakEmoji) \(user.effectiveStreak))")
                                 .font(.lora(size: 20))
                                 .foregroundColor(.primary)
                         }

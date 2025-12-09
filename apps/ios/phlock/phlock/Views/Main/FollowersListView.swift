@@ -169,9 +169,9 @@ struct FollowersListView: View {
                             .frame(width: 50, height: 50)
                     }
 
-                    // Streak badge
-                    if user.dailySongStreak > 0 {
-                        StreakBadge(streak: user.dailySongStreak, size: .small)
+                    // Streak badge (use effectiveStreak to handle expired streaks)
+                    if user.effectiveStreak > 0 {
+                        StreakBadge(streak: user.effectiveStreak, size: .small)
                             .offset(y: -8)
                     }
                 }

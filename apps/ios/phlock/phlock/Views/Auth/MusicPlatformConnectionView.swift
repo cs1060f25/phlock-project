@@ -7,6 +7,8 @@ struct MusicPlatformConnectionView: View {
     @State private var isConnecting = false
     @State private var showError = false
     @State private var errorMessage = ""
+    @State private var showSettingsAlert = false
+    @State private var settingsAlertPlatform = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -73,6 +75,16 @@ struct MusicPlatformConnectionView: View {
         } message: {
             Text(errorMessage)
         }
+        .alert("\(settingsAlertPlatform) Access Required", isPresented: $showSettingsAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+        } message: {
+            Text("You previously denied \(settingsAlertPlatform) access. To connect, please enable it in Settings > Apps > phlock.")
+        }
         .navigationBarBackButtonHidden(true)
     }
 
@@ -129,6 +141,12 @@ struct MusicPlatformConnectionView: View {
                 completeOnboarding()
             }
 
+        } catch let error as AppleMusicError where error.requiresSettingsRedirect {
+            // User previously denied - show settings redirect
+            await MainActor.run {
+                settingsAlertPlatform = "Apple Music"
+                showSettingsAlert = true
+            }
         } catch {
             await MainActor.run {
                 errorMessage = error.localizedDescription

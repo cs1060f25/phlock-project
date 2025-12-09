@@ -10,6 +10,9 @@ struct SettingsView: View {
     @State private var isLoadingUser = true
     @State private var isPrivate = false
     @State private var isUpdatingPrivacy = false
+    @State private var showMusicPlatformSheet = false
+    @State private var showAppleMusicSettingsAlert = false
+    @State private var isConnectingMusic = false
 
     // Legal URLs - these must be hosted before TestFlight submission
     private let privacyPolicyURL = URL(string: "https://phlock.app/privacy")!
@@ -53,10 +56,20 @@ struct SettingsView: View {
                                 .foregroundColor(.green)
                         }
                     } else {
-                        // Fallback for users who somehow have no platform
-                        Text("No music service connected")
-                            .font(.lora(size: 16))
-                            .foregroundColor(.secondary)
+                        // No platform connected - show connect button
+                        Button {
+                            showMusicPlatformSheet = true
+                        } label: {
+                            HStack {
+                                Text("connect music service")
+                                    .font(.lora(size: 16))
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
                     }
                 } header: {
                     Text("Music Platform")
@@ -158,7 +171,7 @@ struct SettingsView: View {
                         .font(.lora(size: 12))
                 }
             }
-            .navigationTitle("Settings")
+            .navigationTitle("settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -201,6 +214,27 @@ struct SettingsView: View {
             }
             .task {
                 await loadCurrentUser()
+            }
+            .sheet(isPresented: $showMusicPlatformSheet) {
+                MusicPlatformSelectionSheet(
+                    isPresented: $showMusicPlatformSheet,
+                    showAppleMusicSettingsAlert: $showAppleMusicSettingsAlert,
+                    onConnected: {
+                        Task {
+                            await loadCurrentUser()
+                        }
+                    }
+                )
+            }
+            .alert("Apple Music Access Required", isPresented: $showAppleMusicSettingsAlert) {
+                Button("Cancel", role: .cancel) { }
+                Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+            } message: {
+                Text("You previously denied Apple Music access. To connect, please enable it in Settings > Apps > phlock.")
             }
         }
     }
@@ -250,6 +284,147 @@ struct SettingsView: View {
             // Revert toggle on error
             isPrivate = !newValue
             deleteError = error.localizedDescription
+        }
+    }
+}
+
+// MARK: - Music Platform Selection Sheet
+
+struct MusicPlatformSelectionSheet: View {
+    @Binding var isPresented: Bool
+    @Binding var showAppleMusicSettingsAlert: Bool
+    var onConnected: () -> Void
+
+    @State private var isConnecting = false
+    @State private var errorMessage: String?
+    @State private var showError = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                Text("connect music service")
+                    .font(.lora(size: 22, weight: .bold))
+                    .padding(.top, 24)
+
+                Text("Link your streaming service to search, share, and play music")
+                    .font(.lora(size: 15))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+
+                VStack(spacing: 12) {
+                    // Spotify Button
+                    Button {
+                        Task {
+                            await connectSpotify()
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image("SpotifyLogo")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 28, height: 28)
+                            Text("Spotify")
+                                .font(.lora(size: 17, weight: .medium))
+                            Spacer()
+                            if isConnecting {
+                                ProgressView()
+                            }
+                        }
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(12)
+                    }
+                    .disabled(isConnecting)
+
+                    // Apple Music Button
+                    Button {
+                        Task {
+                            await connectAppleMusic()
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image("AppleMusicLogo")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 28, height: 28)
+                            Text("Apple Music")
+                                .font(.lora(size: 17, weight: .medium))
+                            Spacer()
+                            if isConnecting {
+                                ProgressView()
+                            }
+                        }
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(12)
+                    }
+                    .disabled(isConnecting)
+                }
+                .padding(.horizontal, 24)
+
+                Spacer()
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Cancel") {
+                        isPresented = false
+                    }
+                    .font(.lora(size: 16))
+                }
+            }
+            .alert("Error", isPresented: $showError) {
+                Button("OK") { }
+            } message: {
+                Text(errorMessage ?? "An error occurred")
+            }
+        }
+    }
+
+    private func connectSpotify() async {
+        isConnecting = true
+        defer { isConnecting = false }
+
+        do {
+            try await AuthServiceV3.shared.setMusicPlatformPreference("spotify")
+            await MainActor.run {
+                onConnected()
+                isPresented = false
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+        }
+    }
+
+    private func connectAppleMusic() async {
+        isConnecting = true
+
+        do {
+            let appleMusicAuth = try await AppleMusicService.shared.authenticate()
+            try await AuthServiceV3.shared.connectAppleMusic(userToken: appleMusicAuth.userToken)
+
+            await MainActor.run {
+                isConnecting = false
+                onConnected()
+                isPresented = false
+            }
+        } catch let error as AppleMusicError where error.requiresSettingsRedirect {
+            // User previously denied - close sheet and show settings alert
+            await MainActor.run {
+                isConnecting = false
+                isPresented = false
+                showAppleMusicSettingsAlert = true
+            }
+        } catch {
+            await MainActor.run {
+                isConnecting = false
+                errorMessage = error.localizedDescription
+                showError = true
+            }
         }
     }
 }

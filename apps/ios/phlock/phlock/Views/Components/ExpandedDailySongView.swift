@@ -10,6 +10,7 @@ struct ExpandedDailySongView: View {
     // Callbacks for share card generation and playback
     var onSendTapped: (() -> Void)?
     var onPlayTapped: ((Share) -> Void)?
+    var onMessageUpdated: ((String?) -> Void)?  // Callback when message is edited
 
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var playbackService: PlaybackService
@@ -112,7 +113,10 @@ struct ExpandedDailySongView: View {
                 initialMessage: currentMessage,
                 shareId: share.id,
                 onSave: { newMessage in
-                    localMessage = newMessage.isEmpty ? nil : newMessage
+                    let updatedMessage = newMessage.isEmpty ? nil : newMessage
+                    localMessage = updatedMessage
+                    // Notify parent so myDailySong state is updated
+                    onMessageUpdated?(updatedMessage)
                 }
             )
         }

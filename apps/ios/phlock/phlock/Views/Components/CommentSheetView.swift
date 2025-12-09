@@ -16,11 +16,12 @@ struct CommentSheetView: View {
     @State private var currentUserId: UUID?
     @State private var showSendError = false
     @State private var sendErrorMessage = ""
+    @State private var navigationPath = NavigationPath()
 
     @FocusState private var isInputFocused: Bool
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             VStack(spacing: 0) {
                 // Comments list
                 if isLoading {
@@ -38,7 +39,7 @@ struct CommentSheetView: View {
                 // Input field
                 commentInputField
             }
-            .navigationTitle("Comments")
+            .navigationTitle("comments")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -46,6 +47,11 @@ struct CommentSheetView: View {
                         isPresented = false
                     }
                 }
+            }
+            .navigationDestination(for: User.self) { user in
+                UserProfileView(user: user)
+                    .environmentObject(authState)
+                    .environmentObject(PlaybackService.shared)
             }
         }
         .presentationDetents([.medium, .large])
@@ -121,6 +127,12 @@ struct CommentSheetView: View {
                         comment: comment,
                         isReply: false,
                         currentUserId: currentUserId,
+                        trackName: share.trackName,
+                        albumArtUrl: share.albumArtUrl,
+                        socialService: socialService,
+                        onProfileTap: { user in
+                            navigationPath.append(user)
+                        },
                         onReply: {
                             replyingTo = comment
                             isInputFocused = true
@@ -139,6 +151,12 @@ struct CommentSheetView: View {
                                     comment: reply,
                                     isReply: true,
                                     currentUserId: currentUserId,
+                                    trackName: share.trackName,
+                                    albumArtUrl: share.albumArtUrl,
+                                    socialService: socialService,
+                                    onProfileTap: { user in
+                                        navigationPath.append(user)
+                                    },
                                     onReply: {
                                         // Reply to parent comment, not the reply itself
                                         replyingTo = comment
@@ -155,6 +173,11 @@ struct CommentSheetView: View {
                 }
             }
             .padding()
+        }
+        .task {
+            // Fetch like status for all comments
+            let commentIds = comments.map { $0.id }
+            try? await socialService.fetchCommentLikeStatus(for: commentIds)
         }
     }
 
@@ -310,35 +333,63 @@ private struct ShareCommentRowView: View {
     let comment: ShareComment
     let isReply: Bool
     let currentUserId: UUID?
+    let trackName: String
+    let albumArtUrl: String?
+    @ObservedObject var socialService: SocialEngagementService
+    let onProfileTap: (User) -> Void
     let onReply: () -> Void
     let onDelete: () -> Void
 
     @State private var showDeleteAlert = false
+    @State private var isLiking = false
+
+    private var isLiked: Bool {
+        socialService.isCommentLiked(comment.id)
+    }
+
+    private var likeCount: Int {
+        socialService.adjustedCommentLikeCount(for: comment.id, originalCount: comment.likeCount)
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            // Avatar
-            AsyncImage(url: URL(string: comment.user?.profilePhotoUrl ?? "")) { image in
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } placeholder: {
-                Circle()
-                    .fill(Color.gray.opacity(0.3))
-                    .overlay {
-                        Text(comment.user?.displayName.prefix(1).uppercased() ?? "?")
-                            .font(.system(size: isReply ? 10 : 14, weight: .semibold))
-                            .foregroundColor(.secondary)
-                    }
+            // Avatar (tappable to go to profile)
+            Button {
+                if let user = comment.user {
+                    onProfileTap(user)
+                }
+            } label: {
+                AsyncImage(url: URL(string: comment.user?.profilePhotoUrl ?? "")) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Circle()
+                        .fill(Color.gray.opacity(0.3))
+                        .overlay {
+                            Text(comment.user?.displayName.prefix(1).uppercased() ?? "?")
+                                .font(.system(size: isReply ? 10 : 14, weight: .semibold))
+                                .foregroundColor(.secondary)
+                        }
+                }
+                .frame(width: isReply ? 28 : 36, height: isReply ? 28 : 36)
+                .clipShape(Circle())
             }
-            .frame(width: isReply ? 28 : 36, height: isReply ? 28 : 36)
-            .clipShape(Circle())
+            .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 4) {
-                // Username and time
+                // Username and time (username tappable)
                 HStack(spacing: 6) {
-                    Text(comment.user?.displayName ?? "User")
-                        .font(.system(size: isReply ? 13 : 14, weight: .semibold))
+                    Button {
+                        if let user = comment.user {
+                            onProfileTap(user)
+                        }
+                    } label: {
+                        Text(comment.user?.displayName ?? "User")
+                            .font(.system(size: isReply ? 13 : 14, weight: .semibold))
+                            .foregroundColor(.primary)
+                    }
+                    .buttonStyle(.plain)
 
                     Text(comment.timeAgo)
                         .font(.system(size: isReply ? 11 : 12))
@@ -352,6 +403,23 @@ private struct ShareCommentRowView: View {
 
                 // Action buttons
                 HStack(spacing: 16) {
+                    // Like button
+                    Button {
+                        Task { await toggleLike() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: isLiked ? "heart.fill" : "heart")
+                                .font(.system(size: 12))
+                                .foregroundColor(isLiked ? .red : .secondary)
+                            if likeCount > 0 {
+                                Text("\(likeCount)")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .disabled(isLiking)
+
                     Button("Reply") {
                         onReply()
                     }
@@ -380,6 +448,24 @@ private struct ShareCommentRowView: View {
         } message: {
             Text("Are you sure you want to delete this comment?")
         }
+    }
+
+    private func toggleLike() async {
+        isLiking = true
+        do {
+            try await socialService.toggleCommentLike(
+                comment.id,
+                commentOwnerId: comment.userId,
+                shareId: comment.shareId,
+                trackName: trackName,
+                albumArtUrl: albumArtUrl
+            )
+            let impact = UIImpactFeedbackGenerator(style: .light)
+            impact.impactOccurred()
+        } catch {
+            print("Failed to toggle comment like: \(error)")
+        }
+        isLiking = false
     }
 }
 

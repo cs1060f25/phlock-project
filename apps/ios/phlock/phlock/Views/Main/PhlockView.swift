@@ -129,6 +129,10 @@ struct PhlockView: View {
     @State private var showProfileSheet = false
     @State private var selectedProfileUser: User?
 
+    // Notification navigation state (for tapping notification album art)
+    @State private var notificationShareForComments: Share?
+    @State private var notificationShareForLikers: Share?
+
     // Helper struct to organize phlock items
     struct PhlockItem: Identifiable {
         let id: UUID
@@ -289,6 +293,13 @@ struct PhlockView: View {
                         onSendTapped: { _ in
                             // Use unified share sheet for all sharing
                             generateAndShareCard()
+                        },
+                        onMyDailySongMessageUpdated: { newMessage in
+                            // Update the local myDailySong state with the new message
+                            if var updatedSong = myDailySong {
+                                updatedSong.message = newMessage
+                                myDailySong = updatedSong
+                            }
                         },
                         isGeneratingShareCard: .constant(false)
                     )
@@ -506,6 +517,127 @@ struct PhlockView: View {
                 resumePhlockPlaybackIfNeeded()
             }
         }
+        .onChange(of: navigationState.pendingNotificationNavigation) { navigation in
+            handlePendingNotificationNavigation(navigation)
+        }
+        .onChange(of: isLoading) { newIsLoading in
+            // When data finishes loading, check if there's a pending navigation to handle
+            if !newIsLoading, let navigation = navigationState.pendingNotificationNavigation {
+                handlePendingNotificationNavigation(navigation, dataLoaded: true)
+            }
+        }
+        .sheet(item: $notificationShareForComments) { share in
+            CommentSheetView(share: share, isPresented: Binding(
+                get: { notificationShareForComments != nil },
+                set: { if !$0 { notificationShareForComments = nil } }
+            ))
+            .environmentObject(authState)
+        }
+        .sheet(item: $notificationShareForLikers) { share in
+            LikersListSheet(shareId: share.id, isPresented: Binding(
+                get: { notificationShareForLikers != nil },
+                set: { if !$0 { notificationShareForLikers = nil } }
+            ))
+        }
+    }
+
+    // MARK: - Notification Navigation Handler
+
+    /// Handle pending navigation from notification tap (e.g., album art tap in Activity tab)
+    /// This is called both when navigation is set AND when data finishes loading
+    private func handlePendingNotificationNavigation(_ navigation: NotificationNavigation?, dataLoaded: Bool = false) {
+        guard let navigation = navigation else { return }
+
+        // If data isn't loaded yet and this is not a forced call from data load completion,
+        // wait for the data to load (the onChange on isLoading will call us again)
+        if !dataLoaded && isLoading {
+            return
+        }
+
+        // Clear the pending navigation now that we're handling it
+        navigationState.pendingNotificationNavigation = nil
+
+        // Check if this is our own daily pick
+        if navigation.isOwnPick {
+            // For own pick, we need myDailySong to be loaded
+            if let mySong = myDailySong {
+                if mySong.id == navigation.shareId {
+                    // It's our own pick - show appropriate sheet based on notification type
+                    switch navigation.sheetType {
+                    case .comments:
+                        notificationShareForComments = mySong
+                    case .likers:
+                        notificationShareForLikers = mySong
+                    case .none:
+                        break
+                    }
+                    return
+                }
+            }
+            // myDailySong doesn't match - fall through to fetch
+        }
+
+        // Check if this is our own daily pick by matching shareId
+        if let mySong = myDailySong, mySong.id == navigation.shareId {
+            // It's our own pick - show appropriate sheet based on notification type
+            switch navigation.sheetType {
+            case .comments:
+                notificationShareForComments = mySong
+            case .likers:
+                notificationShareForLikers = mySong
+            case .none:
+                break
+            }
+            return
+        }
+
+        // Check if it's one of the phlock member songs
+        if let share = dailySongs.first(where: { $0.id == navigation.shareId }) {
+            // Found the share in daily songs
+            switch navigation.sheetType {
+            case .comments:
+                notificationShareForComments = share
+            case .likers:
+                notificationShareForLikers = share
+            case .none:
+                break
+            }
+            return
+        }
+
+        // Share not found in current playlist - fetch it from database
+        Task {
+            do {
+                let share = try await fetchShareById(navigation.shareId)
+                await MainActor.run {
+                    switch navigation.sheetType {
+                    case .comments:
+                        notificationShareForComments = share
+                    case .likers:
+                        notificationShareForLikers = share
+                    case .none:
+                        break
+                    }
+                }
+            } catch {
+                print("⚠️ Failed to fetch share for notification navigation: \(error)")
+            }
+        }
+    }
+
+    /// Fetch a share by ID from the database
+    private func fetchShareById(_ shareId: UUID) async throws -> Share {
+        let supabase = PhlockSupabaseClient.shared.client
+
+        let share: Share = try await supabase
+            .from("shares")
+            .select()
+            .eq("id", value: shareId.uuidString)
+            .single()
+            .execute()
+            .value
+
+        return share
     }
 
     // MARK: - Phlock Playback Resume
@@ -2227,7 +2359,7 @@ struct SwapMemberView: View {
                     }
                 }
             }
-            .navigationTitle("Swap Member")
+            .navigationTitle("swap member")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -2503,7 +2635,7 @@ struct UnifiedPhlockSheet: View {
                     ProfilePhotoWithStreak(
                         photoUrl: member.user.profilePhotoUrl,
                         displayName: member.user.displayName,
-                        streak: member.user.dailySongStreak,
+                        streak: member.user.effectiveStreak,
                         size: 44,
                         badgeSize: .small
                     )
@@ -2687,7 +2819,7 @@ struct UnifiedPhlockSheet: View {
                     ProfilePhotoWithStreak(
                         photoUrl: user.profilePhotoUrl,
                         displayName: user.displayName,
-                        streak: user.dailySongStreak,
+                        streak: user.effectiveStreak,
                         size: 44,
                         badgeSize: .small
                     )

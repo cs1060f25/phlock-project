@@ -306,7 +306,7 @@ struct ShareCardSheet: View {
                 .padding(.bottom, 32)
             }
             .background(Color(UIColor.systemBackground))
-            .navigationTitle("Share Your Phlock")
+            .navigationTitle("share your phlock")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -317,7 +317,10 @@ struct ShareCardSheet: View {
             }
             .sheet(isPresented: $showActivitySheet) {
                 if let image = currentImage {
-                    ActivityViewController(activityItems: [image])
+                    ActivityViewController(
+                        image: image,
+                        message: "hey cutie, here's @myphlock - join so i can send you songs too https://phlock.app"
+                    )
                 }
             }
         }
@@ -426,12 +429,26 @@ class ShareItemSource: NSObject, UIActivityItemSource {
         let metadata = LPLinkMetadata()
         metadata.title = message
 
-        // Use app icon as the thumbnail
-        if let appIcon = UIImage(named: "AppIcon") {
+        // Use app icon as the thumbnail - try multiple sources
+        if let appIcon = UIImage(named: "PhlockLogo") ?? Bundle.main.icon {
             metadata.iconProvider = NSItemProvider(object: appIcon)
         }
 
         return metadata
+    }
+}
+
+// MARK: - Bundle Extension for App Icon
+
+extension Bundle {
+    var icon: UIImage? {
+        if let icons = infoDictionary?["CFBundleIcons"] as? [String: Any],
+           let primaryIcon = icons["CFBundlePrimaryIcon"] as? [String: Any],
+           let iconFiles = primaryIcon["CFBundleIconFiles"] as? [String],
+           let lastIcon = iconFiles.last {
+            return UIImage(named: lastIcon)
+        }
+        return nil
     }
 }
 

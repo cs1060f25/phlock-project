@@ -10,6 +10,7 @@ struct ShareComment: Codable, Identifiable, @unchecked Sendable {
     let parentCommentId: UUID?
     let createdAt: Date
     let updatedAt: Date
+    var likeCount: Int
 
     // Optional user data (fetched separately)
     var user: User?
@@ -25,6 +26,7 @@ struct ShareComment: Codable, Identifiable, @unchecked Sendable {
         case parentCommentId = "parent_comment_id"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case likeCount = "like_count"
     }
 
     // Memberwise initializer for manual construction
@@ -36,6 +38,7 @@ struct ShareComment: Codable, Identifiable, @unchecked Sendable {
         parentCommentId: UUID? = nil,
         createdAt: Date,
         updatedAt: Date,
+        likeCount: Int = 0,
         user: User? = nil,
         replies: [ShareComment]? = nil
     ) {
@@ -46,8 +49,23 @@ struct ShareComment: Codable, Identifiable, @unchecked Sendable {
         self.parentCommentId = parentCommentId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.likeCount = likeCount
         self.user = user
         self.replies = replies
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        shareId = try container.decode(UUID.self, forKey: .shareId)
+        userId = try container.decode(UUID.self, forKey: .userId)
+        commentText = try container.decode(String.self, forKey: .commentText)
+        parentCommentId = try container.decodeIfPresent(UUID.self, forKey: .parentCommentId)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        likeCount = try container.decodeIfPresent(Int.self, forKey: .likeCount) ?? 0
+        user = nil
+        replies = nil
     }
 }
 

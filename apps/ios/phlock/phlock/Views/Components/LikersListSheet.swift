@@ -57,7 +57,7 @@ struct LikersListSheet: View {
                     .listStyle(.plain)
                 }
             }
-            .navigationTitle("Likes")
+            .navigationTitle("likes")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

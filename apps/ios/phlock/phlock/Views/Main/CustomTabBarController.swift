@@ -15,6 +15,7 @@ struct CustomTabBarView: View {
     @Binding var scrollProfileToTopTrigger: Int
     @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject var playbackService: PlaybackService
+    @ObservedObject private var notificationService = NotificationService.shared
 
     let feedView: AnyView
     let friendsView: AnyView
@@ -88,7 +89,8 @@ struct CustomTabBarView: View {
             onSeek: { progress in
                 let seekTime = progress * playbackService.duration
                 playbackService.seek(to: seekTime)
-            }
+            },
+            hasUnreadNotifications: notificationService.hasUnreadNotifications
         )
         }
     }
@@ -233,6 +235,7 @@ struct CustomTabBar: View {
     var playbackProgress: Double = 0  // 0.0 to 1.0
     var showProgressBar: Bool = false  // Only show on Phlock tab when playing
     var onSeek: ((Double) -> Void)? = nil  // Callback for scrubbing
+    var hasUnreadNotifications: Bool = false  // Show badge on activity tab
     @EnvironmentObject var authState: AuthenticationState
     @Environment(\.colorScheme) var colorScheme
 
@@ -359,7 +362,8 @@ struct CustomTabBar: View {
                 title: "activity",
                 tag: 2,
                 isSelected: selectedTab == 2,
-                onTap: { onTabTapped(2) }
+                onTap: { onTabTapped(2) },
+                showBadge: hasUnreadNotifications
             )
 
             TabBarButton(
@@ -395,9 +399,10 @@ struct TabBarButton: View {
     let isSelected: Bool
     let onTap: () -> Void
     let customIcon: AnyView?
+    let showBadge: Bool
     @Environment(\.colorScheme) var colorScheme
 
-    init(icon: String, selectedIcon: String, title: String, tag: Int, isSelected: Bool, onTap: @escaping () -> Void, customIcon: AnyView? = nil) {
+    init(icon: String, selectedIcon: String, title: String, tag: Int, isSelected: Bool, onTap: @escaping () -> Void, customIcon: AnyView? = nil, showBadge: Bool = false) {
         self.icon = icon
         self.selectedIcon = selectedIcon
         self.title = title
@@ -405,17 +410,28 @@ struct TabBarButton: View {
         self.isSelected = isSelected
         self.onTap = onTap
         self.customIcon = customIcon
+        self.showBadge = showBadge
     }
 
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 4) {
-                if let customIcon {
-                    customIcon
-                } else {
-                    Image(systemName: isSelected ? selectedIcon : icon)
-                        .font(.lora(size: 20, weight: .semiBold))
-                        .foregroundColor(iconColor)
+                ZStack(alignment: .topTrailing) {
+                    if let customIcon {
+                        customIcon
+                    } else {
+                        Image(systemName: isSelected ? selectedIcon : icon)
+                            .font(.lora(size: 20, weight: .semiBold))
+                            .foregroundColor(iconColor)
+                    }
+
+                    // Notification badge (red dot)
+                    if showBadge {
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 8, height: 8)
+                            .offset(x: 4, y: -2)
+                    }
                 }
 
                 Text(title)

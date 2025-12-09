@@ -81,6 +81,45 @@ final class SocialEngagementService: ObservableObject {
         return userId
     }
 
+    /// Helper struct for fetching share info for notifications
+    private struct ShareInfo: Codable {
+        let id: UUID
+        let senderId: UUID
+        let trackName: String
+        let albumArtUrl: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case senderId = "sender_id"
+            case trackName = "track_name"
+            case albumArtUrl = "album_art_url"
+        }
+    }
+
+    /// Fetch share info for notifications
+    private func fetchShareInfo(_ shareId: UUID) async throws -> ShareInfo? {
+        print("📋 Fetching share info for notification: \(shareId)")
+        do {
+            let result: [ShareInfo] = try await supabase
+                .from("shares")
+                .select("id, sender_id, track_name, album_art_url")
+                .eq("id", value: shareId.uuidString)
+                .limit(1)
+                .execute()
+                .value
+
+            if let info = result.first {
+                print("✅ Found share info: senderId=\(info.senderId), trackName=\(info.trackName), albumArt=\(info.albumArtUrl ?? "nil")")
+            } else {
+                print("⚠️ No share found with id: \(shareId)")
+            }
+            return result.first
+        } catch {
+            print("❌ Error fetching share info: \(error)")
+            throw error
+        }
+    }
+
     // MARK: - Like Operations
 
     /// Like a share
@@ -101,6 +140,30 @@ final class SocialEngagementService: ObservableObject {
                 .execute()
 
             print("❤️ Liked share: \(shareId)")
+
+            // Send notification to share owner (fire and forget - don't block UI)
+            let likerIdCopy = userId
+            let shareIdCopy = shareId
+            Task {
+                print("📤 Starting like notification task for share: \(shareIdCopy)")
+                do {
+                    if let shareInfo = try await self.fetchShareInfo(shareIdCopy) {
+                        print("📤 Sending like notification: owner=\(shareInfo.senderId), liker=\(likerIdCopy)")
+                        try await NotificationService.shared.createShareLikedNotification(
+                            shareOwnerId: shareInfo.senderId,
+                            likerId: likerIdCopy,
+                            shareId: shareIdCopy,
+                            trackName: shareInfo.trackName,
+                            albumArtUrl: shareInfo.albumArtUrl
+                        )
+                        print("📤 Like notification task completed successfully")
+                    } else {
+                        print("⚠️ Could not find share info for notification")
+                    }
+                } catch {
+                    print("⚠️ Failed to send like notification: \(error)")
+                }
+            }
         } catch {
             // Rollback on failure
             likedShareIds.remove(shareId)
@@ -272,6 +335,7 @@ final class SocialEngagementService: ObservableObject {
             "comment_text": text
         ]
 
+        let isReply = parentCommentId != nil
         if let parentId = parentCommentId {
             insertData["parent_comment_id"] = parentId.uuidString
         }
@@ -286,6 +350,35 @@ final class SocialEngagementService: ObservableObject {
                 .value
 
             print("✍️ Added comment to share: \(shareId)")
+
+            // Send notification to share owner (fire and forget - don't block UI)
+            let commenterIdCopy = userId
+            let isReplyCopy = isReply
+            let shareIdCopy = shareId
+            let commentTextCopy = text
+            Task {
+                print("📤 Starting comment notification task for share: \(shareIdCopy)")
+                do {
+                    if let shareInfo = try await self.fetchShareInfo(shareIdCopy) {
+                        print("📤 Sending comment notification: owner=\(shareInfo.senderId), commenter=\(commenterIdCopy), isReply=\(isReplyCopy)")
+                        try await NotificationService.shared.createShareCommentedNotification(
+                            shareOwnerId: shareInfo.senderId,
+                            commenterId: commenterIdCopy,
+                            shareId: shareIdCopy,
+                            trackName: shareInfo.trackName,
+                            albumArtUrl: shareInfo.albumArtUrl,
+                            commentText: commentTextCopy,
+                            isReply: isReplyCopy
+                        )
+                        print("📤 Comment notification task completed successfully")
+                    } else {
+                        print("⚠️ Could not find share info for comment notification")
+                    }
+                } catch {
+                    print("⚠️ Failed to send comment notification: \(error)")
+                }
+            }
+
             return response
         } catch {
             print("❌ Failed to add comment: \(error)")
@@ -350,6 +443,138 @@ final class SocialEngagementService: ObservableObject {
         commentCountAdjustments[shareId, default: 0] -= 1
     }
 
+    // MARK: - Comment Like Operations
+
+    /// Set of comment IDs that the current user has liked
+    @Published private(set) var likedCommentIds: Set<UUID> = []
+
+    /// Adjustments to comment like counts
+    @Published private(set) var commentLikeCountAdjustments: [UUID: Int] = [:]
+
+    /// Get the adjusted like count for a comment
+    func adjustedCommentLikeCount(for commentId: UUID, originalCount: Int) -> Int {
+        let adjustment = commentLikeCountAdjustments[commentId] ?? 0
+        return max(0, originalCount + adjustment)
+    }
+
+    /// Check if the current user has liked a comment
+    func isCommentLiked(_ commentId: UUID) -> Bool {
+        return likedCommentIds.contains(commentId)
+    }
+
+    /// Like a comment
+    func likeComment(_ commentId: UUID, commentOwnerId: UUID, shareId: UUID, trackName: String, albumArtUrl: String?) async throws {
+        let userId = try await getCurrentUserId()
+
+        // Optimistic update
+        likedCommentIds.insert(commentId)
+        commentLikeCountAdjustments[commentId, default: 0] += 1
+
+        do {
+            try await supabase
+                .from("share_comment_likes")
+                .insert([
+                    "comment_id": commentId.uuidString,
+                    "user_id": userId.uuidString
+                ])
+                .execute()
+
+            print("❤️ Liked comment: \(commentId)")
+
+            // Send notification to comment owner (fire and forget)
+            let likerIdCopy = userId
+            let shareIdCopy = shareId
+            Task {
+                do {
+                    try await NotificationService.shared.createCommentLikedNotification(
+                        commentOwnerId: commentOwnerId,
+                        likerId: likerIdCopy,
+                        shareId: shareIdCopy,
+                        trackName: trackName,
+                        albumArtUrl: albumArtUrl
+                    )
+                } catch {
+                    print("⚠️ Failed to send comment like notification: \(error)")
+                }
+            }
+        } catch {
+            // Rollback on failure
+            likedCommentIds.remove(commentId)
+            commentLikeCountAdjustments[commentId, default: 0] -= 1
+            print("❌ Failed to like comment: \(error)")
+            throw SocialEngagementError.likeFailed(error)
+        }
+    }
+
+    /// Unlike a comment
+    func unlikeComment(_ commentId: UUID) async throws {
+        let userId = try await getCurrentUserId()
+
+        // Optimistic update
+        likedCommentIds.remove(commentId)
+        commentLikeCountAdjustments[commentId, default: 0] -= 1
+
+        do {
+            try await supabase
+                .from("share_comment_likes")
+                .delete()
+                .eq("comment_id", value: commentId.uuidString)
+                .eq("user_id", value: userId.uuidString)
+                .execute()
+
+            print("💔 Unliked comment: \(commentId)")
+        } catch {
+            // Rollback on failure
+            likedCommentIds.insert(commentId)
+            commentLikeCountAdjustments[commentId, default: 0] += 1
+            print("❌ Failed to unlike comment: \(error)")
+            throw SocialEngagementError.unlikeFailed(error)
+        }
+    }
+
+    /// Toggle like status for a comment
+    func toggleCommentLike(_ commentId: UUID, commentOwnerId: UUID, shareId: UUID, trackName: String, albumArtUrl: String?) async throws {
+        if likedCommentIds.contains(commentId) {
+            try await unlikeComment(commentId)
+        } else {
+            try await likeComment(commentId, commentOwnerId: commentOwnerId, shareId: shareId, trackName: trackName, albumArtUrl: albumArtUrl)
+        }
+    }
+
+    /// Fetch like status for multiple comments (batch operation)
+    func fetchCommentLikeStatus(for commentIds: [UUID]) async throws {
+        guard !commentIds.isEmpty else { return }
+
+        let userId = try await getCurrentUserId()
+        let commentIdStrings = commentIds.map { $0.uuidString }
+
+        do {
+            struct CommentLike: Codable {
+                let commentId: UUID
+
+                enum CodingKeys: String, CodingKey {
+                    case commentId = "comment_id"
+                }
+            }
+
+            let response: [CommentLike] = try await supabase
+                .from("share_comment_likes")
+                .select("comment_id")
+                .eq("user_id", value: userId.uuidString)
+                .in("comment_id", values: commentIdStrings)
+                .execute()
+                .value
+
+            let newLikedIds = Set(response.map { $0.commentId })
+            likedCommentIds = likedCommentIds.union(newLikedIds)
+
+            print("📊 Fetched comment like status for \(commentIds.count) comments, \(newLikedIds.count) liked")
+        } catch {
+            print("❌ Failed to fetch comment like status: \(error)")
+            throw SocialEngagementError.fetchFailed(error)
+        }
+    }
+
     // MARK: - Cache Management
 
     /// Clear cached like status (e.g., on sign out)
@@ -357,6 +582,8 @@ final class SocialEngagementService: ObservableObject {
         likedShareIds.removeAll()
         likeCountAdjustments.removeAll()
         commentCountAdjustments.removeAll()
+        likedCommentIds.removeAll()
+        commentLikeCountAdjustments.removeAll()
     }
 }
 

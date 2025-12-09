@@ -76,8 +76,8 @@ struct UserProfileView: View {
                             }
 
                             // Streak badge overlapping the photo bottom
-                            if user.dailySongStreak > 0 {
-                                StreakBadge(streak: user.dailySongStreak, size: .medium)
+                            if user.effectiveStreak > 0 {
+                                StreakBadge(streak: user.effectiveStreak, size: .medium)
                                     .offset(y: -10)
                             }
                         }
@@ -202,7 +202,7 @@ struct UserProfileView: View {
                             onNudge: hasNudged ? nil : {
                                 Task { await sendNudge() }
                             },
-                            streak: user.dailySongStreak
+                            streak: user.effectiveStreak
                         )
                     }
 

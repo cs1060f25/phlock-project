@@ -1,6 +1,19 @@
 import SwiftUI
 import Combine
 
+/// Represents a pending navigation from a notification tap
+struct NotificationNavigation: Equatable {
+    let shareId: UUID
+    let sheetType: NotificationSheetType
+    let isOwnPick: Bool  // Whether this is the user's own daily pick
+
+    enum NotificationSheetType: Equatable {
+        case comments
+        case likers
+        case none
+    }
+}
+
 /// Centralized navigation state management for MainView
 /// Reduces complexity by consolidating 16+ @State variables into a single object
 @available(iOS 14.0, *)
@@ -36,6 +49,10 @@ class NavigationState: ObservableObject {
     // MARK: - Share Sheet State
     @Published var showShareSheet = false
     @Published var shareTrack: MusicItem? = nil
+
+    // MARK: - Notification-triggered Navigation
+    /// When set, PhlockView should navigate to this share and show the specified sheet
+    @Published var pendingNotificationNavigation: NotificationNavigation? = nil
 
     init() {
         // Default to phlock tab (index 0) on every cold launch
