@@ -126,6 +126,10 @@ class AuthenticationState: ObservableObject {
                         }
                     }
                     print("   After V3 check: username=\(user.username ?? "nil"), musicPlatform=\(user.musicPlatform ?? "nil")")
+
+                    // Ensure device token is registered for push notifications
+                    await PushNotificationService.shared.storePendingTokenIfNeeded()
+                    await PushNotificationService.shared.ensureDeviceTokenRegistered()
                 } else if let user = try await AuthServiceV2.shared.currentUser {
                     // Legacy session - user already completed old flow
                     print("   Found V2 user (legacy): \(user.displayName)")
@@ -137,6 +141,10 @@ class AuthenticationState: ObservableObject {
                         self.sessionCorrupted = false
                         self.authCheckAttempts = 0
                     }
+
+                    // Ensure device token is registered for push notifications
+                    await PushNotificationService.shared.storePendingTokenIfNeeded()
+                    await PushNotificationService.shared.ensureDeviceTokenRegistered()
                 } else {
                     print("   No user found")
                     await MainActor.run {

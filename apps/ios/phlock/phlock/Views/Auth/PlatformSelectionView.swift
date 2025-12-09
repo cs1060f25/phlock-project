@@ -61,7 +61,7 @@ struct PlatformSelectionView: View {
                 LoadingView(message: "Connecting...")
             }
         }
-        .alert("Error", isPresented: $showError) {
+        .alert("oops", isPresented: $showError) {
             Button("OK") { }
         } message: {
             Text(errorMessage)

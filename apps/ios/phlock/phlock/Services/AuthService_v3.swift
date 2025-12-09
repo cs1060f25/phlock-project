@@ -776,7 +776,7 @@ enum AuthError: LocalizedError {
         case .usernameTaken:
             return "This username is already taken"
         case .unknown:
-            return "An unknown error occurred"
+            return "something went wrong"
         }
     }
 }

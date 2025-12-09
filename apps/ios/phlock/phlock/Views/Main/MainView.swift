@@ -11,6 +11,7 @@ struct MainView: View {
     @State private var miniPlayerTrackToShare: MusicItem? = nil
     @State private var recognitionTrackToShare: MusicItem? = nil
     @State private var showRecognitionQuickSend = false
+    @State private var showPhonePrompt = false
 
     // Show mini player on all tabs except Phlock tab (which has its own playback UI)
     // We show the mini player whenever there's a track playing, regardless of how it was started
@@ -78,6 +79,10 @@ struct MainView: View {
                     if let userId = authState.currentUser?.id {
                         await notificationService.fetchUnreadCount(for: userId)
                     }
+
+                    // Check if existing user needs phone number detection
+                    // Only run if: user has synced contacts before AND doesn't have phone saved
+                    await checkAndPromptForPhoneNumber()
                 }
 
                 // Mini Player sits above tab bar
@@ -225,6 +230,91 @@ struct MainView: View {
                 .presentationDragIndicator(.visible)
             }
         }
+        .sheet(isPresented: $showPhonePrompt) {
+            PhoneNumberPromptSheet(
+                isPresented: $showPhonePrompt,
+                onSave: { phone in
+                    Task {
+                        if let userId = authState.currentUser?.id {
+                            try? await UserService.shared.updateUserPhone(phone, for: userId)
+                        }
+                    }
+                },
+                onSkip: { }
+            )
+            .presentationDetents([.height(340)])
+            .presentationDragIndicator(.hidden)
+        }
+        // MARK: - Push Notification Navigation Handlers
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToPhlock)) { _ in
+            navigationState.selectedTab = 0
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToFriends)) { _ in
+            navigationState.selectedTab = 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToNotifications)) { _ in
+            navigationState.selectedTab = 2
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToProfile)) { _ in
+            navigationState.selectedTab = 3
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToShare)) { notification in
+            if let shareId = notification.userInfo?["shareId"] as? UUID,
+               let sheetType = notification.userInfo?["sheetType"] as? String {
+                // Navigate to phlock tab and set pending navigation
+                let notificationSheetType: NotificationNavigation.NotificationSheetType
+                switch sheetType {
+                case "comments": notificationSheetType = .comments
+                case "likers": notificationSheetType = .likers
+                default: notificationSheetType = .none
+                }
+                navigationState.pendingNotificationNavigation = NotificationNavigation(
+                    shareId: shareId,
+                    sheetType: notificationSheetType,
+                    isOwnPick: false
+                )
+                navigationState.selectedTab = 0
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToSongPicker)) { _ in
+            // Navigate to phlock tab - the song picker sheet will be shown by PhlockView
+            // based on user not having picked today's song
+            navigationState.selectedTab = 0
+        }
+    }
+
+    /// Check if existing user needs phone number and prompt if necessary
+    /// Runs silently on app launch for users who have synced contacts but don't have a phone saved
+    private func checkAndPromptForPhoneNumber() async {
+        // Only check if user has previously synced contacts
+        let hasCompletedContactsStep = UserDefaults.standard.bool(forKey: "hasCompletedContactsStep")
+        guard hasCompletedContactsStep else { return }
+
+        // Check if user already has a phone number saved
+        guard let currentUser = authState.currentUser, currentUser.phone == nil else { return }
+
+        // Check if contacts access is still granted
+        let status = ContactsService.shared.authorizationStatus()
+        var hasAccess = status == .authorized
+        if #available(iOS 18.0, *), status == .limited {
+            hasAccess = true
+        }
+        guard hasAccess else { return }
+
+        print("📱 Existing user without phone - attempting auto-detection...")
+
+        // Try to auto-detect phone from Me card
+        if let meCardPhone = await ContactsService.shared.getUserPhoneFromMeCard() {
+            // Found! Save it silently
+            try? await UserService.shared.updateUserPhone(meCardPhone, for: currentUser.id)
+            print("📱 Auto-saved phone from Me card for existing user")
+        } else {
+            // Not found - show prompt
+            await MainActor.run {
+                showPhonePrompt = true
+            }
+            print("📱 No Me card found - showing phone prompt to existing user")
+        }
     }
 
     /// Share the clipboard track as today's daily song
@@ -243,6 +333,22 @@ struct MainView: View {
             clipboardService.clearDetectedTrack()
 
             print("✅ Daily song shared from clipboard: \(track.name)")
+
+            // Refresh the current user to update hasSelectedToday and streak
+            if let updatedUser = try? await UserService.shared.getUser(userId: userId, bypassCache: true) {
+                await MainActor.run {
+                    authState.currentUser = updatedUser
+                }
+            }
+
+            // Trigger immediate refresh of PhlockView and switch to Phlock tab
+            // This ensures the user sees their daily song and unlocked phlock content
+            await MainActor.run {
+                // Switch to Phlock tab (index 0) so user sees their shared song
+                navigationState.selectedTab = 0
+                // Trigger refresh to load the new daily song
+                navigationState.refreshFeedTrigger += 1
+            }
         } catch {
             print("❌ Failed to share daily song from clipboard: \(error)")
         }

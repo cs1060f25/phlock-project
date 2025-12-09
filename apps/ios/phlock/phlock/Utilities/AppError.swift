@@ -30,23 +30,23 @@ enum AppError: Error, LocalizedError, Identifiable {
     var errorDescription: String? {
         switch self {
         case .network:
-            return "Unable to connect. Please check your internet connection."
+            return "can't connect. check your internet?"
         case .timeout:
-            return "Request timed out. Please try again."
+            return "that took too long. try again?"
         case .sessionExpired:
-            return "Your session has expired. Please sign in again."
+            return "your session expired. sign in again to continue"
         case .sessionCorrupted:
-            return "There was a problem with your login. Please sign in again."
+            return "something went wrong. sign in again to continue"
         case .unauthorized:
-            return "You don't have permission to do this."
+            return "you don't have permission to do this"
         case .serverError(let message):
-            return message ?? "Something went wrong on our end. Please try again."
+            return message ?? "something went wrong. try again?"
         case .notFound(let item):
-            return "\(item) could not be found."
+            return "couldn't find \(item.lowercased())"
         case .dataCorrupted:
-            return "Some data couldn't be loaded. Try refreshing."
+            return "couldn't load. pull to refresh?"
         case .unknown:
-            return "Something unexpected happened. Please try again."
+            return "something went wrong. try again?"
         }
     }
 

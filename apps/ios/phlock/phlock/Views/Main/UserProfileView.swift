@@ -310,7 +310,7 @@ struct UserProfileView: View {
         }
         .navigationBarBackButtonHidden(true)
         .fullScreenSwipeBack()
-        .alert("Error", isPresented: $showError) {
+        .alert("one more step", isPresented: $showError) {
             Button("OK") { }
         } message: {
             Text(errorMessage)
@@ -651,10 +651,20 @@ struct UserProfileView: View {
             await loadProfileData()
 
             print("✅ Added \(user.displayName) to phlock at position \(emptyPosition)")
+        } catch let error as FollowServiceError {
+            print("❌ Failed to add to phlock: \(error)")
+            await MainActor.run {
+                if case .mustFollowFirst = error {
+                    errorMessage = "follow \(user.displayName) first to add them to your phlock"
+                } else {
+                    errorMessage = error.localizedDescription
+                }
+                showError = true
+            }
         } catch {
             print("❌ Failed to add to phlock: \(error)")
             await MainActor.run {
-                errorMessage = "Failed to add to phlock"
+                errorMessage = error.localizedDescription
                 showError = true
             }
         }

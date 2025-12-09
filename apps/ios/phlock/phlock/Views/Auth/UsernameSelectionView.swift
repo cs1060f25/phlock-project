@@ -240,7 +240,7 @@ struct UsernameSelectionView: View {
         .onAppear {
             isDisplayNameFocused = true
         }
-        .alert("Error", isPresented: $showError) {
+        .alert("oops", isPresented: $showError) {
             Button("OK") { }
         } message: {
             Text(errorMessage)

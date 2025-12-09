@@ -14,30 +14,12 @@ struct MiniPlayerView: View {
     var body: some View {
         if let track = playbackService.currentTrack {
             VStack(spacing: 0) {
-                // Progress bar (display only)
-                GeometryReader { geometry in
-                    let duration = playbackService.duration
-                    let currentTime = playbackService.currentTime
-                    // Guard against NaN and invalid values
-                    let safeDuration = (duration.isNaN || duration.isInfinite || duration <= 0) ? 1 : duration
-                    let safeCurrentTime = (currentTime.isNaN || currentTime.isInfinite || currentTime < 0) ? 0 : currentTime
-                    let progress = min(max(safeCurrentTime / safeDuration, 0), 1)
-                    let safeWidth = geometry.size.width > 0 ? geometry.size.width : 1
-
-                    ZStack(alignment: .leading) {
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(height: 2)
-
-                        Rectangle()
-                            .fill(Color.primary)
-                            .frame(
-                                width: safeWidth * CGFloat(progress),
-                                height: 2
-                            )
-                    }
-                    .animation(.linear(duration: 0.5), value: playbackService.currentTime)
-                }
+                // Progress bar with smooth continuous animation
+                MiniPlayerProgressBar(
+                    currentTime: playbackService.currentTime,
+                    duration: playbackService.duration,
+                    isPlaying: playbackService.isPlaying
+                )
                 .frame(height: 2)
                 .drawingGroup() // Optimize rendering
 
@@ -198,6 +180,73 @@ extension MiniPlayerView {
         static let height: CGFloat = 74
         /// Spacing used to sit above the custom tab bar
         static let tabBarOffset: CGFloat = 53
+    }
+}
+
+// MARK: - Smooth Progress Bar for Mini Player
+
+/// A progress bar using TimelineView for true 60fps smooth animation
+private struct MiniPlayerProgressBar: View {
+    let currentTime: Double
+    let duration: Double
+    let isPlaying: Bool
+
+    // Track the reference point for smooth interpolation
+    @State private var referenceTime: Double = 0
+    @State private var referenceDate: Date = Date()
+
+    var body: some View {
+        TimelineView(.animation(paused: !isPlaying)) { timeline in
+            GeometryReader { geometry in
+                let safeWidth = geometry.size.width > 0 ? geometry.size.width : 1
+                let progress = calculateProgress(at: timeline.date)
+
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(height: 2)
+
+                    Rectangle()
+                        .fill(Color.primary)
+                        .frame(width: safeWidth * progress, height: 2)
+                }
+            }
+        }
+        .onChange(of: currentTime) { newTime in
+            // Only update reference if time has jumped significantly (seek)
+            // or if we've drifted too far (sync).
+            let elapsed = Date().timeIntervalSince(referenceDate)
+            let estimatedTime = referenceTime + elapsed
+            let diff = abs(newTime - estimatedTime)
+            
+            if diff > 0.5 || !isPlaying {
+                referenceTime = newTime
+                referenceDate = Date()
+            }
+        }
+        .onChange(of: isPlaying) { _ in
+            referenceTime = currentTime
+            referenceDate = Date()
+        }
+        .onAppear {
+            referenceTime = currentTime
+            referenceDate = Date()
+        }
+    }
+
+    private func calculateProgress(at date: Date) -> CGFloat {
+        guard duration > 0, !duration.isNaN, !duration.isInfinite else { return 0 }
+
+        let interpolatedTime: Double
+        if isPlaying {
+            let elapsed = date.timeIntervalSince(referenceDate)
+            interpolatedTime = referenceTime + elapsed
+        } else {
+            interpolatedTime = currentTime
+        }
+
+        let clampedTime = max(0, min(interpolatedTime, duration))
+        return CGFloat(clampedTime / duration)
     }
 }
 

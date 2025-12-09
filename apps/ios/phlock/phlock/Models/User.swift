@@ -63,22 +63,10 @@ struct User: Codable, Identifiable, Hashable, Sendable {
         return Calendar.current.isDateInToday(lastSongDate)
     }
 
-    // Helper: Check if user's streak is still valid
-    // A streak is valid if the user posted today or yesterday
-    var isStreakValid: Bool {
-        guard let lastSongDate = lastDailySongDate, dailySongStreak > 0 else { return false }
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        let lastPostDay = calendar.startOfDay(for: lastSongDate)
-        let daysSinceLastPost = calendar.dateComponents([.day], from: lastPostDay, to: today).day ?? 0
-        // Streak is valid if posted today (0 days ago) or yesterday (1 day ago)
-        return daysSinceLastPost <= 1
-    }
-
-    // Helper: Get the effective streak (0 if expired, actual value if valid)
-    // Use this for display to handle the case before the cron job resets expired streaks
+    // Helper: Get the effective streak for display
+    // The database trigger handles streak expiration, so we trust the DB value
     var effectiveStreak: Int {
-        return isStreakValid ? dailySongStreak : 0
+        return dailySongStreak
     }
 
     // Helper: Streak emoji for display

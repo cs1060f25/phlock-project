@@ -79,185 +79,112 @@ extension UIImage {
     }
 }
 
-// MARK: - Progress Scrubber (UIKit-based for reliable gesture handling inside TabView)
+// MARK: - Smooth Progress Scrubber (SwiftUI TimelineView-based)
 
-/// A UIKit-based progress scrubber that properly handles gestures inside SwiftUI TabView
-/// This prevents the TabView's page swipe from intercepting our drag gesture
-struct ProgressScrubber: UIViewRepresentable {
-    let progress: Double
-    let isDragging: Bool
+/// A scrubbable progress bar using TimelineView for true 60fps smooth animation.
+/// Uses the same approach as FullScreenPlayerView and MiniPlayerView.
+struct ProgressScrubber: View {
+    let currentTime: Double
+    let duration: Double
+    let isPlaying: Bool
+    let isDraggingExternal: Bool
+    let sliderValue: Double
     let trackColor: Color
     let fillColor: Color
     let onDragChanged: (CGFloat) -> Void
     let onDragEnded: (CGFloat) -> Void
 
-    init(progress: Double, isDragging: Bool, trackColor: Color = .white.opacity(0.3), fillColor: Color = .white, onDragChanged: @escaping (CGFloat) -> Void, onDragEnded: @escaping (CGFloat) -> Void) {
-        self.progress = progress
-        self.isDragging = isDragging
-        self.trackColor = trackColor
-        self.fillColor = fillColor
-        self.onDragChanged = onDragChanged
-        self.onDragEnded = onDragEnded
+    // Track the reference point for smooth interpolation
+    @State private var referenceTime: Double = 0
+    @State private var referenceDate: Date = Date()
+    @State private var internalIsDragging: Bool = false
+
+    private var isDragging: Bool {
+        internalIsDragging || isDraggingExternal
     }
 
-    func makeUIView(context: Context) -> ProgressScrubberView {
-        let view = ProgressScrubberView()
-        view.onDragChanged = onDragChanged
-        view.onDragEnded = onDragEnded
-        view.updateColors(trackColor: UIColor(trackColor), fillColor: UIColor(fillColor))
-        return view
-    }
+    var body: some View {
+        TimelineView(.animation(paused: !isPlaying || isDragging)) { timeline in
+            GeometryReader { geometry in
+                let progress = calculateProgress(at: timeline.date)
 
-    func updateUIView(_ uiView: ProgressScrubberView, context: Context) {
-        uiView.updateProgress(progress, isDragging: isDragging)
-        uiView.updateColors(trackColor: UIColor(trackColor), fillColor: UIColor(fillColor))
-    }
-}
+                ZStack(alignment: .leading) {
+                    // Background track
+                    Capsule()
+                        .fill(trackColor)
+                        .frame(height: 4)
 
-class ProgressScrubberView: UIView {
-    var onDragChanged: ((CGFloat) -> Void)?
-    var onDragEnded: ((CGFloat) -> Void)?
+                    // Progress fill
+                    Capsule()
+                        .fill(fillColor)
+                        .frame(width: max(0, geometry.size.width * progress), height: 4)
 
-    private let trackLayer = CALayer()
-    private let progressLayer = CALayer()
-    private let thumbLayer = CALayer()
+                    // Thumb
+                    Circle()
+                        .fill(fillColor)
+                        .frame(width: isDragging ? 16 : 12, height: isDragging ? 16 : 12)
+                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                        .offset(x: max(0, min(geometry.size.width - 12, geometry.size.width * progress - 6)))
+                        .animation(.easeOut(duration: 0.1), value: isDragging)
+                }
+                .frame(height: 20)
+                .contentShape(Rectangle())
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            internalIsDragging = true
+                            let prog = max(0, min(1, value.location.x / geometry.size.width))
+                            onDragChanged(prog)
+                        }
+                        .onEnded { value in
+                            let prog = max(0, min(1, value.location.x / geometry.size.width))
+                            onDragEnded(prog)
+                            internalIsDragging = false
+                        }
+                )
+            }
+        }
+        .onChange(of: currentTime) { newTime in
+            if !isDragging {
+                // Only update reference if time has jumped significantly (seek)
+                let elapsed = Date().timeIntervalSince(referenceDate)
+                let estimatedTime = referenceTime + elapsed
+                let diff = abs(newTime - estimatedTime)
 
-    private var currentProgress: CGFloat = 0
-    private var isDragging = false
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        setupLayers()
-        setupGesture()
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        setupLayers()
-        setupGesture()
-    }
-
-    private func setupLayers() {
-        // Background track
-        trackLayer.backgroundColor = UIColor.white.withAlphaComponent(0.3).cgColor
-        trackLayer.cornerRadius = 2
-        layer.addSublayer(trackLayer)
-
-        // Progress fill
-        progressLayer.backgroundColor = UIColor.white.cgColor
-        progressLayer.cornerRadius = 2
-        layer.addSublayer(progressLayer)
-
-        // Thumb
-        thumbLayer.backgroundColor = UIColor.white.cgColor
-        thumbLayer.shadowColor = UIColor.black.cgColor
-        thumbLayer.shadowOpacity = 0.3
-        thumbLayer.shadowOffset = CGSize(width: 0, height: 1)
-        thumbLayer.shadowRadius = 2
-        layer.addSublayer(thumbLayer)
-    }
-
-    private func setupGesture() {
-        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
-        panGesture.delegate = self
-        addGestureRecognizer(panGesture)
-
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
-        addGestureRecognizer(tapGesture)
-    }
-
-    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        let location = gesture.location(in: self)
-        let progress = max(0, min(1, location.x / bounds.width))
-
-        switch gesture.state {
-        case .began, .changed:
-            isDragging = true
-            currentProgress = progress
-            updateLayerPositions(animated: false)
-            onDragChanged?(progress)
-        case .ended, .cancelled:
-            isDragging = false
-            onDragEnded?(progress)
-            updateLayerPositions(animated: true)
-        default:
-            break
+                if diff > 0.5 || !isPlaying {
+                    referenceTime = newTime
+                    referenceDate = Date()
+                }
+            }
+        }
+        .onChange(of: isPlaying) { _ in
+            referenceTime = currentTime
+            referenceDate = Date()
+        }
+        .onAppear {
+            referenceTime = currentTime
+            referenceDate = Date()
         }
     }
 
-    @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
-        let location = gesture.location(in: self)
-        let progress = max(0, min(1, location.x / bounds.width))
-        currentProgress = progress
-        updateLayerPositions(animated: true)
-        onDragChanged?(progress)
-        onDragEnded?(progress)
-    }
+    private func calculateProgress(at date: Date) -> CGFloat {
+        guard duration > 0 else { return 0 }
 
-    func updateProgress(_ progress: Double, isDragging: Bool) {
-        // Only update from external source if not currently dragging
-        if !self.isDragging {
-            self.currentProgress = CGFloat(progress)
-            self.isDragging = isDragging
-            updateLayerPositions(animated: false)
+        // During drag, show slider position
+        if isDragging {
+            return CGFloat(sliderValue / duration)
         }
-    }
 
-    func updateColors(trackColor: UIColor, fillColor: UIColor) {
-        trackLayer.backgroundColor = trackColor.cgColor
-        progressLayer.backgroundColor = fillColor.cgColor
-        thumbLayer.backgroundColor = fillColor.cgColor
-    }
+        let interpolatedTime: Double
+        if isPlaying {
+            let elapsed = date.timeIntervalSince(referenceDate)
+            interpolatedTime = referenceTime + elapsed
+        } else {
+            interpolatedTime = currentTime
+        }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        updateLayerPositions(animated: false)
-    }
-
-    private func updateLayerPositions(animated: Bool) {
-        CATransaction.begin()
-        CATransaction.setDisableActions(!animated)
-
-        let trackHeight: CGFloat = 4
-        let trackY = (bounds.height - trackHeight) / 2
-
-        // Background track
-        trackLayer.frame = CGRect(x: 0, y: trackY, width: bounds.width, height: trackHeight)
-
-        // Progress fill
-        let progressWidth = max(0, bounds.width * currentProgress)
-        progressLayer.frame = CGRect(x: 0, y: trackY, width: progressWidth, height: trackHeight)
-
-        // Thumb
-        let thumbSize: CGFloat = isDragging ? 16 : 12
-        thumbLayer.cornerRadius = thumbSize / 2
-        let thumbX = max(0, min(bounds.width - thumbSize, progressWidth - thumbSize / 2))
-        let thumbY = (bounds.height - thumbSize) / 2
-        thumbLayer.frame = CGRect(x: thumbX, y: thumbY, width: thumbSize, height: thumbSize)
-
-        CATransaction.commit()
-    }
-}
-
-extension ProgressScrubberView: UIGestureRecognizerDelegate {
-    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        return true
-    }
-
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-        // Don't allow simultaneous recognition - we want exclusive control
-        return false
-    }
-
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRequireFailureOf otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-        // We should NOT require failure of other gestures - we want to take priority
-        return false
-    }
-
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-        // Other gestures (like TabView's scroll) should wait for us to fail first
-        // This gives our gesture priority
-        return true
+        let clampedTime = max(0, min(interpolatedTime, duration))
+        return CGFloat(clampedTime / duration)
     }
 }
 
@@ -454,6 +381,9 @@ struct PhlockCarouselView: View {
     let onMyDailySongMessageUpdated: ((String?) -> Void)?  // Update myDailySong message
     @Binding var isGeneratingShareCard: Bool  // Loading state for send button
 
+    /// Trigger to expand daily pill and show a specific sheet (from notification deep link)
+    @Binding var expandPillWithSheet: DailySongSheetType
+
     @EnvironmentObject var playbackService: PlaybackService
     @EnvironmentObject var authState: AuthenticationState
     @StateObject private var socialService = SocialEngagementService.shared
@@ -467,6 +397,7 @@ struct PhlockCarouselView: View {
     @State private var showCommentSheet: Bool = false  // Comment sheet state
     @State private var selectedShareForComments: Share?  // Share to show comments for
     @State private var isPillExpanded: Bool = false  // Daily song pill expansion state
+    @State private var pendingSheetToShow: DailySongSheetType = .none  // Sheet to show after pill expands
     @Namespace private var pillNamespace  // For pill expansion animation
     @Environment(\.colorScheme) var colorScheme
 
@@ -615,7 +546,8 @@ struct PhlockCarouselView: View {
                     },
                     onMessageUpdated: { newMessage in
                         onMyDailySongMessageUpdated?(newMessage)
-                    }
+                    },
+                    initialSheetToShow: pendingSheetToShow
                 )
                 .transition(.opacity)
                 .zIndex(10) // Above carousel
@@ -986,6 +918,27 @@ struct PhlockCarouselView: View {
             // Fetch like status for all daily songs on load
             let shareIds = dailySongs.map { $0.id }
             try? await socialService.fetchLikeStatus(for: shareIds)
+        }
+        .onChange(of: expandPillWithSheet) { sheetType in
+            // Handle notification deep link: expand pill and show specific sheet
+            guard sheetType != .none, myDailySong != nil else { return }
+
+            // Store which sheet to show and expand the pill
+            pendingSheetToShow = sheetType
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                isPillExpanded = true
+            }
+
+            // Reset the trigger after handling
+            DispatchQueue.main.async {
+                expandPillWithSheet = .none
+            }
+        }
+        .onChange(of: isPillExpanded) { isExpanded in
+            // Clear pending sheet when pill collapses
+            if !isExpanded {
+                pendingSheetToShow = .none
+            }
         }
     }
 
@@ -1392,7 +1345,7 @@ struct ProfileIndicatorCircle: View {
                 if let member = slot.member {
                     // Profile photo
                     if let avatarUrl = member.profilePhotoUrl, let url = URL(string: avatarUrl) {
-                        AsyncImage(url: url) { image in
+                        CachedAsyncImage(url: url) { image in
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
@@ -2019,15 +1972,15 @@ struct PhlockCardView: View {
     private var progressBar: some View {
         let currentTime = currentTimeSafe
         let duration = durationSafe
-        let rawProgress = (isDraggingSlider || isSeeking) ? sliderValue / duration : currentTime / duration
-        // Guard against NaN in progress calculation
-        let progress = rawProgress.isNaN || rawProgress.isInfinite ? 0 : max(0, min(1, rawProgress))
 
         return VStack(spacing: 8) {
-            // Custom scrubbable progress bar - matching FullScreenPlayerView implementation
+            // Custom scrubbable progress bar with smooth TimelineView animation
             ProgressScrubber(
-                progress: progress,
-                isDragging: isDraggingSlider,
+                currentTime: currentTime,
+                duration: duration,
+                isPlaying: playbackService.isPlaying,
+                isDraggingExternal: isDraggingSlider || isSeeking,
+                sliderValue: sliderValue,
                 trackColor: progressTrackColor,
                 fillColor: progressFillColor,
                 onDragChanged: { prog in
@@ -2050,7 +2003,7 @@ struct PhlockCardView: View {
                     impact.impactOccurred()
 
                     // Reset seeking state after a delay to allow playback service to catch up
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         isSeeking = false
                     }
                 }
@@ -2094,7 +2047,7 @@ struct PhlockCardView: View {
             Button(action: onProfileTapped) {
                 Group {
                     if let avatarUrl = member.profilePhotoUrl, let url = URL(string: avatarUrl) {
-                        AsyncImage(url: url) { image in
+                        CachedAsyncImage(url: url) { image in
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
@@ -2295,6 +2248,8 @@ struct PhlockImmersiveLayout: View {
     let onSendTapped: (Share) -> Void  // Send/share individual song
     var onMyDailySongMessageUpdated: ((String?) -> Void)? = nil  // Update myDailySong message
     @Binding var isGeneratingShareCard: Bool  // Loading state for send button
+    /// Trigger to expand daily pill and show a specific sheet (from notification deep link)
+    @Binding var expandPillWithSheet: DailySongSheetType
 
     var body: some View {
         // Check if user has picked their daily song
@@ -2326,7 +2281,8 @@ struct PhlockImmersiveLayout: View {
                 onShareTapped: onShareTapped,
                 onSendTapped: onSendTapped,
                 onMyDailySongMessageUpdated: onMyDailySongMessageUpdated,
-                isGeneratingShareCard: $isGeneratingShareCard
+                isGeneratingShareCard: $isGeneratingShareCard,
+                expandPillWithSheet: $expandPillWithSheet
             )
         }
     }
@@ -2423,7 +2379,7 @@ struct FriendPickerPanel: View {
                                     // Profile photo
                                     if let urlString = friend.profilePhotoUrl,
                                        let url = URL(string: urlString) {
-                                        AsyncImage(url: url) { image in
+                                        CachedAsyncImage(url: url) { image in
                                             image
                                                 .resizable()
                                                 .aspectRatio(contentMode: .fill)

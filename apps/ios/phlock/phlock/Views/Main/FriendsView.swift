@@ -31,6 +31,9 @@ struct FriendsView: View {
     @State private var isLoadingInvitableContacts = false
     @State private var inviteSearchText = ""  // Search within contacts to invite
 
+    // Phone number prompt state
+    @State private var showPhonePrompt = false
+
     // Wrapper for .sheet(item:) to avoid SwiftUI timing issues
     struct InviteContactTarget: Identifiable {
         let id = UUID()
@@ -100,7 +103,7 @@ struct FriendsView: View {
                     .environmentObject(authState)
                     .environmentObject(PlaybackService.shared)
             }
-            .alert("Error", isPresented: $showError) {
+            .alert("oops", isPresented: $showError) {
                 Button("OK") { }
             } message: {
                 Text(errorMessage)
@@ -127,6 +130,21 @@ struct FriendsView: View {
                         inviteTarget = nil
                     }
                 )
+            }
+            .sheet(isPresented: $showPhonePrompt) {
+                PhoneNumberPromptSheet(
+                    isPresented: $showPhonePrompt,
+                    onSave: { phone in
+                        Task {
+                            if let userId = authState.currentUser?.id {
+                                try? await UserService.shared.updateUserPhone(phone, for: userId)
+                            }
+                        }
+                    },
+                    onSkip: { }
+                )
+                .presentationDetents([.height(340)])
+                .presentationDragIndicator(.hidden)
             }
             .onChange(of: refreshTrigger) { _ in
                 Task { await loadData() }
@@ -579,6 +597,20 @@ struct FriendsView: View {
 
             // Sync contacts to server (for "X friends on phlock" feature)
             try await ContactsService.shared.syncContactsToServer()
+
+            // Try to get user's phone from Me card
+            let meCardPhone = await ContactsService.shared.getUserPhoneFromMeCard()
+
+            // If found, save it automatically
+            if let phone = meCardPhone, let userId = authState.currentUser?.id {
+                try? await UserService.shared.updateUserPhone(phone, for: userId)
+                print("📱 Auto-saved phone from Me card")
+            } else if meCardPhone == nil {
+                // No Me card phone found - show prompt
+                await MainActor.run {
+                    showPhonePrompt = true
+                }
+            }
 
             // Load invitable contacts with friend counts
             await loadInvitableContacts()

@@ -130,8 +130,9 @@ struct PhlockView: View {
     @State private var selectedProfileUser: User?
 
     // Notification navigation state (for tapping notification album art)
-    @State private var notificationShareForComments: Share?
-    @State private var notificationShareForLikers: Share?
+    @State private var notificationShareForComments: Share?  // For phlock member songs
+    @State private var notificationShareForLikers: Share?    // For phlock member songs
+    @State private var expandPillWithSheet: DailySongSheetType = .none  // For own daily pick
 
     // Helper struct to organize phlock items
     struct PhlockItem: Identifiable {
@@ -301,7 +302,8 @@ struct PhlockView: View {
                                 myDailySong = updatedSong
                             }
                         },
-                        isGeneratingShareCard: .constant(false)
+                        isGeneratingShareCard: .constant(false),
+                        expandPillWithSheet: $expandPillWithSheet
                     )
                     .ignoresSafeArea(edges: .top)
                 }
@@ -557,43 +559,23 @@ struct PhlockView: View {
         // Clear the pending navigation now that we're handling it
         navigationState.pendingNotificationNavigation = nil
 
-        // Check if this is our own daily pick
-        if navigation.isOwnPick {
-            // For own pick, we need myDailySong to be loaded
-            if let mySong = myDailySong {
-                if mySong.id == navigation.shareId {
-                    // It's our own pick - show appropriate sheet based on notification type
-                    switch navigation.sheetType {
-                    case .comments:
-                        notificationShareForComments = mySong
-                    case .likers:
-                        notificationShareForLikers = mySong
-                    case .none:
-                        break
-                    }
-                    return
-                }
-            }
-            // myDailySong doesn't match - fall through to fetch
-        }
-
         // Check if this is our own daily pick by matching shareId
         if let mySong = myDailySong, mySong.id == navigation.shareId {
-            // It's our own pick - show appropriate sheet based on notification type
+            // It's our own pick - expand the pill and show appropriate sheet
             switch navigation.sheetType {
             case .comments:
-                notificationShareForComments = mySong
+                expandPillWithSheet = .comments
             case .likers:
-                notificationShareForLikers = mySong
+                expandPillWithSheet = .likers
             case .none:
-                break
+                expandPillWithSheet = .none
             }
             return
         }
 
         // Check if it's one of the phlock member songs
         if let share = dailySongs.first(where: { $0.id == navigation.shareId }) {
-            // Found the share in daily songs
+            // Found the share in daily songs - show sheet from PhlockView
             switch navigation.sheetType {
             case .comments:
                 notificationShareForComments = share
@@ -897,6 +879,13 @@ struct PhlockView: View {
                 await MainActor.run {
                     self.phlockMembers = members
                     self.nudgedUserIds = self.nudgedUserIds.intersection(Set(members.map { $0.user.id }))
+
+                    // Pre-load profile images for instant display in carousel
+                    let profileUrls = members.compactMap { member -> URL? in
+                        guard let urlString = member.user.profilePhotoUrl else { return nil }
+                        return URL(string: urlString)
+                    }
+                    ImageCacheManager.shared.preloadImages(urls: profileUrls)
                 }
 
                 if members.isEmpty {
@@ -2110,7 +2099,7 @@ struct EmptyDailyPlaylistView: View {
                             // Existing Member (Waiting for song)
                             if let photoUrl = member.profilePhotoUrl,
                                let url = URL(string: photoUrl) {
-                                AsyncImage(url: url) { image in
+                                CachedAsyncImage(url: url) { image in
                                     image
                                         .resizable()
                                         .aspectRatio(contentMode: .fill)

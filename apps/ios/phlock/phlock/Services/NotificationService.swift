@@ -45,7 +45,6 @@ class NotificationService: ObservableObject {
 
     private struct NotificationMetadataRead: Decodable {
         let actorIds: [String]?
-        let count: Int?
         let trackName: String?
         let albumArtUrl: String?
         let streakDays: Int?
@@ -54,7 +53,6 @@ class NotificationService: ObservableObject {
 
         enum CodingKeys: String, CodingKey {
             case actorIds = "actor_ids"
-            case count
             case trackName = "track_name"
             case albumArtUrl = "album_art_url"
             case streakDays = "streak_days"
@@ -65,7 +63,6 @@ class NotificationService: ObservableObject {
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             actorIds = try container.decodeIfPresent([String].self, forKey: .actorIds)
-            count = try container.decodeIfPresent(Int.self, forKey: .count)
             trackName = try container.decodeIfPresent(String.self, forKey: .trackName)
             albumArtUrl = try container.decodeIfPresent(String.self, forKey: .albumArtUrl)
             streakDays = try container.decodeIfPresent(Int.self, forKey: .streakDays)
@@ -132,16 +129,6 @@ class NotificationService: ObservableObject {
         }
     }
 
-    private struct NotificationWithCountInsert: Encodable {
-        let user_id: String
-        let type: String
-        let metadata: CountMetadata
-
-        struct CountMetadata: Encodable {
-            let count: Int
-        }
-    }
-
     private struct NotificationWithActorsInsert: Encodable {
         let user_id: String
         let actor_user_id: String
@@ -161,14 +148,6 @@ class NotificationService: ObservableObject {
 
         struct ActorsMetadata: Encodable {
             let actor_ids: [String]
-        }
-    }
-
-    private struct CountUpdate: Encodable {
-        let metadata: CountMetadata
-
-        struct CountMetadata: Encodable {
-            let count: Int
         }
     }
 
@@ -206,8 +185,9 @@ class NotificationService: ObservableObject {
 
         print("✅ Notification created successfully")
 
-        // Send push notification
-        await sendPushNotification(userId: userId, type: type, message: message)
+        // Fetch actor username for personalized push notification
+        let actor = try? await UserService.shared.getUser(userId: actorId)
+        await sendPushNotification(userId: userId, type: type, actorId: actorId, actorUsername: actor?.username)
     }
 
     // MARK: - Specific Notification Creators
@@ -251,17 +231,10 @@ class NotificationService: ObservableObject {
             .execute()
 
         print("✅ Phlock song ready notification created")
-        await sendPushNotification(userId: userId, type: .phlockSongReady, message: "has a new song for you")
-    }
 
-    /// Upsert anonymous song played notification (aggregates count)
-    func upsertSongPlayedNotification(userId: UUID) async throws {
-        try await upsertAnonymousEngagementNotification(userId: userId, type: .songPlayed)
-    }
-
-    /// Upsert anonymous song saved notification (aggregates count)
-    func upsertSongSavedNotification(userId: UUID) async throws {
-        try await upsertAnonymousEngagementNotification(userId: userId, type: .songSaved)
+        // Fetch picker username for personalized push notification
+        let picker = try? await UserService.shared.getUser(userId: pickerId)
+        await sendPushNotification(userId: userId, type: .phlockSongReady, actorId: pickerId, actorUsername: picker?.username)
     }
 
     /// Nudge a user to pick their daily song
@@ -290,7 +263,7 @@ class NotificationService: ObservableObject {
             .execute()
 
         print("✅ Streak milestone notification created")
-        await sendPushNotification(userId: userId, type: .streakMilestone, message: message)
+        await sendPushNotification(userId: userId, type: .streakMilestone, actorUsername: nil, streakDays: streakDays)
     }
 
     // MARK: - Aggregation Helpers
@@ -313,9 +286,13 @@ class NotificationService: ObservableObject {
             .execute()
             .value
 
+        // Fetch actor username for personalized push notification
+        let actor = try? await UserService.shared.getUser(userId: actorId)
+
         if let current = existing.first {
             print("📝 Found existing nudge (id: \(current.id)), updating...")
             var actorIds = Set(current.metadata?.actorIds ?? [])
+            let wasAlreadyNudger = actorIds.contains(actorId.uuidString)
             actorIds.insert(actorId.uuidString)
 
             let updateData = NudgeUpdate(
@@ -331,6 +308,18 @@ class NotificationService: ObservableObject {
                 .execute()
 
             print("✅ Updated existing nudge")
+
+            // Only send push if this is a new nudger
+            if !wasAlreadyNudger {
+                let additionalCount = actorIds.count - 1
+                await sendPushNotification(
+                    userId: userId,
+                    type: .dailyNudge,
+                    actorId: actorId,
+                    actorUsername: actor?.username,
+                    additionalActorCount: additionalCount
+                )
+            }
             return
         }
 
@@ -350,63 +339,7 @@ class NotificationService: ObservableObject {
             .execute()
 
         print("✅ Created new daily nudge")
-        await sendPushNotification(userId: userId, type: .dailyNudge, message: "nudged you to pick today's song")
-    }
-
-    /// Upsert anonymous engagement notification (song_played or song_saved)
-    /// Aggregates count for today, keeps identities anonymous
-    private func upsertAnonymousEngagementNotification(userId: UUID, type: NotificationType) async throws {
-        let startOfDay = Calendar.current.startOfDay(for: Date())
-        let iso = ISO8601DateFormatter().string(from: startOfDay)
-
-        print("🔍 Checking for existing \(type.rawValue) notification since \(iso)")
-
-        let existing: [NotificationRecord] = try await supabase
-            .from("notifications")
-            .select("*")
-            .eq("user_id", value: userId.uuidString)
-            .eq("type", value: type.rawValue)
-            .gte("created_at", value: iso)
-            .order("created_at", ascending: false)
-            .limit(1)
-            .execute()
-            .value
-
-        if let current = existing.first {
-            let currentCount = current.metadata?.count ?? 1
-            let newCount = currentCount + 1
-
-            print("📝 Found existing \(type.rawValue) notification, updating count to \(newCount)")
-
-            let updateData = CountUpdate(metadata: .init(count: newCount))
-
-            try await supabase
-                .from("notifications")
-                .update(updateData)
-                .eq("id", value: current.id.uuidString)
-                .execute()
-
-            print("✅ Updated \(type.rawValue) count")
-            return
-        }
-
-        print("✨ No existing \(type.rawValue) notification found, creating new one...")
-
-        let insertData = NotificationWithCountInsert(
-            user_id: userId.uuidString,
-            type: type.rawValue,
-            metadata: .init(count: 1)
-        )
-
-        try await supabase
-            .from("notifications")
-            .insert(insertData)
-            .execute()
-
-        print("✅ Created new \(type.rawValue) notification")
-
-        let message = type == .songPlayed ? "Someone played your song" : "Someone saved your song"
-        await sendPushNotification(userId: userId, type: type, message: message)
+        await sendPushNotification(userId: userId, type: .dailyNudge, actorId: actorId, actorUsername: actor?.username)
     }
 
     /// Upsert new follower notification - prevents duplicates from same follower
@@ -469,7 +402,10 @@ class NotificationService: ObservableObject {
             .execute()
 
         print("✅ Created new follower notification")
-        await sendPushNotification(userId: userId, type: .newFollower, message: "started following you")
+
+        // Fetch follower username for personalized push notification
+        let follower = try? await UserService.shared.getUser(userId: followerId)
+        await sendPushNotification(userId: userId, type: .newFollower, actorId: followerId, actorUsername: follower?.username)
     }
 
     /// Upsert follow request notification - prevents duplicates from same requester
@@ -526,7 +462,10 @@ class NotificationService: ObservableObject {
             .execute()
 
         print("✅ Created new follow request notification")
-        await sendPushNotification(userId: userId, type: .followRequestReceived, message: "requested to follow you")
+
+        // Fetch requester username for personalized push notification
+        let requester = try? await UserService.shared.getUser(userId: requesterId)
+        await sendPushNotification(userId: userId, type: .followRequestReceived, actorId: requesterId, actorUsername: requester?.username)
     }
 
     // MARK: - Social Engagement Notifications
@@ -556,7 +495,10 @@ class NotificationService: ObservableObject {
                 .execute()
 
             print("✅ Share liked notification created successfully")
-            await sendPushNotification(userId: shareOwnerId, type: .shareLiked, message: "liked your song \"\(trackName)\"")
+
+            // Fetch liker username for personalized push notification
+            let liker = try? await UserService.shared.getUser(userId: likerId)
+            await sendPushNotification(userId: shareOwnerId, type: .shareLiked, actorId: likerId, actorUsername: liker?.username, shareId: shareId)
         } catch {
             print("❌ Failed to insert share_liked notification: \(error)")
             throw error
@@ -596,8 +538,10 @@ class NotificationService: ObservableObject {
                 .execute()
 
             print("✅ Share commented notification created successfully")
-            let action = isReply ? "replied to a comment on" : "commented on"
-            await sendPushNotification(userId: shareOwnerId, type: .shareCommented, message: "\(action) \"\(trackName)\"")
+
+            // Fetch commenter username for personalized push notification
+            let commenter = try? await UserService.shared.getUser(userId: commenterId)
+            await sendPushNotification(userId: shareOwnerId, type: .shareCommented, actorId: commenterId, actorUsername: commenter?.username, shareId: shareId)
         } catch {
             print("❌ Failed to insert share_commented notification: \(error)")
             throw error
@@ -629,7 +573,10 @@ class NotificationService: ObservableObject {
                 .execute()
 
             print("✅ Comment liked notification created successfully")
-            await sendPushNotification(userId: commentOwnerId, type: .commentLiked, message: "liked your comment on \"\(trackName)\"")
+
+            // Fetch liker username for personalized push notification
+            let liker = try? await UserService.shared.getUser(userId: likerId)
+            await sendPushNotification(userId: commentOwnerId, type: .commentLiked, actorId: likerId, actorUsername: liker?.username, shareId: shareId)
         } catch {
             print("❌ Failed to insert comment_liked notification: \(error)")
             throw error
@@ -643,57 +590,94 @@ class NotificationService: ObservableObject {
         let title: String
         let body: String
         let type: String
+        let data: PushNotificationData?
     }
 
-    private func sendPushNotification(userId: UUID, type: NotificationType, message: String?) async {
+    private struct PushNotificationData: Encodable {
+        var actor_id: String?
+        var share_id: String?
+    }
+
+    /// Send push notification with personalized copy
+    /// - Parameters:
+    ///   - userId: The recipient user ID
+    ///   - type: The notification type
+    ///   - actorId: The actor's user ID for deep linking
+    ///   - actorUsername: The actor's username (without @) for personalized messages
+    ///   - actorDisplayName: The actor's display name (for friendJoined - contact's name from address book)
+    ///   - shareId: The share ID for deep linking to specific content
+    ///   - additionalActorCount: Number of additional actors for aggregated notifications (e.g., "and 2 others")
+    ///   - streakDays: Streak count for milestone notifications
+    private func sendPushNotification(
+        userId: UUID,
+        type: NotificationType,
+        actorId: UUID? = nil,
+        actorUsername: String?,
+        actorDisplayName: String? = nil,
+        shareId: UUID? = nil,
+        additionalActorCount: Int = 0,
+        streakDays: Int? = nil
+    ) async {
         do {
             let title: String
             let body: String
 
+            // Format actor mention with @ prefix
+            let actorMention = actorUsername.map { "@\($0)" } ?? "Someone"
+
             switch type {
             case .dailyNudge:
                 title = "Pick your song!"
-                body = message ?? "Your phlock is waiting for your pick"
+                if additionalActorCount > 0 {
+                    body = "\(actorMention) and \(additionalActorCount) others nudged you to pick today's song"
+                } else {
+                    body = "\(actorMention) nudged you to pick today's song"
+                }
             case .newFollower:
                 title = "New follower"
-                body = "Someone started following you"
+                body = "\(actorMention) started following you"
             case .followRequestReceived:
                 title = "Follow request"
-                body = "Someone wants to follow you"
+                body = "\(actorMention) wants to follow you"
             case .followRequestAccepted:
                 title = "Request accepted"
-                body = "Your follow request was accepted"
+                body = "\(actorMention) accepted your follow request"
             case .friendJoined:
                 title = "Friend joined!"
-                body = "A contact just joined Phlock"
+                let displayName = actorDisplayName ?? actorUsername ?? "A friend"
+                body = "\(displayName) just joined phlock"
             case .phlockSongReady:
-                title = "New song in your phlock"
-                body = message ?? "A phlock member picked their song"
-            case .songPlayed:
-                title = "Your song was played"
-                body = message ?? "Someone listened to your pick"
-            case .songSaved:
-                title = "Your song was saved"
-                body = message ?? "Someone saved your pick"
+                title = "\(actorMention) picked a song"
+                body = "Check out their daily pick"
             case .streakMilestone:
                 title = "Streak milestone!"
-                body = message ?? "You reached a new milestone"
+                body = "You've reached a \(streakDays ?? 0)-day streak!"
             case .shareLiked:
-                title = "Someone liked your song"
-                body = message ?? "Your pick got some love"
+                title = "\(actorMention) liked your song"
+                body = "Tap to see"
             case .shareCommented:
-                title = "New comment"
-                body = message ?? "Someone commented on your pick"
+                title = "\(actorMention) commented"
+                body = "Tap to reply"
             case .commentLiked:
-                title = "Someone liked your comment"
-                body = message ?? "Your comment got some love"
+                title = "\(actorMention) liked your comment"
+                body = "Tap to view"
+            }
+
+            // Build deep link data
+            var data: PushNotificationData? = nil
+            if actorId != nil || shareId != nil {
+                data = PushNotificationData(
+                    actor_id: actorId?.uuidString,
+                    share_id: shareId?.uuidString
+                )
             }
 
             let payload = PushNotificationPayload(
                 user_id: userId.uuidString,
                 title: title,
                 body: body,
-                type: type.rawValue
+                type: type.rawValue,
+                data: data
             )
 
             try await supabase.functions.invoke("send-push-notification", options: .init(body: payload))
@@ -767,7 +751,6 @@ class NotificationService: ObservableObject {
                     isRead: record.readAt != nil,
                     trackName: record.metadata?.trackName,
                     albumArtUrl: record.metadata?.albumArtUrl,
-                    count: record.metadata?.count,
                     streakDays: record.metadata?.streakDays,
                     shareId: record.metadata?.shareId.flatMap { UUID(uuidString: $0) },
                     commentText: record.metadata?.commentText

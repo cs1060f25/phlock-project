@@ -1,5 +1,12 @@
 import SwiftUI
 
+/// Which sheet to show when expanding the daily song view
+enum DailySongSheetType {
+    case none
+    case comments
+    case likers
+}
+
 /// Full-screen expanded view of the user's own daily song pick
 /// Shows how the song appears to others in their phlock feeds
 struct ExpandedDailySongView: View {
@@ -12,6 +19,9 @@ struct ExpandedDailySongView: View {
     var onPlayTapped: ((Share) -> Void)?
     var onMessageUpdated: ((String?) -> Void)?  // Callback when message is edited
 
+    /// Optional: which sheet to automatically show when view appears
+    var initialSheetToShow: DailySongSheetType = .none
+
     @EnvironmentObject var authState: AuthenticationState
     @EnvironmentObject var playbackService: PlaybackService
     @StateObject private var socialService = SocialEngagementService.shared
@@ -20,6 +30,7 @@ struct ExpandedDailySongView: View {
     @State private var showCommentSheet = false
     @State private var showLikersSheet = false
     @State private var showMessageEditor = false
+    @State private var hasShownInitialSheet = false  // Track if we've shown the initial sheet
 
     // UI states
     @State private var isGeneratingShareCard = false
@@ -123,6 +134,25 @@ struct ExpandedDailySongView: View {
         .task {
             localMessage = share.message
             try? await socialService.fetchLikeStatus(for: [share.id])
+        }
+        .onAppear {
+            // Show initial sheet if requested (e.g., from notification deep link)
+            if !hasShownInitialSheet {
+                hasShownInitialSheet = true
+                switch initialSheetToShow {
+                case .comments:
+                    // Small delay to let the view appear first
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showCommentSheet = true
+                    }
+                case .likers:
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showLikersSheet = true
+                    }
+                case .none:
+                    break
+                }
+            }
         }
     }
 

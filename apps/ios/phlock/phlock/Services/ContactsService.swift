@@ -2,6 +2,7 @@ import Foundation
 import Contacts
 import Supabase
 import CommonCrypto
+import UIKit
 
 // MARK: - String+Emoji Extension
 
@@ -63,6 +64,69 @@ final class ContactsService {
 
     func authorizationStatus() -> CNAuthorizationStatus {
         CNContactStore.authorizationStatus(for: .contacts)
+    }
+
+    // MARK: - Me Card Detection
+
+    /// Get user's phone number from their iOS "Me" card
+    /// Returns the first phone number found, normalized, or nil if no Me card is set
+    /// Note: iOS doesn't have a direct API for "Me" card - we search for contacts
+    /// that match common "me" patterns or have the user's name from their profile
+    func getUserPhoneFromMeCard() async -> String? {
+        // iOS doesn't have unifiedMeContact API (macOS only)
+        // Instead, we'll look for the most likely "self" contact using heuristics:
+        // 1. Contacts named "Me", "My Card", or the device owner name
+        // 2. Contacts with many phone numbers (often the user has multiple numbers)
+
+        let granted = try? await requestAccessIfNeeded()
+        guard granted == true else { return nil }
+
+        let keys: [CNKeyDescriptor] = [
+            CNContactGivenNameKey as CNKeyDescriptor,
+            CNContactFamilyNameKey as CNKeyDescriptor,
+            CNContactPhoneNumbersKey as CNKeyDescriptor,
+            CNContactTypeKey as CNKeyDescriptor
+        ]
+
+        // Try to find "Me" or similar named contacts
+        let meNames = ["me", "my card", "myself", UIDevice.current.name.lowercased()]
+
+        do {
+            let request = CNContactFetchRequest(keysToFetch: keys)
+            var bestMatch: CNContact?
+
+            try store.enumerateContacts(with: request) { contact, stop in
+                let fullName = "\(contact.givenName) \(contact.familyName)".trimmingCharacters(in: .whitespaces).lowercased()
+                let givenName = contact.givenName.lowercased()
+
+                // Check if this contact matches common "me" patterns
+                for meName in meNames {
+                    if fullName == meName || givenName == meName {
+                        // Found a likely "Me" contact
+                        if !contact.phoneNumbers.isEmpty {
+                            bestMatch = contact
+                            stop.pointee = true
+                            return
+                        }
+                    }
+                }
+            }
+
+            if let meContact = bestMatch,
+               let phoneNumber = meContact.phoneNumbers.first?.value.stringValue {
+                let normalized = ContactsService.normalizePhone(phoneNumber)
+                if !normalized.isEmpty {
+                    print("📇 Found phone from Me card: \(normalized.prefix(4))****")
+                    return normalized
+                }
+            }
+
+            print("📇 No Me card found in contacts")
+            return nil
+        } catch {
+            print("📇 Could not search for Me card: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     func requestAccessIfNeeded() async throws -> Bool {

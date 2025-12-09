@@ -202,7 +202,7 @@ struct SettingsView: View {
                     }
                 }
             }
-            .alert("Error", isPresented: Binding(
+            .alert("oops", isPresented: Binding(
                 get: { deleteError != nil },
                 set: { if !$0 { deleteError = nil } }
             )) {
@@ -374,10 +374,10 @@ struct MusicPlatformSelectionSheet: View {
                     .font(.lora(size: 16))
                 }
             }
-            .alert("Error", isPresented: $showError) {
+            .alert("oops", isPresented: $showError) {
                 Button("OK") { }
             } message: {
-                Text(errorMessage ?? "An error occurred")
+                Text(errorMessage ?? "something went wrong")
             }
         }
     }

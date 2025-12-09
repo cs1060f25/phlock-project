@@ -10,6 +10,8 @@ struct OnboardingContactsPermissionView: View {
     @State private var errorMessage = ""
     @State private var showSettingsAlert = false
     @State private var isButtonPressed = false
+    @State private var showPhonePrompt = false
+    @State private var pendingTransition: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -187,7 +189,7 @@ struct OnboardingContactsPermissionView: View {
             .padding(.bottom, 32)
         }
         .background(Color.appBackground)
-        .alert("Error", isPresented: $showError) {
+        .alert("oops", isPresented: $showError) {
             Button("OK") { }
         } message: {
             Text(errorMessage)
@@ -203,6 +205,30 @@ struct OnboardingContactsPermissionView: View {
             }
         } message: {
             Text("To find friends on phlock, please enable Contacts access in Settings > Apps > phlock > Contacts > Full Access.")
+        }
+        .sheet(isPresented: $showPhonePrompt) {
+            PhoneNumberPromptSheet(
+                isPresented: $showPhonePrompt,
+                onSave: { phone in
+                    Task {
+                        if let userId = authState.currentUser?.id {
+                            try? await UserService.shared.updateUserPhone(phone, for: userId)
+                        }
+                        // Execute pending transition after save
+                        await MainActor.run {
+                            pendingTransition?()
+                            pendingTransition = nil
+                        }
+                    }
+                },
+                onSkip: {
+                    // Execute pending transition on skip
+                    pendingTransition?()
+                    pendingTransition = nil
+                }
+            )
+            .presentationDetents([.height(340)])
+            .presentationDragIndicator(.hidden)
         }
     }
 
@@ -260,6 +286,15 @@ struct OnboardingContactsPermissionView: View {
                 // Sync contacts to server (for "X friends on phlock" feature)
                 try? await ContactsService.shared.syncContactsToServer()
 
+                // Try to get user's phone from Me card
+                let meCardPhone = await ContactsService.shared.getUserPhoneFromMeCard()
+
+                // If found, save it automatically
+                if let phone = meCardPhone, let userId = authState.currentUser?.id {
+                    try? await UserService.shared.updateUserPhone(phone, for: userId)
+                    print("📱 Auto-saved phone from Me card")
+                }
+
                 // Fetch contacts with friend counts (excluding matches) - same logic as Discover tab
                 let invitableContacts = try await ContactsService.shared.fetchContactsWithFriendCounts(excludingPhones: matchedPhones)
 
@@ -270,14 +305,25 @@ struct OnboardingContactsPermissionView: View {
                     // Mark contacts step as completed
                     UserDefaults.standard.set(true, forKey: "hasCompletedContactsStep")
 
-                    // Transition to next screen based on whether we found matches
-                    authState.needsContactsPermission = false
+                    // Define the transition logic
+                    let transition = {
+                        self.authState.needsContactsPermission = false
 
-                    if !matches.isEmpty {
-                        authState.needsAddFriends = true
+                        if !matches.isEmpty {
+                            self.authState.needsAddFriends = true
+                        } else {
+                            // No friends found, go directly to invite friends
+                            self.authState.needsInviteFriends = true
+                        }
+                    }
+
+                    // If no phone was found from Me card, show prompt
+                    if meCardPhone == nil {
+                        pendingTransition = transition
+                        showPhonePrompt = true
                     } else {
-                        // No friends found, go directly to invite friends
-                        authState.needsInviteFriends = true
+                        // Phone was auto-saved, proceed immediately
+                        transition()
                     }
 
                     print("✅ Contacts access granted - found \(matches.count) matches, \(invitableContacts.count) contacts to invite")

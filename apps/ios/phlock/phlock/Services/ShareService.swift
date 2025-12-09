@@ -276,17 +276,6 @@ class ShareService {
 
         // Record engagement
         try await recordEngagement(shareId: shareId, userId: userId, action: "played")
-
-        // Notify the sender (anonymous aggregate) - only if it's a daily song and not playing own song
-        if let share = shares.first, share.isDailySong, share.senderId != userId {
-            Task {
-                do {
-                    try await NotificationService.shared.upsertSongPlayedNotification(userId: share.senderId)
-                } catch {
-                    print("⚠️ Failed to create song played notification: \(error)")
-                }
-            }
-        }
     }
 
     /// Mark a share as saved and record the engagement
@@ -315,17 +304,6 @@ class ShareService {
 
         // Record engagement
         try await recordEngagement(shareId: shareId, userId: userId, action: "saved")
-
-        // Notify the sender (anonymous aggregate) - only if it's a daily song and not saving own song
-        if let share = shares.first, share.isDailySong, share.senderId != userId {
-            Task {
-                do {
-                    try await NotificationService.shared.upsertSongSavedNotification(userId: share.senderId)
-                } catch {
-                    print("⚠️ Failed to create song saved notification: \(error)")
-                }
-            }
-        }
     }
 
     /// Mark a share as unsaved (clear saved_at timestamp)

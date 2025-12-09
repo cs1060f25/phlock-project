@@ -556,63 +556,18 @@ struct FullScreenPlayerView: View {
 
     private var progressBar: some View {
         VStack(spacing: 8) {
-            // Custom scrubbable progress bar
-            GeometryReader { geometry in
-                let progress = (isDraggingSlider || isSeeking)
-                    ? sliderValue / max(durationSafe, 1)
-                    : currentTimeSafe / max(durationSafe, 1)
-
-                ZStack(alignment: .leading) {
-                    // Background track
-                    Capsule()
-                        .fill(Color.white.opacity(0.3))
-                        .frame(height: 4)
-
-                    // Progress fill
-                    Capsule()
-                        .fill(Color.white)
-                        .frame(width: max(0, geometry.size.width * CGFloat(progress)), height: 4)
-
-                    // Thumb
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: isDraggingSlider ? 16 : 12, height: isDraggingSlider ? 16 : 12)
-                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
-                        .offset(x: max(0, min(geometry.size.width - 12, geometry.size.width * CGFloat(progress) - 6)))
-                        .animation(.easeOut(duration: 0.1), value: isDraggingSlider)
+            // Custom scrubbable progress bar with smooth continuous animation
+            FullScreenProgressScrubber(
+                currentTime: currentTimeSafe,
+                duration: durationSafe,
+                isPlaying: playbackService.isPlaying,
+                isDragging: $isDraggingSlider,
+                sliderValue: $sliderValue,
+                isSeeking: $isSeeking,
+                onSeek: { time in
+                    seek(to: time)
                 }
-                .frame(height: 20)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { value in
-                            if !isDraggingSlider {
-                                isDraggingSlider = true
-                                let impact = UIImpactFeedbackGenerator(style: .light)
-                                impact.impactOccurred()
-                            }
-                            let progress = max(0, min(1, value.location.x / geometry.size.width))
-                            sliderValue = Double(progress) * durationSafe
-                        }
-                        .onEnded { value in
-                            let progress = max(0, min(1, value.location.x / geometry.size.width))
-                            let seekTime = Double(progress) * durationSafe
-                            
-                            // Set seeking state to prevent jump back
-                            isSeeking = true
-                            seek(to: seekTime)
-                            isDraggingSlider = false
-
-                            let impact = UIImpactFeedbackGenerator(style: .light)
-                            impact.impactOccurred()
-                            
-                            // Reset seeking state after a delay to allow playback service to catch up
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                isSeeking = false
-                            }
-                        }
-                )
-            }
+            )
             .frame(height: 20)
 
             // Time labels
@@ -1081,5 +1036,130 @@ struct FullScreenPlayerView: View {
         }
 
         return token.accessToken
+    }
+}
+
+// MARK: - Smooth Progress Scrubber
+
+/// A scrubbable progress bar using TimelineView for true 60fps smooth animation
+private struct FullScreenProgressScrubber: View {
+    let currentTime: Double
+    let duration: Double
+    let isPlaying: Bool
+    @Binding var isDragging: Bool
+    @Binding var sliderValue: Double
+    @Binding var isSeeking: Bool
+    let onSeek: (Double) -> Void
+
+    // Track the reference point for smooth interpolation
+    @State private var referenceTime: Double = 0
+    @State private var referenceDate: Date = Date()
+
+    var body: some View {
+        TimelineView(.animation(paused: !isPlaying || isDragging || isSeeking)) { timeline in
+            GeometryReader { geometry in
+                let progress = calculateProgress(at: timeline.date)
+
+                ZStack(alignment: .leading) {
+                    // Background track
+                    Capsule()
+                        .fill(Color.white.opacity(0.3))
+                        .frame(height: 4)
+
+                    // Progress fill
+                    Capsule()
+                        .fill(Color.white)
+                        .frame(width: max(0, geometry.size.width * progress), height: 4)
+
+                    // Thumb
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: isDragging ? 16 : 12, height: isDragging ? 16 : 12)
+                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                        .offset(x: max(0, min(geometry.size.width - 12, geometry.size.width * progress - 6)))
+                        .animation(.easeOut(duration: 0.1), value: isDragging)
+                }
+                .frame(height: 20)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            if !isDragging {
+                                isDragging = true
+                                let impact = UIImpactFeedbackGenerator(style: .light)
+                                impact.impactOccurred()
+                            }
+                            let prog = max(0, min(1, value.location.x / geometry.size.width))
+                            sliderValue = Double(prog) * duration
+                        }
+                        .onEnded { value in
+                            let prog = max(0, min(1, value.location.x / geometry.size.width))
+                            let seekTime = Double(prog) * duration
+
+                            // Set seeking state to prevent jump back
+                            isSeeking = true
+                            onSeek(seekTime)
+                            isDragging = false
+
+                            let impact = UIImpactFeedbackGenerator(style: .light)
+                            impact.impactOccurred()
+
+                            // Reset seeking state after a delay
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                isSeeking = false
+                            }
+                        }
+                )
+            }
+        }
+        .onChange(of: currentTime) { newTime in
+            if !isDragging && !isSeeking {
+                // Only update reference if time has jumped significantly (seek)
+                // or if we've drifted too far (sync).
+                let elapsed = Date().timeIntervalSince(referenceDate)
+                let estimatedTime = referenceTime + elapsed
+                let diff = abs(newTime - estimatedTime)
+                
+                if diff > 0.5 || !isPlaying {
+                    referenceTime = newTime
+                    referenceDate = Date()
+                }
+            }
+        }
+        .onChange(of: isPlaying) { _ in
+            referenceTime = currentTime
+            referenceDate = Date()
+        }
+        .onChange(of: isSeeking) { seeking in
+            if !seeking {
+                // After seeking completes, sync reference
+                referenceTime = currentTime
+                referenceDate = Date()
+            }
+        }
+        .onAppear {
+            referenceTime = currentTime
+            referenceDate = Date()
+        }
+    }
+
+    private func calculateProgress(at date: Date) -> CGFloat {
+        guard duration > 0 else { return 0 }
+
+        // During drag or seek, show slider position
+        if isDragging || isSeeking {
+            return CGFloat(sliderValue / duration)
+        }
+
+        let interpolatedTime: Double
+        if isPlaying {
+            let elapsed = date.timeIntervalSince(referenceDate)
+            interpolatedTime = referenceTime + elapsed
+        } else {
+            interpolatedTime = currentTime
+        }
+
+        let clampedTime = max(0, min(interpolatedTime, duration))
+        return CGFloat(clampedTime / duration)
     }
 }

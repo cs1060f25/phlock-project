@@ -361,6 +361,37 @@ class UserService {
             .execute()
     }
 
+    // MARK: - Phone Number Management
+
+    /// Update user's phone number
+    /// The database trigger will automatically compute phone_hash
+    func updateUserPhone(_ phone: String, for userId: UUID) async throws {
+        let normalized = ContactsService.normalizePhone(phone)
+        guard !normalized.isEmpty else {
+            print("⚠️ Cannot update phone - normalized phone is empty")
+            return
+        }
+
+        struct PhoneUpdate: Encodable {
+            let phone: String
+            let updated_at: String
+        }
+
+        try await supabase
+            .from("users")
+            .update(PhoneUpdate(
+                phone: normalized,
+                updated_at: ISO8601DateFormatter().string(from: Date())
+            ))
+            .eq("id", value: userId.uuidString)
+            .execute()
+
+        // Clear cache so next fetch gets updated phone
+        userCache.removeValue(forKey: userId)
+
+        print("📱 Phone number updated for user: \(userId)")
+    }
+
     // MARK: - Platform Data Management
 
     /// Update user's platform data (topArtists and topTracks)

@@ -67,11 +67,14 @@ class PushNotificationService: NSObject, ObservableObject {
             self.deviceToken = tokenString
         }
 
-        // Store the token in Supabase
+        // Store the token in Supabase with retry
         Task {
-            await storeDeviceToken(tokenString)
+            await storeDeviceTokenWithRetry(tokenString)
         }
     }
+
+    /// Pending token to store when user becomes authenticated
+    private var pendingDeviceToken: String?
 
     /// Called when APNs registration fails
     func didFailToRegisterForRemoteNotifications(withError error: Error) {
@@ -80,13 +83,40 @@ class PushNotificationService: NSObject, ObservableObject {
 
     // MARK: - Store Token in Supabase
 
+    /// Store the device token with retry logic for when user is not yet authenticated
+    private func storeDeviceTokenWithRetry(_ token: String) async {
+        // Try immediately first
+        let success = await storeDeviceToken(token)
+
+        if !success {
+            // Store as pending and retry a few times with delays
+            pendingDeviceToken = token
+            print("⏳ Device token pending, will retry...")
+
+            // Retry up to 5 times with increasing delays (1s, 2s, 3s, 4s, 5s)
+            for attempt in 1...5 {
+                try? await Task.sleep(nanoseconds: UInt64(attempt) * 1_000_000_000)
+
+                if await storeDeviceToken(token) {
+                    pendingDeviceToken = nil
+                    return
+                }
+                print("⏳ Device token retry \(attempt)/5 failed, will try again...")
+            }
+
+            print("⚠️ Could not store device token after 5 retries. Call storePendingTokenIfNeeded() after auth.")
+        }
+    }
+
     /// Store the device token in Supabase for this user
-    private func storeDeviceToken(_ token: String) async {
+    /// Returns true if successful, false otherwise
+    @discardableResult
+    private func storeDeviceToken(_ token: String) async -> Bool {
         do {
             // Get current user ID
             guard let user = try await AuthServiceV3.shared.currentUser else {
-                print("⚠️ No user logged in, skipping device token registration")
-                return
+                print("⚠️ No user logged in, cannot store device token")
+                return false
             }
 
             // Determine if this is a sandbox (development/TestFlight) build
@@ -111,10 +141,51 @@ class PushNotificationService: NSObject, ObservableObject {
                 .upsert(payload, onConflict: "device_token,platform")
                 .execute()
 
-            print("✅ Device token registered successfully")
+            print("✅ Device token registered successfully for user: \(user.id)")
+            return true
 
         } catch {
             print("❌ Failed to store device token: \(error)")
+            return false
+        }
+    }
+
+    /// Call this after user authentication to store any pending device token
+    func storePendingTokenIfNeeded() async {
+        guard let token = pendingDeviceToken else { return }
+
+        print("📱 Attempting to store pending device token...")
+        if await storeDeviceToken(token) {
+            pendingDeviceToken = nil
+        }
+    }
+
+    /// Ensures device token is registered for push notifications
+    /// Call this after user authentication to handle the case where notifications
+    /// were already authorized but token wasn't stored (e.g., user updated app)
+    func ensureDeviceTokenRegistered() async {
+        // Check if we already have a token in memory
+        let existingToken = await MainActor.run { self.deviceToken }
+        if let token = existingToken {
+            // Try to store it (will succeed if not already in DB)
+            let success = await storeDeviceToken(token)
+            if success {
+                print("✅ Existing device token registered")
+            }
+            return
+        }
+
+        // Check notification authorization and re-register if authorized
+        let status = await checkAuthorizationStatus()
+        if status == .authorized {
+            print("📱 Notifications authorized, re-registering for remote notifications...")
+            await MainActor.run {
+                UIApplication.shared.registerForRemoteNotifications()
+            }
+        } else if status == .notDetermined {
+            print("📱 Notification permission not determined, skipping re-registration")
+        } else {
+            print("📱 Notifications not authorized (status: \(status.rawValue)), skipping re-registration")
         }
     }
 
@@ -140,21 +211,50 @@ class PushNotificationService: NSObject, ObservableObject {
     /// Handle notification actions based on type
     @MainActor
     private func handleNotificationAction(type: String, userInfo: [AnyHashable: Any]) async {
+        // Extract deep link data
+        let actorId = (userInfo["actor_id"] as? String).flatMap { UUID(uuidString: $0) }
+        let shareId = (userInfo["share_id"] as? String).flatMap { UUID(uuidString: $0) }
+
         switch type {
-        case "friend_request":
-            // Navigate to friends tab
-            NotificationCenter.default.post(name: .navigateToFriends, object: nil)
+        // Social/follow notifications - navigate to notifications tab
+        case "new_follower", "follow_request_received", "follow_request_accepted", "friend_joined":
+            NotificationCenter.default.post(name: .navigateToNotifications, object: nil)
 
-        case "daily_song":
-            // Navigate to discover tab
-            NotificationCenter.default.post(name: .navigateToDiscover, object: nil)
+        // Daily nudge - navigate to song picker
+        case "daily_nudge":
+            NotificationCenter.default.post(name: .navigateToSongPicker, object: nil)
 
-        case "friend_picked":
-            // Navigate to phlock tab to see friend's pick
+        // Phlock song ready - navigate to phlock feed
+        case "phlock_song_ready":
             NotificationCenter.default.post(name: .navigateToPhlock, object: nil)
+
+        // Streak milestone - navigate to profile
+        case "streak_milestone":
+            NotificationCenter.default.post(name: .navigateToProfile, object: nil)
+
+        // Engagement notifications - navigate to specific share
+        case "share_liked", "share_commented", "comment_liked":
+            if let shareId = shareId {
+                let sheetType: String
+                switch type {
+                case "share_commented": sheetType = "comments"
+                case "share_liked", "comment_liked": sheetType = "likers"
+                default: sheetType = "none"
+                }
+                NotificationCenter.default.post(
+                    name: .navigateToShare,
+                    object: nil,
+                    userInfo: ["shareId": shareId, "sheetType": sheetType]
+                )
+            } else {
+                // Fallback to phlock feed
+                NotificationCenter.default.post(name: .navigateToPhlock, object: nil)
+            }
 
         default:
             print("Unknown notification type: \(type)")
+            // Default to phlock tab
+            NotificationCenter.default.post(name: .navigateToPhlock, object: nil)
         }
     }
 
@@ -204,7 +304,13 @@ class PushNotificationService: NSObject, ObservableObject {
 // MARK: - Notification Names
 
 extension Notification.Name {
-    static let navigateToFriends = Notification.Name("navigateToFriends")
-    static let navigateToDiscover = Notification.Name("navigateToDiscover")
+    // Tab navigation
     static let navigateToPhlock = Notification.Name("navigateToPhlock")
+    static let navigateToFriends = Notification.Name("navigateToFriends")
+    static let navigateToNotifications = Notification.Name("navigateToNotifications")
+    static let navigateToProfile = Notification.Name("navigateToProfile")
+
+    // Deep link navigation
+    static let navigateToShare = Notification.Name("navigateToShare")
+    static let navigateToSongPicker = Notification.Name("navigateToSongPicker")
 }

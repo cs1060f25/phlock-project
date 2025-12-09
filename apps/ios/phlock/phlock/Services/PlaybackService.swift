@@ -58,8 +58,9 @@ class PlaybackService: ObservableObject {
     @Published var savedTrackIds: Set<String> = []
 
     // Throttle time updates to reduce view recomposition overhead
+    // Use 0.1s threshold for smooth progress bar animation (matches observer interval)
     private var lastReportedTime: Double = 0
-    private let timeUpdateThreshold: Double = 0.3 // Only update every 0.3 seconds
+    private let timeUpdateThreshold: Double = 0.1 // Only update every 0.1 seconds
 
     // Prevent duplicate preview fetches for the same track
     private var currentFetchingTrackId: String? = nil

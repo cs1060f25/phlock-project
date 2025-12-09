@@ -556,10 +556,6 @@ private struct NotificationRowView: View {
                 friendJoinedText
             case .phlockSongReady:
                 songReadyText
-            case .songPlayed:
-                songPlayedText
-            case .songSaved:
-                songSavedText
             case .streakMilestone:
                 streakText
             case .shareLiked:
@@ -647,24 +643,6 @@ private struct NotificationRowView: View {
     private var songReadyText: some View {
         HStack(spacing: 0) {
             (boldText(actorNames) + regularText(" picked today's song. ") + timestampText)
-                .lineLimit(2)
-        }
-    }
-
-    private var songPlayedText: some View {
-        let count = notification.count ?? 1
-        let text = count == 1 ? "someone played your song. " : "\(count) people played your song. "
-        return HStack(spacing: 0) {
-            (regularText(text) + timestampText)
-                .lineLimit(2)
-        }
-    }
-
-    private var songSavedText: some View {
-        let count = notification.count ?? 1
-        let text = count == 1 ? "someone saved your song. " : "\(count) people saved your song. "
-        return HStack(spacing: 0) {
-            (regularText(text) + timestampText)
                 .lineLimit(2)
         }
     }
@@ -770,26 +748,6 @@ private struct NotificationRowView: View {
                 fallbackIcon
             }
 
-        case .songPlayed:
-            Circle()
-                .fill(Color.green.opacity(0.15))
-                .frame(width: 44, height: 44)
-                .overlay(
-                    Image(systemName: "play.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundColor(.green)
-                )
-
-        case .songSaved:
-            Circle()
-                .fill(Color.pink.opacity(0.15))
-                .frame(width: 44, height: 44)
-                .overlay(
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(.pink)
-                )
-
         case .streakMilestone:
             Circle()
                 .fill(Color.orange.opacity(0.15))
@@ -847,7 +805,7 @@ private struct NotificationRowView: View {
             }
             .buttonStyle(.plain)
 
-        case .songPlayed, .songSaved, .streakMilestone, .shareLiked, .shareCommented, .commentLiked:
+        case .streakMilestone, .shareLiked, .shareCommented, .commentLiked:
             EmptyView()
         }
     }
