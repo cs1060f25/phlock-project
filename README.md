@@ -1,156 +1,114 @@
-# Phlock - Daily Music Curation
+# Phlock - CS1060 Fall 2025 Project Submission
 
-> Pick one song per day, listen to your 5-person phlock, and build social currency by being in other people's phlocks.
+A social music app where users share one song per day with people whose taste they trust.
 
-## What's in this repo
-- `apps/ios/phlock/phlock` — SwiftUI iOS app (iOS 16+, AuthServiceV2, daily curation flows)
-- `supabase/migrations` — Database migrations (notifications, daily fields, RLS policies)
-- `supabase/seed` — Demo data (e.g., `demo_notifications.sql`)
-- `supabase/functions` — Edge functions (track validation, search helpers)
-- `docs` — Roadmaps/strategy
-- TestFlight guides — `TESTFLIGHT_QUICKSTART.md`, `TESTFLIGHT_DEPLOYMENT_GUIDE.md`
-- Project overview — `CLAUDE.md`
+Each user curates a 5-person "phlock" - friends, family, influencers, or artists - whose daily picks become their personalized playlist.
 
-## Core concept
-- **One song per user per day**; streaks tracked
-- Your playlist is your **5-person phlock** (positions 1–5); swaps take effect at midnight
-- **Social currency** = how many phlocks include you
-- Nudges/notifications remind users to pick and react
+## Project Overview
 
-## Current status (branch: `product/daily-curation`)
+Phlock reimagines music discovery by limiting users to **one song per day**. Instead of algorithmic recommendations, your daily playlist comes from 5 people you've chosen to trust with your listening time.
 
-### Recently Completed
-- **Typography overhaul**: DM Sans font family across the entire app (replacing Lora)
-- **Enhanced player**: Horizontal swipe gestures for track skipping, improved dismiss gesture
-- **Playback queue system**: Full queue support with skip forward/backward, autoplay handling
-- **Share system redesign**: New ShareOptionsSheet with Copy Link, Messages, WhatsApp, Instagram, Instagram Stories
-- **Daily song gating**: Blur overlay prompts users to pick before viewing phlock
-- **Settings view**: Privacy Policy, Terms of Service, Delete Account, Sign Out
-- **Nudge tracking**: Per-user nudge state with daily reset
-- **Backend RLS**: Phlock members can now upsert daily nudge notifications
-- **Performance**: Parallel async loading, phlock member caching
+### Core Mechanics
+- **Daily curation**: Pick one song each day, building streaks
+- **5-person phlock**: Your playlist = your 5 curators' daily picks
+- **Social currency**: Your "phlock count" shows how many people include you in their phlock
+- **Midnight swaps**: Change your phlock anytime; swaps take effect at midnight
 
-### TestFlight Ready
-- iOS 16+ deployment target
-- Privacy manifest included
-- Build verified on simulator
+## Tech Stack
 
-### Remaining Gaps
-- Friend discovery (contacts/invite links)
-- External sharing with universal links
-- Push notifications + APNs
-- Move secrets out of `Config.swift`
+| Layer | Technology |
+|-------|------------|
+| iOS App | SwiftUI (iOS 16+) |
+| Backend | Supabase (PostgreSQL + Edge Functions) |
+| Auth | Spotify OAuth, Apple Music OAuth |
+| Audio | AVFoundation for preview playback |
 
-## Quick start
+## Repository Structure
+
+```
+apps/ios/phlock/phlock/    # SwiftUI iOS application
+├── Models/                # Data models (User, Share, Notification)
+├── Services/              # Backend integration (Auth, Share, User, Playback)
+├── ViewModels/            # State management
+├── Views/                 # SwiftUI views
+│   ├── Auth/              # Onboarding and authentication
+│   ├── Main/              # Core app tabs (Phlock, Discover, Profile)
+│   └── Components/        # Reusable UI components
+└── Utilities/             # Helpers and extensions
+
+supabase/
+├── migrations/            # Database schema migrations
+├── functions/             # Edge functions (validate-track, search)
+└── seed/                  # Demo data scripts
+
+docs/                      # Design documents and reports
+```
+
+## Key Features Implemented
+
+### Authentication & Onboarding
+- Spotify and Apple Music OAuth integration
+- Username selection flow
+- Platform preference selection
+- Contacts permission and friend discovery
+
+### Daily Song Selection
+- Platform-aware search (Spotify/Apple Music)
+- Track validation via edge function
+- Preview URL fetching
+- 280-character notes
+- Streak tracking
+
+### Phlock Feed
+- TikTok/Reels-style vertical scroll interface
+- Full-screen player with swipe gestures
+- Queue-based playback with autoplay
+- Mini player across all views
+
+### Social Features
+- Friend requests and acceptance
+- Phlock member management (positions 1-5)
+- Daily nudge notifications
+- Social engagement (likes, comments)
+- Push notifications with deep linking
+
+### Sharing
+- Share to Messages, WhatsApp, Instagram, Instagram Stories
+- Copy shareable links
+- Share card generation
+
+## Running the Project
 
 ### Prerequisites
-- Xcode 15+, iOS 16+ simulator or device
-- Supabase project
-- Spotify + Apple Music developer accounts
+- Xcode 15+
+- iOS 16+ simulator or device
+- Supabase CLI
+- Spotify Developer account
+- Apple Developer account
 
-### Run the app
+### iOS App
 ```bash
 open apps/ios/phlock/phlock.xcodeproj
 # Build and run (Cmd+R)
 ```
 
-### Database
+### Database Setup
 ```bash
 cd supabase
-supabase db push                                    # apply migrations
-supabase db execute -f seed/demo_notifications.sql  # optional demo data
+supabase db push              # Apply migrations
+supabase functions deploy     # Deploy edge functions
 ```
 
-## Key features
+## Documentation
 
-### Daily Song Selection
-- Search your music library (Spotify/Apple Music)
-- Pick **one song per day** as your contribution
-- Add optional 280-character note
-- Builds streak counter
+- [CLAUDE.md](CLAUDE.md) - Project architecture and development guide
+- [docs/DTV_FINAL_REPORT.md](docs/DTV_FINAL_REPORT.md) - Design thinking and validation report
 
-### Phlock Management
-- Choose **5 curators** for your daily playlist
-- See each member's song of the day
-- Unlimited swaps—changes take effect at midnight
-- Position-based ordering (1–5)
+## Development Branch
 
-### Playback
-- Full-screen player with swipe gestures (dismiss down, skip left/right)
-- Queue-based playback with autoplay
-- Mini player persistent across views
-- Track save/like state
-
-### Sharing
-- Share to Messages, WhatsApp, Instagram, Instagram Stories
-- Copy shareable Spotify/Apple Music links
-- Context-aware share sheet (full player, mini player, overlay)
-
-### Social Currency
-- **Phlock count** = how many people include you
-- Nudge friends who haven't picked today
-- Notifications for friend accepts, nudges
-
-## Branches
-- `main` — stable
-- `develop` — integration
-- `product/daily-curation` — current work (always shippable)
-
-## Key docs
-- `CLAUDE.md` — project snapshot
-- `CRITICAL_FEATURES_AND_IMPLEMENTATION_PLAN.md` — blockers/priorities
-- `AUTHSERVICE_V2_IMPLEMENTATION.md` — auth details
-- `TESTFLIGHT_*` — deployment guides
-
-## Security note
-Supabase/Spotify/Apple keys are in `apps/ios/phlock/phlock/Services/Config.swift`. Move to build configurations before production.
-
-## Environment setup
-
-### iOS Config
-Update `apps/ios/phlock/phlock/Config.swift`:
-```swift
-static let supabaseURL = "https://your-project.supabase.co"
-static let supabaseAnonKey = "your-anon-key"
-static let spotifyClientId = "your-client-id"
-static let spotifyRedirectUri = "phlock://spotify-callback"
-```
-
-## Testing
-
-```bash
-# Open in Xcode
-open apps/ios/phlock/phlock.xcodeproj
-
-# Build and run on simulator
-# Sign in with Spotify/Apple Music OAuth
-# Test daily song selection and phlock management
-```
-
-## Deployment
-
-### iOS (TestFlight)
-```bash
-xcodebuild archive -scheme phlock -archivePath build/phlock.xcarchive
-xcodebuild -exportArchive -archivePath build/phlock.xcarchive -exportPath build/ipa
-# Upload to App Store Connect
-```
-
-### Database
-```bash
-supabase db push
-supabase functions deploy validate-track
-```
-
-## Contributing
-
-1. Check out `product/daily-curation` branch
-2. Make incremental, testable changes
-3. Commit frequently with clear messages
-4. Keep app functional at every commit
+This submission is from the `product/daily-curation` branch, which represents the current production-ready state of the application.
 
 ---
 
-**Current Branch**: `product/daily-curation`
-**Status**: TestFlight Ready
-**Last Updated**: November 25, 2025
+**Course**: CS1060 Fall 2025
+**Submitted**: December 2025
