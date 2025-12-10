@@ -13,10 +13,11 @@
     "mobile:ios": "cd apps/mobile && npm run ios",
     "mobile:android": "cd apps/mobile && npm run android",
     "build": "turbo run build",
-    "test": "turbo run test",
+    "test": "jest",
     "lint": "turbo run lint"
   },
   "devDependencies": {
+    "jest": "^29.7.0",
     "turbo": "^1.10.0"
   },
   "engines": {
